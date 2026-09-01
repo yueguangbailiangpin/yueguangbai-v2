@@ -10,26 +10,6 @@ export const ORDER_INSTRUCTION_STATUSES = [
 export type OrderInstructionStatus =
   typeof ORDER_INSTRUCTION_STATUSES[number];
 
-export const ORDER_INSTRUCTION_ASSET_BATCH_STATUSES = [
-  'PREPARING',
-  'READY',
-  'FAILED',
-  'CONSUMED',
-  'CANCELLED',
-] as const;
-export type OrderInstructionAssetBatchStatus =
-  typeof ORDER_INSTRUCTION_ASSET_BATCH_STATUSES[number];
-
-export const ORDER_INSTRUCTION_ASSET_ITEM_STATUSES = [
-  'PREPARING',
-  'READY',
-  'FAILED',
-  'ORPHANED',
-  'CONSUMED',
-] as const;
-export type OrderInstructionAssetItemStatus =
-  typeof ORDER_INSTRUCTION_ASSET_ITEM_STATUSES[number];
-
 export const BUYER_SELF_PAY_SOURCES = [
   'PRODUCT_DEFAULT',
   'STAFF_OVERRIDE',
@@ -39,9 +19,6 @@ export type BuyerSelfPaySource =
 
 export const ORDER_INSTRUCTION_EVENT_TYPES = [
   'INSTRUCTION_CREATED',
-  'ASSET_PREPARATION_STARTED',
-  'ASSET_PREPARATION_READY',
-  'ASSET_PREPARATION_FAILED',
   'INSTRUCTION_PUBLISHED',
   'INSTRUCTION_REPUBLISHED',
   'EVIDENCE_CHANGES_REQUESTED',
@@ -77,8 +54,15 @@ export interface BuyerInstructionImageHandleDto {
 export interface BuyerOrderInstructionDto
 extends BuyerSelfPayEstimateDto {
   status: OrderInstructionStatus;
+  /** The active instruction facts are returned with content in one read. */
+  instruction_version: number;
+  current_version_no: number;
+  evidence_status: BuyerOrderInstructionStateDto['evidence_status'];
+  can_submit_evidence: boolean;
+  can_read_images: boolean;
   product_name: string;
   store_display_name: string;
+  search_keywords: readonly string[];
   color_spec_mode: OrderInstructionColorSpecMode;
   staff_public_note: string | null;
   buyer_visible_notes: string | null;
@@ -86,7 +70,6 @@ extends BuyerSelfPayEstimateDto {
   resubmission_deadline_at: number | null;
   content_updated: boolean;
   main_image: BuyerInstructionImageHandleDto;
-  keyword_images: readonly BuyerInstructionImageHandleDto[];
 }
 
 export interface BuyerOrderInstructionStateDto {
@@ -118,7 +101,7 @@ export interface StaffOrderInstructionSummaryDto {
   instruction_id: string;
   reservation_id: string;
   buyer_customer_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   status: OrderInstructionStatus;
   current_version_no: number;
   version: number;
@@ -150,34 +133,6 @@ extends BuyerSelfPayEstimateDto {
   published_at: number;
   initial_deadline_at: number;
   created_at: number;
-}
-
-export interface KeywordImageGenerationInput {
-  keywordText: string;
-  position: number;
-  renderProfile: string;
-  idempotencyDigest: string;
-}
-
-export interface KeywordImageMetadataScanResult {
-  clean: boolean;
-  forbiddenChunkTypes: readonly string[];
-}
-
-export interface KeywordImageGenerationOutput {
-  pngBytes: Uint8Array<ArrayBuffer>;
-  mime: 'image/png';
-  width: number;
-  height: number;
-  sha256: string;
-  generatorVersion: string;
-  metadataScanResult: KeywordImageMetadataScanResult;
-}
-
-export interface KeywordImageGenerator {
-  generate(
-    input: KeywordImageGenerationInput,
-  ): Promise<KeywordImageGenerationOutput>;
 }
 
 export function isOrderInstructionStatus(

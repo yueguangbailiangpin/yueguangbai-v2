@@ -210,7 +210,7 @@ async function resolveAccountTarget(
   const rows = await database
     .prepare(
       `SELECT account.id AS account_id,account.identity_subject_id,
-      CASE organization.marketplace_code WHEN 'JP' THEN 'AMAZON_JP' ELSE organization.marketplace_code END AS marketplace_code,
+      CASE organization.marketplace_code WHEN 'AMAZON_JP' THEN 'AMAZON_JP' ELSE organization.marketplace_code END AS marketplace_code,
       account.login_identifier_normalized
     FROM seller_organizations organization
     JOIN seller_organization_members member ON member.organization_id=organization.id

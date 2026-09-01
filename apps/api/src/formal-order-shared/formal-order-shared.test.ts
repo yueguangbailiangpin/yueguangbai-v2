@@ -49,15 +49,15 @@ describe('Phase 3F formal order confirmation', () => {
     expect(result).toMatchObject({
       status: 'CONFIRMED',
       version: 1,
-      buyer_customer_no: '20260801E1',
-      buyer_number_allocated: true,
+      buyer_customer_no: '20260801B0001',
       review_type: 'IMAGE',
       final_paid_jpy: '8880',
       confirmed_business_date: BUSINESS_DATE,
       replayed: false,
       financial_snapshot: {
         snapshot_version: 1,
-        buyer_cny_per_jpy_e8: '5500000',
+        buyer_rate_value: '5500000',
+        buyer_rate_scale: '100000000',
         service_fee_cny_fen: '2500',
         buyer_expected_principal_cny_fen: '48840',
         seller_expected_principal_cny_fen: '53280',
@@ -87,7 +87,7 @@ describe('Phase 3F formal order confirmation', () => {
         (SELECT COUNT(*) FROM buyer_number_allocation_events
           WHERE buyer_customer_id='buyer-1') AS number_events,
         (SELECT next_sequence FROM buyer_channels
-          WHERE id='buyer-channel-formal') AS next_sequence
+          WHERE id='buyer-channel-wechat-b') AS next_sequence
     `).bind(
       result.formal_order_id,
       result.formal_order_id,
@@ -106,7 +106,7 @@ describe('Phase 3F formal order confirmation', () => {
       events: 1,
       evidence_status: 'CONSUMED',
       number_events: 1,
-      next_sequence: 2,
+      next_sequence: 100,
     });
   });
 
@@ -225,7 +225,7 @@ describe('Phase 3F formal order confirmation', () => {
     });
   });
 
-  it('requires the exact China-business-date buyer rate and never falls back', async () => {
+  it('uses the exact Amazon order-day rate even when confirmation happens later', async () => {
     database = createMigratedTestDatabase();
     await seedFormalOrderFixture(database);
     const nextDay = Date.UTC(2026, 7, 2, 0, 0, 0);
@@ -234,12 +234,12 @@ describe('Phase 3F formal order confirmation', () => {
       database,
       confirmationInput('evidence-submission-1'),
       command(preSalesActor(), 'formal-order:rate:no-fallback', nextDay),
-    )).rejects.toMatchObject({
-      code: 'BUYER_DAILY_EXCHANGE_RATE_NOT_FOUND',
-      status: 404,
+    )).resolves.toMatchObject({
+      amazon_order_date: BUSINESS_DATE,
+      financial_snapshot: {
+        buyer_rate_business_date: BUSINESS_DATE,
+      },
     });
-
-    await expectNoPartialFacts(database, 'evidence-submission-1');
   });
 
   it(
@@ -364,8 +364,47 @@ describe('Phase 3F formal order confirmation', () => {
       principal_payables: 0,
       order_events: 0,
       audit_events: 0,
-      outbox_events: 0,
     });
+  });
+
+  it('fails closed without an order-date base rate instead of falling back to an earlier date (0073, D-056)', async () => {
+    database = createMigratedTestDatabase();
+    await seedFormalOrderFixture(database, {
+      leaveEvidencePending: true,
+      baseRateBusinessDate: '2026-07-31',
+    });
+    seedAtomicApprovalWorkItem(database);
+
+    await expect(approveOrderEvidenceAtomically(
+      database,
+      {
+        submissionId: 'evidence-submission-1',
+        expectedVersion: 1,
+        priceMismatchAcknowledged: true,
+        priceMismatchReason: 'fixture amount differs from reference',
+      },
+      {
+        actor: atomicApprovalOwnerActor(),
+        idempotencyKey: 'atomic-base-rate-fallback:on-missing',
+        requestId: 'request:atomic-base-rate-fallback:on-missing',
+        now: NOW,
+      },
+    )).rejects.toMatchObject({
+      code: 'BUYER_DAILY_EXCHANGE_RATE_NOT_FOUND',
+      status: 404,
+    });
+
+    expect(atomicApprovalFactCounts(database)).toEqual({
+      orders: 0,
+      financial_snapshots: 0,
+      principal_snapshots: 0,
+      principal_payables: 0,
+      order_events: 0,
+      audit_events: 0,
+    });
+    expect(database.raw.prepare(`
+      SELECT COUNT(*) AS value FROM seller_principal_rate_snapshots
+    `).get()).toEqual({ value: 0 });
   });
 
   it('keeps atomic approval principal amounts identical across both snapshots and the payable', async () => {
@@ -418,14 +457,14 @@ describe('Phase 3F formal order confirmation', () => {
   });
 
   it.each([
-    ['buyer rate', { binding: 12, value: 5_500_001 }, 'VALIDATION_ERROR', 400],
-    ['service fee', { binding: 17, value: 2_501 }, 'VALIDATION_ERROR', 400],
-    ['principal snapshot', { binding: 19, value: 53_281 }, 'VALIDATION_ERROR', 400],
-    ['payment amount', { binding: 8, value: 8_881 }, 'VALIDATION_ERROR', 400],
-    ['order date', { binding: 7, value: '2026-08-02' }, 'VALIDATION_ERROR', 400],
-    ['currency', { sqlCurrency: true }, 'DEPENDENCY_UNAVAILABLE', 503],
-    ['created timestamp', { binding: 20, value: NOW + 1 }, 'VALIDATION_ERROR', 400],
-  ] as const)('rejects a marketplace snapshot with mismatched %s', async (
+    ['buyer rate', { binding: 14, value: 5_500_001 }, 'STATE_CONFLICT', 409],
+    ['service fee', { binding: 20, value: 2_501 }, 'STATE_CONFLICT', 409],
+    ['principal snapshot', { binding: 22, value: 53_281 }, 'DEPENDENCY_UNAVAILABLE', 503],
+    ['payment amount', { binding: 9, value: 8_881 }, 'STATE_CONFLICT', 409],
+    ['order date', { binding: 8, value: '2026-08-02' }, 'STATE_CONFLICT', 409],
+    ['currency', { sqlCurrency: true }, 'STATE_CONFLICT', 409],
+    ['created timestamp', { binding: 28, value: NOW + 1 }, 'STATE_CONFLICT', 409],
+  ] as const)('rejects a financial snapshot with mismatched %s', async (
     _label,
     mutation,
     code,
@@ -434,7 +473,7 @@ describe('Phase 3F formal order confirmation', () => {
     database = createMigratedTestDatabase();
     await seedFormalOrderFixture(database, { leaveEvidencePending: true });
     seedAtomicApprovalWorkItem(database);
-    const tampered = new MarketplaceSnapshotTamperDatabase(database, mutation);
+    const tampered = new FinancialSnapshotTamperDatabase(database, mutation);
 
     await expect(approveOrderEvidenceAtomically(
       tampered,
@@ -446,7 +485,7 @@ describe('Phase 3F formal order confirmation', () => {
       },
       {
         actor: atomicApprovalOwnerActor(),
-        idempotencyKey: `atomic-guard:${_label}`,
+        idempotencyKey: `atomic-guard:${_label.replaceAll(' ', '-')}`,
         now: NOW,
       },
     )).rejects.toMatchObject({ code, status });
@@ -464,7 +503,7 @@ describe('Phase 3F formal order confirmation', () => {
     );
     expect(result.review_type).toBe('TEXT');
     expect(result.financial_snapshot).toMatchObject({
-      service_fee_version_id: 'service-fee-text-v1',
+      service_fee_rule_version_id: 'service-fee-text-v1',
       service_fee_cny_fen: '1800',
     });
   });
@@ -500,15 +539,13 @@ describe('Phase 3F formal order confirmation', () => {
     );
     expect(result).toMatchObject({
       buyer_customer_id: 'buyer-existing',
-      buyer_customer_no: '20260731E99',
-      buyer_number_allocated: false,
+      buyer_customer_no: '20260731B0099',
     });
 
     const state = await database.prepare(`
       SELECT
         buyer_customer_no,
         buyer_sequence,
-        first_valid_order_business_date,
         version,
         (SELECT COUNT(*) FROM buyer_number_allocation_events
           WHERE buyer_customer_id='buyer-existing') AS events
@@ -517,16 +554,14 @@ describe('Phase 3F formal order confirmation', () => {
     `).first<{
       buyer_customer_no: string;
       buyer_sequence: number;
-      first_valid_order_business_date: string;
       version: number;
       events: number;
     }>();
     expect(state).toEqual({
-      buyer_customer_no: '20260731E99',
+      buyer_customer_no: '20260731B0099',
       buyer_sequence: 99,
-      first_valid_order_business_date: '2026-07-31',
       version: 1,
-      events: 0,
+      events: 1,
     });
   });
 
@@ -563,7 +598,7 @@ describe('Phase 3F formal order confirmation', () => {
       allocation_events: number;
       orders: number;
     }>();
-    expect(state?.buyer_customer_no).toBe('20260801E1');
+    expect(state?.buyer_customer_no).toBe('20260801B0001');
     expect(state?.buyer_sequence).toBe(1);
     expect(state?.allocation_events).toBe(1);
     expect((state?.orders ?? 0) >= 1).toBe(true);
@@ -619,7 +654,8 @@ describe('Phase 3F formal order confirmation', () => {
       SELECT
         formal_order.asin_normalized,
         formal_order.product_name_snapshot,
-        snapshot.buyer_cny_per_jpy_e8,
+        snapshot.buyer_rate_value,
+        snapshot.buyer_rate_scale,
         principal.final_rate_value AS seller_principal_final_rate_value,
         snapshot.service_fee_cny_fen
       FROM formal_orders formal_order
@@ -631,14 +667,16 @@ describe('Phase 3F formal order confirmation', () => {
     `).bind(result.formal_order_id).first<{
       asin_normalized: string;
       product_name_snapshot: string;
-      buyer_cny_per_jpy_e8: number;
+      buyer_rate_value: number;
+      buyer_rate_scale: number;
       seller_principal_final_rate_value: number;
       service_fee_cny_fen: number;
     }>();
     expect(frozen).toEqual({
       asin_normalized: 'B0FORM0001',
       product_name_snapshot: '正式订单产品一',
-      buyer_cny_per_jpy_e8: 5_500_000,
+      buyer_rate_value: 5_500_000,
+      buyer_rate_scale: 100_000_000,
       seller_principal_final_rate_value: 6_000_000,
       service_fee_cny_fen: 2500,
     });
@@ -669,15 +707,15 @@ describe('Phase 3F formal order confirmation', () => {
       SET final_rate_value=1
       WHERE formal_order_id=?
     `).bind(result.formal_order_id).run()).rejects.toThrow(
-      'seller_principal_rate_snapshots_are_immutable',
+      'seller_principal_rate_snapshot_is_immutable',
     );
     await expect(database.prepare(`
       INSERT INTO seller_principal_rate_snapshots
       SELECT formal_order_id, platform_order_date, payment_amount_minor,
         payment_currency_code, base_rate_version_id, ? AS base_rate_business_date,
-        base_rate_confirmed_at, base_rate_value, base_rate_scale,
+        base_rate_created_at, base_rate_value, base_rate_scale,
         policy_version_id, policy_scope_type, policy_seller_organization_id,
-        policy_version_no, policy_effective_from, policy_confirmed_at,
+        policy_version_no, policy_effective_from, policy_created_at,
         markup_rate_value, markup_rate_scale, final_rate_value, final_rate_scale,
         rounding_rule, seller_expected_principal_amount_minor, created_at
       FROM seller_principal_rate_snapshots WHERE formal_order_id=?
@@ -688,9 +726,9 @@ describe('Phase 3F formal order confirmation', () => {
       INSERT INTO seller_principal_rate_snapshots
       SELECT formal_order_id, platform_order_date, payment_amount_minor,
         payment_currency_code, base_rate_version_id, base_rate_business_date,
-        base_rate_confirmed_at, base_rate_value, base_rate_scale,
+        base_rate_created_at, base_rate_value, base_rate_scale,
         policy_version_id, policy_scope_type, policy_seller_organization_id,
-        policy_version_no, policy_effective_from, policy_confirmed_at,
+        policy_version_no, policy_effective_from, policy_created_at,
         markup_rate_value, markup_rate_scale, final_rate_value, final_rate_scale,
         rounding_rule, seller_expected_principal_amount_minor + 1, created_at
       FROM seller_principal_rate_snapshots WHERE formal_order_id=?
@@ -711,9 +749,9 @@ describe('Phase 3F formal order confirmation', () => {
       INSERT INTO seller_principal_rate_snapshots
       SELECT formal_order_id, platform_order_date, payment_amount_minor,
         payment_currency_code, base_rate_version_id, base_rate_business_date,
-        base_rate_confirmed_at, base_rate_value, base_rate_scale,
+        base_rate_created_at, base_rate_value, base_rate_scale,
         policy_version_id, policy_scope_type, 'seller-org-other',
-        policy_version_no, policy_effective_from, policy_confirmed_at,
+        policy_version_no, policy_effective_from, policy_created_at,
         markup_rate_value, markup_rate_scale, final_rate_value, final_rate_scale,
         rounding_rule, seller_expected_principal_amount_minor, created_at
       FROM seller_principal_rate_snapshots WHERE formal_order_id=?
@@ -724,7 +762,7 @@ describe('Phase 3F formal order confirmation', () => {
       DELETE FROM seller_principal_rate_snapshots
       WHERE formal_order_id=?
     `).bind(result.formal_order_id).run()).rejects.toThrow(
-      'seller_principal_rate_snapshots_are_immutable',
+      'seller_principal_rate_snapshot_is_immutable',
     );
     await expect(database.prepare(`
       UPDATE formal_order_events SET next_status='CONFIRMED'
@@ -858,20 +896,20 @@ type SnapshotMutation = Readonly<{
   sqlCurrency?: boolean;
 }>;
 
-class MarketplaceSnapshotTamperDatabase implements SqlDatabase {
+class FinancialSnapshotTamperDatabase implements SqlDatabase {
   constructor(
     private readonly target: SqlDatabase,
     private readonly mutation: SnapshotMutation,
   ) {}
 
   prepare(sql: string): SqlStatement {
-    if (!sql.includes('INSERT INTO formal_order_marketplace_money_snapshots')) {
+    if (!sql.includes('INSERT INTO formal_order_financial_snapshots')) {
       return this.target.prepare(sql);
     }
     const preparedSql = this.mutation.sqlCurrency === true
       ? sql.replaceAll("'JPY'", "'USD'")
       : sql;
-    return new MarketplaceSnapshotTamperStatement(
+    return new FinancialSnapshotTamperStatement(
       this.target.prepare(preparedSql),
       this.mutation,
     );
@@ -882,7 +920,7 @@ class MarketplaceSnapshotTamperDatabase implements SqlDatabase {
   }
 }
 
-class MarketplaceSnapshotTamperStatement implements SqlStatement {
+class FinancialSnapshotTamperStatement implements SqlStatement {
   constructor(
     private readonly target: SqlStatement,
     private readonly mutation: SnapshotMutation,
@@ -947,7 +985,7 @@ async function expectNoPartialFacts(
       (SELECT buyer_customer_no FROM buyer_customers
         WHERE id='buyer-1') AS buyer_number,
       (SELECT next_sequence FROM buyer_channels
-        WHERE id='buyer-channel-formal') AS next_sequence,
+        WHERE id='buyer-channel-wechat-b') AS next_sequence,
       (SELECT status FROM order_evidence_submissions
         WHERE id=?) AS evidence_status
   `).bind(submissionId).first<{
@@ -963,9 +1001,9 @@ async function expectNoPartialFacts(
     orders: 0,
     snapshots: 0,
     events: 0,
-    number_events: 0,
-    buyer_number: null,
-    next_sequence: 1,
+    number_events: 1,
+    buyer_number: '20260801B0001',
+    next_sequence: 100,
     evidence_status: 'PENDING_VERIFICATION',
   });
 }
@@ -980,6 +1018,7 @@ async function seedFormalOrderFixture(
     duplicateAmazonOrder?: boolean;
     omitVideoServiceFee?: boolean;
     leaveEvidencePending?: boolean;
+    baseRateBusinessDate?: string;
   } = {},
 ): Promise<void> {
   const finalPaidJpy = options.finalPaidJpy ?? 8880;
@@ -994,30 +1033,22 @@ async function seedFormalOrderFixture(
     : `
     INSERT INTO seller_principal_rate_policy_versions (
       id, scope_type, seller_organization_id, source_currency_code,
-      quote_currency_code, version_no, status, markup_rate_value, rate_scale,
-      effective_from, submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at, rejected_by_staff_id, rejected_at,
-      rejection_reason
+      quote_currency_code, version_no, markup_rate_value, rate_scale,
+      effective_from, created_by_staff_id, created_at
     ) VALUES (
       'principal-policy-default-v1', 'CURRENCY_PAIR_DEFAULT', NULL, 'JPY',
-      'CNY', 1, 'SUBMITTED', 400000, 100000000, 3000,
-      'staff-owner', 1000, 1, NULL, NULL, NULL, NULL, NULL
+      'CNY', 1, 400000, 100000000, 3000,
+      'staff-owner', 2000
     );
     INSERT INTO seller_principal_rate_policy_versions (
       id, scope_type, seller_organization_id, source_currency_code,
-      quote_currency_code, version_no, status, markup_rate_value, rate_scale,
-      effective_from, submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at, rejected_by_staff_id, rejected_at,
-      rejection_reason
+      quote_currency_code, version_no, markup_rate_value, rate_scale,
+      effective_from, created_by_staff_id, created_at
     ) VALUES (
       'principal-policy-override-v1', 'SELLER_ORGANIZATION', 'seller-org-formal', 'JPY',
-      'CNY', 1, 'SUBMITTED', ${policyOverrideMarkupE8}, 100000000, 3000,
-      'staff-owner', 1000, 1, NULL, NULL, NULL, NULL, NULL
+      'CNY', 1, ${policyOverrideMarkupE8}, 100000000, 3000,
+      'staff-owner', 2000
     );
-    UPDATE seller_principal_rate_policy_versions
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-owner', confirmed_at=2000
-    WHERE id IN ('principal-policy-default-v1', 'principal-policy-override-v1');
   `;
 
   db.exec(`
@@ -1036,7 +1067,7 @@ async function seedFormalOrderFixture(
       version, created_at, updated_at,
       activated_at, disabled_at, next_member_number
     ) VALUES (
-      'seller-org-formal', 'JP', 'ido-mango-9201',
+      'seller-org-formal', 'AMAZON_JP', 'ido-mango-9201',
       'seller-channel-ido-mango', 'seller-channel-ido-mango',
       9201, '正式订单测试卖家', 'ACTIVE',
       1, 1000, 1000, 1000, NULL, 2
@@ -1061,41 +1092,51 @@ async function seedFormalOrderFixture(
       1000, 1000, 1000, NULL
     );
 
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-formal', 'E', '正式订单测试渠道',
-      'ACTIVE', 1, 1, 1000, 1000, NULL
-    );
+    UPDATE buyer_channels
+    SET next_sequence=100
+    WHERE id='buyer-channel-wechat-b';
 
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code,
       buyer_channel_id, buyer_customer_no,
-      buyer_sequence, first_valid_order_business_date,
+      buyer_sequence,
       display_name, access_status,
       identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
       (
-        'buyer-1', 'buyer-formal-subject-1', 'JP',
-        'buyer-channel-formal', NULL, NULL, NULL,
+        'buyer-1', 'buyer-formal-subject-1', 'AMAZON_JP',
+        'buyer-channel-wechat-b', '20260801B0001',
+        1,
         '首次下单买家', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       ),
       (
-        'buyer-existing', 'buyer-formal-subject-existing', 'JP',
-        'buyer-channel-formal', '20260731E99', 99, '2026-07-31',
+        'buyer-existing', 'buyer-formal-subject-existing', 'AMAZON_JP',
+        'buyer-channel-wechat-b', '20260731B0099',
+        99,
         '历史编号买家', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       );
+
+    INSERT INTO buyer_number_allocation_events (
+      id, buyer_customer_id, buyer_channel_id, buyer_customer_no,
+      buyer_sequence, allocation_business_date, allocation_source,
+      actor_staff_id, idempotency_key, created_at
+    ) VALUES
+      ('buyer-number-event-1', 'buyer-1', 'buyer-channel-wechat-b',
+       '20260801B0001', 1, '2026-08-01', 'STAFF_CREATION',
+       'staff-pre-sales', 'seed-formal-number-1', 1000),
+      ('buyer-number-event-existing', 'buyer-existing', 'buyer-channel-wechat-b',
+       '20260731B0099', 99, '2026-07-31', 'STAFF_CREATION',
+       'staff-pre-sales', 'seed-formal-number-existing', 1000);
 
     INSERT INTO seller_stores (
       id, organization_id, marketplace_code,
       display_name, normalized_name, status,
       version, created_at, updated_at, disabled_at
     ) VALUES (
-      'store-formal', 'seller-org-formal', 'JP',
+      'store-formal', 'seller-org-formal', 'AMAZON_JP',
       '正式订单测试店铺', '正式订单测试店铺', 'ACTIVE',
       1, 1000, 1000, NULL
     );
@@ -1106,11 +1147,11 @@ async function seedFormalOrderFixture(
       current_version_no, version,
       created_at, updated_at, disabled_at
     ) VALUES
-      ('product-formal-1', 'seller-org-formal', 'store-formal', 'JP',
+      ('product-formal-1', 'seller-org-formal', 'store-formal', 'AMAZON_JP',
        'B0FORM0001', 'B0FORM0001', 'ACTIVE', 1, 1, 1000, 1000, NULL),
-      ('product-formal-2', 'seller-org-formal', 'store-formal', 'JP',
+      ('product-formal-2', 'seller-org-formal', 'store-formal', 'AMAZON_JP',
        'B0FORM0002', 'B0FORM0002', 'ACTIVE', 1, 1, 1000, 1000, NULL),
-      ('product-formal-3', 'seller-org-formal', 'store-formal', 'JP',
+      ('product-formal-3', 'seller-org-formal', 'store-formal', 'AMAZON_JP',
        'B0FORM0003', 'B0FORM0003', 'ACTIVE', 1, 1, 1000, 1000, NULL);
 
     INSERT INTO product_versions (
@@ -1143,17 +1184,17 @@ async function seedFormalOrderFixture(
       reviewed_at, published_at, withdrawn_at, closed_at,
       held_reservation_count, approved_reservation_count
     ) VALUES
-      ('demand-formal-1', 'seller-org-formal', 'store-formal', 'JP',
+      ('demand-formal-1', 'seller-org-formal', 'store-formal', 'AMAZON_JP',
        'product-formal-1', 1, 'seller-formal-owner', 'IMAGE',
        10, NULL, NULL, 2000, 5000, 20000,
        'PUBLISHED', NULL, NULL, 'staff-pre-sales', NULL,
        2, 1000, 3000, 3000, 3000, NULL, NULL, 0, 1),
-      ('demand-formal-2', 'seller-org-formal', 'store-formal', 'JP',
+      ('demand-formal-2', 'seller-org-formal', 'store-formal', 'AMAZON_JP',
        'product-formal-2', 1, 'seller-formal-owner', 'TEXT',
        10, NULL, NULL, 2000, 5000, 20000,
        'PUBLISHED', NULL, NULL, 'staff-pre-sales', NULL,
        2, 1000, 3000, 3000, 3000, NULL, NULL, 0, 1),
-      ('demand-formal-3', 'seller-org-formal', 'store-formal', 'JP',
+      ('demand-formal-3', 'seller-org-formal', 'store-formal', 'AMAZON_JP',
        'product-formal-3', 1, 'seller-formal-owner', 'VIDEO',
        10, NULL, NULL, 2000, 5000, 20000,
        'PUBLISHED', NULL, NULL, 'staff-pre-sales', NULL,
@@ -1176,17 +1217,17 @@ async function seedFormalOrderFixture(
       buyer_self_pay_accepted_demand_version
     ) VALUES
       ('reservation-formal-1', 'demand-formal-1', 'buyer-1',
-       'seller-org-formal', 'store-formal', 'product-formal-1', 1, 'JP',
+       'seller-org-formal', 'store-formal', 'product-formal-1', 1, 'AMAZON_JP',
        'APPROVED', '{}', 5000, 20000, 2, 4000, 6000,
        'staff-pre-sales', NULL, 6000, NULL, NULL, 0,
        0, 1980, 0, 1980, 4000, 2),
       ('reservation-formal-2', 'demand-formal-2', 'buyer-1',
-       'seller-org-formal', 'store-formal', 'product-formal-2', 1, 'JP',
+       'seller-org-formal', 'store-formal', 'product-formal-2', 1, 'AMAZON_JP',
        'APPROVED', '{}', 5000, 20000, 2, 4000, 6000,
        'staff-pre-sales', NULL, 6000, NULL, NULL, 0,
        0, 1980, 0, 1980, 4000, 2),
       ('reservation-formal-3', 'demand-formal-3', 'buyer-existing',
-       'seller-org-formal', 'store-formal', 'product-formal-3', 1, 'JP',
+       'seller-org-formal', 'store-formal', 'product-formal-3', 1, 'AMAZON_JP',
        'APPROVED', '{}', 5000, 20000, 2, 4000, 6000,
        'staff-pre-sales', NULL, 6000, NULL, NULL, 0,
        0, 1980, 0, 1980, 4000, 2);
@@ -1227,13 +1268,13 @@ async function seedFormalOrderFixture(
       verified_by_staff_id, verified_at,
       withdrawn_at, consumed_at, created_at
     ) VALUES
-      ('evidence-submission-1', 'reservation-formal-1', 'buyer-1', 'JP',
+      ('evidence-submission-1', 'reservation-formal-1', 'buyer-1', 'AMAZON_JP',
        'PENDING_VERIFICATION', 1, 1, NULL, NULL,
        7000, 7000, NULL, NULL, NULL, NULL, 7000),
-      ('evidence-submission-2', 'reservation-formal-2', 'buyer-1', 'JP',
+      ('evidence-submission-2', 'reservation-formal-2', 'buyer-1', 'AMAZON_JP',
        'PENDING_VERIFICATION', 1, 1, NULL, NULL,
        7000, 7000, NULL, NULL, NULL, NULL, 7000),
-      ('evidence-submission-3', 'reservation-formal-3', 'buyer-existing', 'JP',
+      ('evidence-submission-3', 'reservation-formal-3', 'buyer-existing', 'AMAZON_JP',
        'PENDING_VERIFICATION', 1, 1, NULL, NULL,
        7000, 7000, NULL, NULL, NULL, NULL, 7000);
 
@@ -1248,11 +1289,10 @@ async function seedFormalOrderFixture(
       reference_order_amount_jpy_snapshot,
       buyer_self_pay_bps_snapshot, buyer_self_pay_jpy,
       buyer_refundable_principal_jpy, price_mismatch,
-      price_difference_jpy, submitted_before_deadline,
-      evidence_file_object_id, created_at
+      price_difference_jpy, submitted_before_deadline, created_at
     ) VALUES
       ('evidence-version-1', 'evidence-submission-1',
-       'reservation-formal-1', 'buyer-1', 'JP', 1,
+       'reservation-formal-1', 'buyer-1', 'AMAZON_JP', 1,
        '123-1234567-1234567', '123-1234567-1234567',
        '2026-08-01',
        ${finalPaidJpy}, 'buyer-1', NULL,
@@ -1260,9 +1300,9 @@ async function seedFormalOrderFixture(
        '${instructionOne.instructionVersionId}',
        ${instructionOne.deadlineAt}, 1980, 0, 0, ${finalPaidJpy},
        ${Number(finalPaidJpy !== 1980)}, ${finalPaidJpy - 1980}, 1,
-       '${instructionOne.evidenceFileObjectId}', 7000),
+       7000),
       ('evidence-version-2', 'evidence-submission-2',
-       'reservation-formal-2', 'buyer-1', 'JP', 1,
+       'reservation-formal-2', 'buyer-1', 'AMAZON_JP', 1,
        '${secondOrder}', '${secondOrder}',
        '2026-08-01',
        ${finalPaidJpy}, 'buyer-1', NULL,
@@ -1270,9 +1310,9 @@ async function seedFormalOrderFixture(
        '${instructionTwo.instructionVersionId}',
        ${instructionTwo.deadlineAt}, 1980, 0, 0, ${finalPaidJpy},
        ${Number(finalPaidJpy !== 1980)}, ${finalPaidJpy - 1980}, 1,
-       '${instructionTwo.evidenceFileObjectId}', 7000),
+       7000),
       ('evidence-version-3', 'evidence-submission-3',
-       'reservation-formal-3', 'buyer-existing', 'JP', 1,
+       'reservation-formal-3', 'buyer-existing', 'AMAZON_JP', 1,
        '789-1234567-1234567', '789-1234567-1234567',
        '2026-08-01',
        ${finalPaidJpy}, 'buyer-existing', NULL,
@@ -1280,7 +1320,7 @@ async function seedFormalOrderFixture(
        '${instructionThree.instructionVersionId}',
        ${instructionThree.deadlineAt}, 1980, 0, 0, ${finalPaidJpy},
        ${Number(finalPaidJpy !== 1980)}, ${finalPaidJpy - 1980}, 1,
-       '${instructionThree.evidenceFileObjectId}', 7000);
+       7000);
 
     ${options.leaveEvidencePending ? '' : `
       UPDATE order_evidence_submissions
@@ -1294,19 +1334,15 @@ async function seedFormalOrderFixture(
       );
     `}
 
-    INSERT INTO buyer_daily_exchange_rates (
-      id, business_date, version_no, status, cny_per_jpy_e8,
-      submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at,
-      rejected_by_staff_id, rejected_at, rejection_reason
+    INSERT INTO buyer_daily_currency_rate_versions (
+      id, business_date, source_currency_code, quote_currency_code,
+      version_no, rate_value, rate_scale, rounding_rule,
+      effective_from, created_by_staff_id, created_at
     ) VALUES (
-      'buyer-rate-v1', '${BUSINESS_DATE}', 1, 'SUBMITTED', ${buyerRateE8},
-      'staff-owner', 1000, 1, NULL, NULL, NULL, NULL, NULL
+      'currency-buyer-rate-v1', '${options.baseRateBusinessDate ?? BUSINESS_DATE}',
+      'JPY', 'CNY', 1, ${buyerRateE8}, 100000000, 'HALF_UP',
+      2000, 'staff-owner', 2000
     );
-    UPDATE buyer_daily_exchange_rates
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-owner', confirmed_at=2000
-    WHERE id='buyer-rate-v1';
 
     ${principalPolicySql}
 
@@ -1341,10 +1377,10 @@ async function seedFormalOrderFixture(
     amazonOrderNumber: '789-1234567-1234567',
   });
 
-  seedConfirmedServiceFee(db, 'IMAGE', 'service-fee-image-v1', 2500);
-  seedConfirmedServiceFee(db, 'TEXT', 'service-fee-text-v1', 1800);
+  seedServiceFeeRule(db, 'IMAGE', 'service-fee-image-v1', 2500);
+  seedServiceFeeRule(db, 'TEXT', 'service-fee-text-v1', 1800);
   if (!options.omitVideoServiceFee) {
-    seedConfirmedServiceFee(db, 'VIDEO', 'service-fee-video-v1', 3500);
+    seedServiceFeeRule(db, 'VIDEO', 'service-fee-video-v1', 3500);
   }
 }
 
@@ -1356,7 +1392,7 @@ function seedAtomicApprovalWorkItem(db: SqliteDatabase): void {
       created_at, updated_at, revoked_at
     ) VALUES (
       'atomic-buyer-assignment', 'buyer-1', 'BUYER_PRE_SALES_OWNER',
-      'zz-phase3h-test-owner', 'ACTIVE', 'OWNER_FALLBACK',
+      'zz-phase3h-test-owner', 'ACTIVE', 'AUTO_INITIAL',
       'SYSTEM', NULL, NULL, 1, 7000, 7000, NULL
     );
     INSERT INTO staff_work_items (
@@ -1386,32 +1422,25 @@ function atomicApprovalFactCounts(db: SqliteDatabase) {
       (SELECT COUNT(*) FROM seller_payables
         WHERE payable_type='SELLER_PRINCIPAL') AS principal_payables,
       (SELECT COUNT(*) FROM formal_order_events) AS order_events,
-      (SELECT COUNT(*) FROM audit_events) AS audit_events,
-      (SELECT COUNT(*) FROM integration_outbox) AS outbox_events
+      (SELECT COUNT(*) FROM audit_events) AS audit_events
   `).get();
 }
 
-function seedConfirmedServiceFee(
+function seedServiceFeeRule(
   db: SqliteDatabase,
   reviewType: 'RATING' | 'TEXT' | 'IMAGE' | 'VIDEO',
   id: string,
   feeCnyFen: number,
 ): void {
   db.exec(`
-    INSERT INTO seller_service_fee_versions (
-      id, organization_id, review_type, version_no,
-      status, fee_cny_fen, effective_from,
-      submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at,
-      rejected_by_staff_id, rejected_at, rejection_reason
+    INSERT INTO seller_service_fee_rule_versions (
+      id, seller_organization_id, marketplace_code, review_type,
+      version_no, fee_amount_minor, fee_currency_code,
+      fee_currency_exponent, effective_from, created_by_staff_id,
+      created_at
     ) VALUES (
-      '${id}', 'seller-org-formal', '${reviewType}', 1,
-      'SUBMITTED', ${feeCnyFen}, 3000,
-      'staff-owner', 1000, 1, NULL, NULL, NULL, NULL, NULL
+      '${id}', 'seller-org-formal', 'AMAZON_JP', '${reviewType}',
+      1, ${feeCnyFen}, 'CNY', 2, 3000, 'staff-owner', 2000
     );
-    UPDATE seller_service_fee_versions
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-owner', confirmed_at=2000
-    WHERE id='${id}';
   `);
 }

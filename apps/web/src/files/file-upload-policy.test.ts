@@ -37,22 +37,24 @@ describe('purpose-bound frontend file policies', () => {
       'sellerProductApplicationImage',
       'staffBuyerRefundProof',
       'staffSellerSettlementProof',
-      'staffSellerOrderChatScreenshot',
+      'staffOrderCommunicationScreenshot',
+      'staffProductImage',
     ]);
     expect(Object.keys(fileUploadWorkflows)).toEqual(FILE_UPLOAD_WORKFLOW_KEYS);
     expect(() => requireFileUploadWorkflow('ORDER_EVIDENCE')).toThrow();
     expect(() => requireFileUploadWorkflow('buyerOrderEvidence')).not.toThrow();
-    expect(fileUploadWorkflows.staffSellerOrderChatScreenshot.purpose)
-      .toBe('ORDER_EVIDENCE_INTERNAL_COMMUNICATION');
+    expect(fileUploadWorkflows.staffOrderCommunicationScreenshot.purpose)
+      .toBe('ORDER_COMMUNICATION_SCREENSHOT');
   });
 
   it.each([
-    ['buyerOrderEvidence', 'buyer', '/api/buyer-portal/file-uploads/order-evidence/intents', 'ORDER_EVIDENCE', 'BUYER_VISIBLE', 1, 20],
+    ['buyerOrderEvidence', 'buyer', '/api/buyer-portal/file-uploads/order-evidence/intents', 'ORDER_EVIDENCE', 'BUYER_VISIBLE', 1, 5],
     ['buyerReviewEvidence', 'buyer', '/api/buyer-portal/file-uploads/review-evidence/intents', 'REVIEW_EVIDENCE', 'SELLER_VISIBLE', 10, 20],
-    ['sellerProductApplicationImage', 'seller', '/api/seller-portal/file-uploads/product-application-images/intents', 'PRODUCT_APPLICATION_IMAGE', 'SELLER_VISIBLE', 8, 10],
+    ['sellerProductApplicationImage', 'seller', '/api/seller-portal/file-uploads/product-application-images/intents', 'PRODUCT_APPLICATION_IMAGE', 'SELLER_VISIBLE', 8, 5],
     ['staffBuyerRefundProof', 'staff', '/api/staff/file-uploads/buyer-refund-proofs/intents', 'BUYER_REFUND_PROOF', 'INTERNAL_ONLY', 6, 20],
     ['staffSellerSettlementProof', 'staff', '/api/staff/file-uploads/seller-settlement-proofs/intents', 'SELLER_SETTLEMENT_PROOF', 'INTERNAL_ONLY', 6, 20],
-    ['staffSellerOrderChatScreenshot', 'staff', '/api/staff/file-uploads/seller-order-chat-screenshots/intents', 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE', 1, 20],
+    ['staffOrderCommunicationScreenshot', 'staff', '/api/staff/formal-orders/:id/communication-screenshots/intents', 'ORDER_COMMUNICATION_SCREENSHOT', 'SELLER_VISIBLE', 8, 5],
+    ['staffProductImage', 'staff', '/api/staff/file-uploads/product-images/intents', 'PRODUCT_IMAGE', 'SELLER_VISIBLE', 1, 5],
   ] as const)('%s matches the frozen route and policy', (
     key, identity, path, purpose, visibility, count, mib,
   ) => {
@@ -85,7 +87,7 @@ describe('local file selection and descriptor validation', () => {
     ['staffSellerSettlementProof', true],
     ['buyerOrderEvidence', false],
     ['sellerProductApplicationImage', false],
-    ['staffSellerOrderChatScreenshot', false],
+    ['staffOrderCommunicationScreenshot', false],
   ] as const)('%s PDF allowance is %s', (key, allowed) => {
     const action = () => descriptorForFile(
       fileUploadWorkflows[key],

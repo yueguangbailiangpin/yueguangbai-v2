@@ -104,7 +104,7 @@ export class RouteBoundFileAuthorizationService implements FileAuthorizationServ
 function readPermissionForPurpose(purpose: FilePurpose): StaffPermissionCode {
   switch (purpose) {
     case 'ORDER_EVIDENCE':
-    case 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION':
+    case 'ORDER_COMMUNICATION_SCREENSHOT':
     case 'ORDER_INSTRUCTION_KEYWORD_IMAGE':
       return 'ORDER_VIEW';
     case 'REVIEW_EVIDENCE':
@@ -116,13 +116,16 @@ function readPermissionForPurpose(purpose: FilePurpose): StaffPermissionCode {
       return 'BUYER_REFUND_VIEW';
     case 'SELLER_SETTLEMENT_PROOF':
       return 'SELLER_SETTLEMENT_VIEW';
+    case 'SERVICE_CHANNEL_QR':
+      return 'STAFF_MANAGE';
     default:
       return 'AUDIT_VIEW';
   }
 }
 function writePermissionForPurpose(purpose: FilePurpose): StaffPermissionCode {
   switch (purpose) {
-    case 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION':
+    case 'ORDER_COMMUNICATION_SCREENSHOT':
+    case 'ORDER_EVIDENCE':
       return 'ORDER_CONFIRM';
     case 'BUYER_REFUND_PROOF':
       return 'BUYER_REFUND_RECORD';
@@ -130,6 +133,8 @@ function writePermissionForPurpose(purpose: FilePurpose): StaffPermissionCode {
       return 'SELLER_SETTLEMENT_RECORD';
     case 'PRODUCT_IMAGE':
       return 'PRODUCT_REVIEW';
+    case 'SERVICE_CHANNEL_QR':
+      return 'STAFF_MANAGE';
     default:
       return readPermissionForPurpose(purpose);
   }

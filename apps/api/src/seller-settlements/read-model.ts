@@ -121,6 +121,13 @@ export async function readSellerSettlementSummary(
     ...store.values,
   ).first<SummaryRow>();
   if (!row) throw dependency();
+  const account = await database.prepare(`
+    SELECT settlement_account_name, settlement_account_identifier
+    FROM seller_organizations
+    WHERE id=?
+  `).bind(scope.sellerOrganizationId)
+    .first<{ settlement_account_name: string | null; settlement_account_identifier: string | null }>();
+  if (!account) throw dependency();
   const principal = BigInt(String(row.outstanding_principal_cny_fen));
   const serviceFee = BigInt(String(row.outstanding_service_fee_cny_fen));
   return Object.freeze({
@@ -128,6 +135,8 @@ export async function readSellerSettlementSummary(
     outstanding_service_fee_cny_fen: fixedInteger(serviceFee),
     total_outstanding_cny_fen: fixedInteger(principal + serviceFee),
     unallocated_credit_cny_fen: fixedInteger(row.unallocated_credit_cny_fen),
+    settlement_account_name: account.settlement_account_name,
+    settlement_account_identifier: account.settlement_account_identifier,
   });
 }
 

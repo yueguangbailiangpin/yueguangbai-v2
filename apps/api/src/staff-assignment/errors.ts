@@ -7,17 +7,32 @@ export class StaffAssignmentError extends Error {
       | 'VERSION_CONFLICT'
       | 'REQUEST_IN_PROGRESS'
       | 'IDEMPOTENCY_CONFLICT'
-      | 'NO_ELIGIBLE_ASSIGNEE'
-      | 'OWNER_FALLBACK_NOT_CONFIGURED'
-      | 'OWNER_FALLBACK_INVALID'
+      | 'BUYER_PRE_SALES_OWNER_NOT_ASSIGNED'
+      | 'BUYER_REFUND_OWNER_NOT_ASSIGNED'
+      | 'SELLER_ACCOUNT_MANAGER_NOT_ASSIGNED'
       | 'ASSIGNMENT_STATE_CONFLICT'
       | 'WORK_ITEM_STATE_CONFLICT'
-      | 'BATCH_STATE_CONFLICT'
       | 'DEPENDENCY_UNAVAILABLE',
     public readonly status: 400 | 403 | 404 | 409 | 503,
   ) {
     super(code);
     this.name = 'StaffAssignmentError';
+  }
+}
+
+export function dutyOwnerNotAssignedErrorCode(
+  dutyCode:
+    | 'BUYER_PRE_SALES_OWNER'
+    | 'BUYER_REFUND_OWNER'
+    | 'SELLER_ACCOUNT_MANAGER',
+): StaffAssignmentError['code'] {
+  switch (dutyCode) {
+    case 'BUYER_PRE_SALES_OWNER':
+      return 'BUYER_PRE_SALES_OWNER_NOT_ASSIGNED';
+    case 'BUYER_REFUND_OWNER':
+      return 'BUYER_REFUND_OWNER_NOT_ASSIGNED';
+    case 'SELLER_ACCOUNT_MANAGER':
+      return 'SELLER_ACCOUNT_MANAGER_NOT_ASSIGNED';
   }
 }
 
@@ -37,8 +52,7 @@ export function normalizeStaffAssignmentError(
     || message.includes('invalid_assignment_identifier')) {
     return new StaffAssignmentError('VALIDATION_ERROR', 400);
   }
-  if (message.includes('staff_assignment_cursor_version_conflict')
-    || message.includes('UNIQUE constraint failed: buyer_staff_assignments')
+  if (message.includes('UNIQUE constraint failed: buyer_staff_assignments')
     || message.includes('UNIQUE constraint failed: seller_staff_assignments')) {
     return new StaffAssignmentError('VERSION_CONFLICT', 409);
   }

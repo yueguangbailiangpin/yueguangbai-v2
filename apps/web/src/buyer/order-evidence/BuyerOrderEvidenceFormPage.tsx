@@ -7,9 +7,10 @@ import { dateOnlySchema, identifierSchema } from '../contracts/runtime';
 import { useBuyerMutation } from '../mutations/useBuyerMutation';
 import { buyerQueryKeys } from '../queries/keys';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
-import { BuyerFilePicker } from '../shared/BuyerFilePicker';
+import { FileDropZone } from '../../ui/FileDropZone';
 import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { BuyerJourney } from '../shared/BuyerJourney';
+import { StageContactCard, STAGE_FOR_ROUTE } from '../shared/StageContactCard';
 import { useFileUpload } from '../shared/useFileUpload';
 
 export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
@@ -45,7 +46,7 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
       navigate(`/buyer/order-materials/${result.data.order_evidence.submission_id}`, { replace: true });
     },
     onError: () => {
-      setMessage('提交未完成，请检查页面事实后重试。');
+      setMessage('提交未完成，请检查页面信息后重试。');
     },
   });
 
@@ -53,7 +54,7 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
     event.preventDefault();
     setMessage(null);
     setRequestId(null);
-    if (!canSubmit) { setMessage('当前预约或指引状态不允许提交。'); return; }
+    if (!canSubmit) { setMessage('当前预约或步骤状态不允许提交。'); return; }
     const values = new FormData(event.currentTarget);
     const orderNumber = String(values.get('amazon_order_number') ?? '').trim();
     const date = dateOnlySchema.safeParse(values.get('amazon_order_date'));
@@ -83,15 +84,16 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
   }
 
   if (!reservationId) return <BuyerQueryError error={null} title="无法打开提交页面" />;
-  if (eligible.isPending || instruction.isPending) return <BuyerLoading label="正在确认提交资格" />;
+  if (eligible.isPending || instruction.isPending) return <BuyerLoading label="正在确认能否提交" />;
   if (eligible.isError) return <BuyerQueryError error={eligible.error} />;
   if (instruction.isError) return <BuyerQueryError error={instruction.error} />;
   if (!current || !canSubmit) return <BuyerQueryError error={null} title="无法打开提交页面" />;
   return <section className="buyer-page buyer-flow-page buyer-form-page">
-    <BuyerJourney current="materials" />
+    <BuyerJourney current="evidence" />
     <PageHeader eyebrow="订单资料阶段" title="提交订单资料" description={current.product_name} />
+    <StageContactCard stage={STAGE_FOR_ROUTE['/buyer/order-materials']} />
     <Card className="buyer-action-panel"><div className="buyer-form-intro"><strong>填订单信息</strong>
-      <p>照着 Amazon 订单页面填，然后上传一张订单截图就好～</p></div>
+      <p>照着 Amazon 订单页面填写；一笔订单只需上传一张完整付款截图，请确保订单号和金额清晰可见。</p></div>
       <form className="buyer-form" onSubmit={(event) => { void submit(event); }}>
       <FormField label="Amazon 订单号" htmlFor="evidence-order-number" description="格式：123-1234567-1234567" required>
         <TextInput name="amazon_order_number" inputMode="numeric" placeholder="123-1234567-1234567" required />
@@ -102,10 +104,11 @@ export function BuyerOrderEvidenceFormPage(): React.JSX.Element {
       <FormField label="最终支付金额（JPY）" htmlFor="evidence-paid" required>
         <TextInput name="final_paid_jpy" type="number" inputMode="numeric" min="0" step="1" required />
       </FormField>
-      <FormField label="订单截图" htmlFor="evidence-file" description="必须且只能选择一张 JPG、PNG 或 WebP 图片" required>
-        <BuyerFilePicker name="evidence_file" accept="image/jpeg,image/png,image/webp" required
+      <FormField label="订单付款截图" htmlFor="evidence-file" description="一笔订单一张完整截图：必须且只能选择一张 JPG、PNG 或 WebP 图片，需包含订单号和金额；换图时需确认替换" required>
+        <FileDropZone id="evidence-file" accept="image/jpeg,image/png,image/webp" required
+          maximumFiles={1} maximumBytes={20 * 1024 * 1024} confirmReplace
           buttonLabel="选择订单截图" emptyLabel="尚未选择截图"
-          onChange={(event) => { selected.current = event.currentTarget.files?.[0] ?? null; }} />
+          onFilesChange={(files) => { selected.current = files[0] ?? null; }} />
       </FormField>
       <FormField label="备注（可选）" htmlFor="evidence-note"><TextInput name="buyer_note" maxLength={1000} /></FormField>
       {message ? <Alert tone="danger">{message}</Alert> : null}<RequestIdDisplay requestId={requestId} />

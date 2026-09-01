@@ -4,7 +4,7 @@
 
 本合同只定义可审查的本地实现和操作者输入，不授权创建或修改 Cloudflare 资源。`apps/api/wrangler.staging.template.jsonc` 与 `apps/api/wrangler.production.template.jsonc` 故意保留 `REQUIRED_*`，不能部署。真实渲染配置必须保存在 Git 外并通过本地 preflight；任何本地通过都不等于真实 staging/production 验收。
 
-当前发布候选要求 Migration 连续为 `0001`–`0070`，尾部为 `0070_buyer_refund_reminders.sql`；仓库连续性只证明本地候选结构，不能据此推断生产 ledger。
+当前发布候选要求 Migration 连续为 `0001`–`0041`，尾部为 `0041_owner_alias_yueguangbai_ygbceping.sql`；0038/0039 为 Owner 授权零消费者对象清理、0040/0041 为客服通道种子补齐后按"月光白=ygbceping"终裁以墓碑方式收口（六 ACTIVE 通道+yueguangbai DISABLED 墓碑，FK 安全），仓库连续性只证明本地候选结构，不能据此推断生产 ledger。
 
 ## 环境与 binding
 
@@ -34,7 +34,16 @@ Adapter 不支持 list、公有访问、签名 URL 或永久 URL，也不返回 
 
 `putObject` 的失败合同区分“确定未写入”和“对象可能已写入”。R2 PUT 发出后 Provider rejection 可能是 ambiguous；非 null 回执的 key/size/MIME/SHA/metadata/ETag 任一校验失败则是 post-put failure。两者都由 adapter 通过供应商无关的端口错误标记 `objectMayExist=true`，现有上传层必须执行补偿；删除成功落 `DELETED`，删除失败落不暴露 key 的 `DELETION_PENDING` 并由 cleanup 重试。权限层不得识别 R2 错误。
 
-`DRIVE_ARCHIVE_R2_DELETE_ENABLED=false` 只关闭归档删除；不得关闭失败上传后的安全补偿删除。本 Change 不启用任何首次归档删除。
+归档环境开关唯一使用 `ARCHIVE_SELECTOR_ENABLED`、
+`ARCHIVE_DRIVE_UPLOAD_ENABLED`、`ARCHIVE_HOT_DELETE_ENABLED` 和
+`ARCHIVE_RESTORE_WORKER_ENABLED`。四个开关在本发布合同中都必须是字符串
+`"false"`；`ARCHIVE_HOT_DELETE_ENABLED=false` 只关闭归档删除，不得关闭
+失败上传后的安全补偿删除。本 Change 不启用任何首次归档删除。
+
+历史 `DRIVE_ARCHIVE_ENABLED`、`DRIVE_ARCHIVE_COPY_ENABLED`、
+`DRIVE_ARCHIVE_PROXY_READ_ENABLED` 和 `DRIVE_ARCHIVE_R2_DELETE_ENABLED`
+命名已废弃，不作为活动模板、preflight 或 verifier 的有效开关；若输入仍
+带有旧名，验证器会明确报告 `deprecated`，也不会作为 `ARCHIVE_*` 的兼容别名。
 
 ## Web、API、CORS 与 HTTPS
 

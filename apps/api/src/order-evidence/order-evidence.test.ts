@@ -70,7 +70,7 @@ describe('Phase 3D order evidence workflow', () => {
     const first = await submitOrderEvidence(database, {
       reservationId: 'reservation-1',
       expectedVersion: 0,
-      marketplace: 'JP',
+      marketplace: 'AMAZON_JP',
       amazonOrderNumber: '123 1234567 1234567',
       amazonOrderDate: '2026-08-01',
       finalPaidJpy: 3980,
@@ -97,7 +97,7 @@ describe('Phase 3D order evidence workflow', () => {
     const replay = await submitOrderEvidence(database, {
       reservationId: 'reservation-1',
       expectedVersion: 0,
-      marketplace: 'JP',
+      marketplace: 'AMAZON_JP',
       amazonOrderNumber: '123 1234567 1234567',
       amazonOrderDate: '2026-08-01',
       finalPaidJpy: 3980,
@@ -142,7 +142,7 @@ describe('Phase 3D order evidence workflow', () => {
     await expect(submitOrderEvidence(database, {
       reservationId: 'reservation-1',
       expectedVersion: 0,
-      marketplace: 'JP',
+      marketplace: 'AMAZON_JP',
       amazonOrderNumber: '123-1234567-1234567',
       amazonOrderDate: '2026-08-01',
       finalPaidJpy: 3980,
@@ -172,7 +172,7 @@ describe('Phase 3D order evidence workflow', () => {
     await expect(submitOrderEvidence(database, {
       reservationId: 'reservation-1',
       expectedVersion: 0,
-      marketplace: 'JP',
+      marketplace: 'AMAZON_JP',
       amazonOrderNumber: '222-1234567-1234567',
       amazonOrderDate: '2026-08-01',
       finalPaidJpy: 1,
@@ -189,7 +189,7 @@ describe('Phase 3D order evidence workflow', () => {
     await expect(submitOrderEvidence(database, {
       reservationId: 'reservation-pending',
       expectedVersion: 0,
-      marketplace: 'JP',
+      marketplace: 'AMAZON_JP',
       amazonOrderNumber: '333-1234567-1234567',
       amazonOrderDate: '2026-08-01',
       finalPaidJpy: 1,
@@ -235,7 +235,7 @@ describe('Phase 3D order evidence workflow', () => {
       await expect(submitOrderEvidence(database, {
         reservationId: 'reservation-1',
         expectedVersion: 0,
-        marketplace: 'JP',
+        marketplace: 'AMAZON_JP',
         amazonOrderNumber: '444-1234567-1234567',
       amazonOrderDate: '2026-08-01',
         finalPaidJpy: 0,
@@ -266,7 +266,7 @@ describe('Phase 3D order evidence workflow', () => {
     const submitted = await submitOrderEvidence(database, {
       reservationId: 'reservation-1',
       expectedVersion: 0,
-      marketplace: 'JP',
+      marketplace: 'AMAZON_JP',
       amazonOrderNumber: '555-1234567-1234567',
       amazonOrderDate: '2026-08-01',
       finalPaidJpy: 5000,
@@ -305,7 +305,7 @@ describe('Phase 3D order evidence workflow', () => {
     const resubmitted = await submitOrderEvidence(database, {
       reservationId: 'reservation-1',
       expectedVersion: 2,
-      marketplace: 'JP',
+      marketplace: 'AMAZON_JP',
       amazonOrderNumber: '555-1234567-7654321',
       amazonOrderDate: '2026-08-01',
       finalPaidJpy: 4980,
@@ -364,7 +364,7 @@ describe('Phase 3D order evidence workflow', () => {
     await expect(submitOrderEvidence(database, {
       reservationId: 'reservation-1',
       expectedVersion: 4,
-      marketplace: 'JP',
+      marketplace: 'AMAZON_JP',
       amazonOrderNumber: '555-1234567-7654321',
       amazonOrderDate: '2026-08-01',
       finalPaidJpy: 4980,
@@ -394,7 +394,7 @@ describe('Phase 3D order evidence workflow', () => {
     const first = await submitOrderEvidence(database, {
       reservationId: 'reservation-1',
       expectedVersion: 0,
-      marketplace: 'JP',
+      marketplace: 'AMAZON_JP',
       amazonOrderNumber: '666-1234567-1234567',
       amazonOrderDate: '2026-08-01',
       finalPaidJpy: 1000,
@@ -407,7 +407,7 @@ describe('Phase 3D order evidence workflow', () => {
     await expect(submitOrderEvidence(database, {
       reservationId: 'reservation-2',
       expectedVersion: 0,
-      marketplace: 'JP',
+      marketplace: 'AMAZON_JP',
       amazonOrderNumber: '66612345671234567',
       amazonOrderDate: '2026-08-01',
       finalPaidJpy: 2000,
@@ -424,7 +424,7 @@ describe('Phase 3D order evidence workflow', () => {
     const activeClaim = await database.prepare(`
       SELECT evidence_submission_id, status
       FROM formal_order_number_claims
-      WHERE marketplace_code='JP'
+      WHERE marketplace_code='AMAZON_JP'
         AND amazon_order_number_normalized='666-1234567-1234567'
         AND status IN ('PROVISIONAL','FINAL')
     `).first<{ evidence_submission_id: string; status: string }>();
@@ -444,7 +444,7 @@ describe('Phase 3D order evidence workflow', () => {
     const submitted = await submitOrderEvidence(database, {
       reservationId: 'reservation-1',
       expectedVersion: 0,
-      marketplace: 'JP',
+      marketplace: 'AMAZON_JP',
       amazonOrderNumber: '777-1234567-1234567',
       amazonOrderDate: '2026-08-01',
       finalPaidJpy: 777,
@@ -517,7 +517,7 @@ describe('Phase 3D order evidence workflow', () => {
     const submitted = await submitOrderEvidence(database, {
       reservationId: 'reservation-1',
       expectedVersion: 0,
-      marketplace: 'JP',
+      marketplace: 'AMAZON_JP',
       amazonOrderNumber: '888-1234567-1234567',
       amazonOrderDate: '2026-08-01',
       finalPaidJpy: 888,
@@ -585,7 +585,7 @@ function buyerActor(
 ): BuyerOrderEvidenceActor {
   return {
     buyerCustomerId,
-    marketplaceCode: 'JP',
+    marketplaceCode: 'AMAZON_JP',
     accessStatus: 'ACTIVE',
     identityReviewStatus: 'CLEAR',
   };
@@ -612,15 +612,6 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
       'staff-pre-sales', '售前', 'ACTIVE', 1,
       1, 1000, 1000, NULL
     );
-    INSERT INTO staff_departments (
-      id, code, name, status, version, created_at, updated_at, disabled_at
-    ) VALUES ('department-order-evidence','order-evidence','Order Evidence',
-      'ACTIVE',1,1000,1000,NULL);
-    INSERT INTO staff_teams (
-      id, department_id, code, name, status, version,
-      created_at, updated_at, disabled_at
-    ) VALUES ('team-order-evidence','department-order-evidence','order-evidence',
-      'Order Evidence','ACTIVE',1,1000,1000,NULL);
     INSERT INTO staff_role_assignments (
       staff_id, role_code, status, assigned_by_staff_id, assigned_at,
       revoked_at, created_at, updated_at
@@ -631,17 +622,6 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
     ) VALUES ('scope-order-evidence-pre-jp','staff-pre-sales','pre_sales',
       'AMAZON_JP','ACTIVE','zz-phase3h-test-owner',1000,NULL,
       'TEST_PRIMARY',1000,1000,'PRIMARY');
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES ('staff-pre-sales','team-order-evidence','ACTIVE',1000,NULL,1000,1000);
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES ('zz-phase3h-test-owner','team-order-evidence','ACTIVE',1000,NULL,1000,1000);
-    INSERT INTO staff_team_leaders (
-      staff_id, team_id, status, assigned_by_staff_id,
-      assigned_at, revoked_at, created_at, updated_at
-    ) VALUES ('staff-pre-sales','team-order-evidence','ACTIVE',
-      'zz-phase3h-test-owner',1000,NULL,1000,1000);
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,
@@ -650,7 +630,7 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
       version, created_at, updated_at,
       activated_at, disabled_at, next_member_number
     ) VALUES (
-      'seller-org-evidence', 'JP', 'ido-mango-9101',
+      'seller-org-evidence', 'AMAZON_JP', 'ido-mango-9101',
       'seller-channel-ido-mango',
       'seller-channel-ido-mango',
       9101, '证据测试卖家', 'ACTIVE',
@@ -676,31 +656,29 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
       1000, 1000, 1000, NULL
     );
 
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-evidence', 'E', '证据测试渠道',
-      'ACTIVE', 1, 1, 1000, 1000, NULL
-    );
+    UPDATE buyer_channels
+    SET next_sequence=100
+    WHERE id='buyer-channel-wechat-b';
 
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code,
       buyer_channel_id, buyer_customer_no,
-      buyer_sequence, first_valid_order_business_date,
+      buyer_sequence,
       display_name, access_status,
       identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
       (
-        'buyer-1', 'buyer-evidence-subject-1', 'JP',
-        'buyer-channel-evidence', NULL, NULL, NULL,
+        'buyer-1', 'buyer-evidence-subject-1', 'AMAZON_JP',
+        'buyer-channel-wechat-b', '20260801B0001',
+        1,
         '买家一', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       ),
       (
-        'buyer-2', 'buyer-evidence-subject-2', 'JP',
-        'buyer-channel-evidence', NULL, NULL, NULL,
+        'buyer-2', 'buyer-evidence-subject-2', 'AMAZON_JP',
+        'buyer-channel-wechat-b', '20260801B0002',
+        2,
         '买家二', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       );
@@ -710,7 +688,7 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
       display_name, normalized_name, status,
       version, created_at, updated_at, disabled_at
     ) VALUES (
-      'store-evidence', 'seller-org-evidence', 'JP',
+      'store-evidence', 'seller-org-evidence', 'AMAZON_JP',
       '证据测试店铺', '证据测试店铺', 'ACTIVE',
       1, 1000, 1000, NULL
     );
@@ -723,19 +701,19 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
     ) VALUES
       (
         'product-evidence-1', 'seller-org-evidence',
-        'store-evidence', 'JP',
+        'store-evidence', 'AMAZON_JP',
         'B0EVID0001', 'B0EVID0001', 'ACTIVE',
         1, 1, 1000, 1000, NULL
       ),
       (
         'product-evidence-2', 'seller-org-evidence',
-        'store-evidence', 'JP',
+        'store-evidence', 'AMAZON_JP',
         'B0EVID0002', 'B0EVID0002', 'ACTIVE',
         1, 1, 1000, 1000, NULL
       ),
       (
         'product-evidence-3', 'seller-org-evidence',
-        'store-evidence', 'JP',
+        'store-evidence', 'AMAZON_JP',
         'B0EVID0003', 'B0EVID0003', 'ACTIVE',
         1, 1, 1000, 1000, NULL
       );
@@ -794,7 +772,7 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
     ) VALUES
       (
         'demand-evidence-1', 'seller-org-evidence',
-        'store-evidence', 'JP',
+        'store-evidence', 'AMAZON_JP',
         'product-evidence-1', 1, 'seller-evidence-owner', 'IMAGE',
         3, '公开说明', '内部说明',
         2000, 5000, 20000,
@@ -805,7 +783,7 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
       ),
       (
         'demand-evidence-2', 'seller-org-evidence',
-        'store-evidence', 'JP',
+        'store-evidence', 'AMAZON_JP',
         'product-evidence-2', 1, 'seller-evidence-owner', 'TEXT',
         3, '公开说明', '内部说明',
         2000, 5000, 20000,
@@ -816,7 +794,7 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
       ),
       (
         'demand-evidence-3', 'seller-org-evidence',
-        'store-evidence', 'JP',
+        'store-evidence', 'AMAZON_JP',
         'product-evidence-3', 1, 'seller-evidence-owner', 'VIDEO',
         3, '公开说明', '内部说明',
         2000, 5000, 20000,
@@ -845,7 +823,7 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
       (
         'reservation-1', 'demand-evidence-1', 'buyer-1',
         'seller-org-evidence', 'store-evidence',
-        'product-evidence-1', 1, 'JP',
+        'product-evidence-1', 1, 'AMAZON_JP',
         'APPROVED', '{}', 5000, 20000,
         2, 4000, 6000,
         'staff-pre-sales', NULL, 6000,
@@ -854,7 +832,7 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
       (
         'reservation-2', 'demand-evidence-2', 'buyer-2',
         'seller-org-evidence', 'store-evidence',
-        'product-evidence-2', 1, 'JP',
+        'product-evidence-2', 1, 'AMAZON_JP',
         'APPROVED', '{}', 5000, 20000,
         2, 4000, 6000,
         'staff-pre-sales', NULL, 6000,
@@ -863,7 +841,7 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
       (
         'reservation-pending', 'demand-evidence-3', 'buyer-1',
         'seller-org-evidence', 'store-evidence',
-        'product-evidence-3', 1, 'JP',
+        'product-evidence-3', 1, 'AMAZON_JP',
         'PENDING_REVIEW', '{}', 9000, 20000,
         1, 4000, 4000,
         NULL, NULL, NULL,
@@ -884,6 +862,18 @@ function seedOrderEvidenceFixture(database: SqliteDatabase): void {
     productId: 'product-evidence-2',
     productVersionId: 'product-evidence-2-v1',
   });
+  database.exec(`
+    INSERT INTO buyer_staff_assignments (
+      id, buyer_customer_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason, version,
+      created_at, updated_at, revoked_at
+    )
+    SELECT 'buyer-pre-binding-'||id, id, 'BUYER_PRE_SALES_OWNER',
+      'staff-pre-sales', 'ACTIVE', 'AUTO_INITIAL',
+      'STAFF', 'zz-phase3h-test-owner', NULL, 1, 1000, 1000, NULL
+    FROM buyer_customers;
+`);
+
 }
 
 function seedActiveInstruction(
@@ -907,7 +897,7 @@ function seedActiveInstruction(
       status, current_version_no, version, published_at,
       initial_deadline_at, resubmission_deadline_at,
       expired_at, cancelled_at, completed_at, created_at, updated_at
-    ) VALUES (?, ?, ?, 'JP', 'UNPUBLISHED', 0, 1, NULL,
+    ) VALUES (?, ?, ?, 'AMAZON_JP', 'UNPUBLISHED', 0, 1, NULL,
       NULL, NULL, NULL, NULL, NULL, 6000, 6000)
   `).bind(instructionId, input.reservationId, input.buyerCustomerId).run();
   database.prepare(`

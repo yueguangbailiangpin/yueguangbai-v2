@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { StaffAssignmentDto } from '@ygb/contracts';
 
 export const epoch = z.number().int().nonnegative();
 // Backend returns the Marketplace-configured business timezone
@@ -10,456 +11,1376 @@ export const businessTimezoneSchema = z.string();
 export const integerString = z.string().regex(/^(0|[1-9][0-9]*)$/u);
 export const signedIntegerString = z.string().regex(/^-?(0|[1-9][0-9]*)$/u);
 export const workTypeSchema = z.enum([
-  'PRODUCT_APPLICATION_REVIEW', 'DEMAND_REVIEW', 'RESERVATION_DECISION',
-  'ORDER_INSTRUCTION_PUBLISH', 'ORDER_EVIDENCE_REVIEW', 'REVIEW_DECISION',
+  'PRODUCT_APPLICATION_REVIEW',
+  'DEMAND_REVIEW',
+  'RESERVATION_DECISION',
+  'ORDER_INSTRUCTION_PUBLISH',
+  'ORDER_EVIDENCE_REVIEW',
+  'REVIEW_DECISION',
   'BUYER_REFUND_PROCESSING',
 ]);
 export const workStatusSchema = z.enum(['OPEN', 'COMPLETED', 'CANCELLED']);
+const staffAssignmentSchema = z
+  .object({
+    assignment_id: z.string(),
+    subject_type: z.enum(['BUYER_CUSTOMER', 'SELLER_ORGANIZATION']),
+    subject_id: z.string(),
+    duty_code: z.enum([
+      'SELLER_ACCOUNT_MANAGER',
+      'BUYER_PRE_SALES_OWNER',
+      'BUYER_REFUND_OWNER',
+    ]),
+    staff_id: z.string(),
+    status: z.enum(['ACTIVE', 'REVOKED']),
+    source: z.enum(['AUTO_INITIAL', 'MANUAL_REASSIGN']),
+    reason: z.string().nullable(),
+    version: z.number().int(),
+    created_at: z.number().int(),
+    revoked_at: z.number().int().nullable(),
+  })
+  .strict() satisfies z.ZodType<StaffAssignmentDto>;
+export const staffAssignmentsSchema = z
+  .object({ assignments: z.array(staffAssignmentSchema) })
+  .strict();
 const sellerPrincipalRatePolicyScopeSchema = z.enum([
-  'CURRENCY_PAIR_DEFAULT', 'SELLER_ORGANIZATION',
+  'CURRENCY_PAIR_DEFAULT',
+  'SELLER_ORGANIZATION',
 ]);
-const sellerPrincipalRatePolicyVersionSchema = z.object({
-  policy_version_id: z.string(),
-  scope_type: sellerPrincipalRatePolicyScopeSchema,
-  seller_organization_id: z.string().nullable(),
-  source_currency_code: z.string(), quote_currency_code: z.literal('CNY'),
-  version_no: z.number().int().positive(), decision_version: z.number().int().positive(),
-  status: z.enum(['SUBMITTED', 'CONFIRMED', 'REJECTED']),
-  markup_rate_value: z.string().regex(/^(0|[1-9][0-9]*)$/u),
-  markup_rate_scale: z.string().regex(/^100000000$/u), effective_from: z.number().int().nonnegative(),
-  submitted_at: z.number().int().nonnegative(), confirmed_at: z.number().int().nonnegative().nullable(),
-  rejection_reason: z.string().nullable(), replayed: z.boolean(),
-}).strict();
-export const staffSellerPrincipalRatePolicySchema = z.object({
-  source_currency_code: z.string(), quote_currency_code: z.literal('CNY'),
-  seller_organization_id: z.string().nullable(),
-  default_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
-  seller_override_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
-  default_pending_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
-  seller_override_pending_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
-  default_next_version: z.number().int().positive(),
-  seller_override_next_version: z.number().int().positive().nullable(),
-  selected_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
-}).strict();
-export const staffSellerPrincipalRatePoliciesResponseSchema = z.object({
-  policies: staffSellerPrincipalRatePolicySchema,
-}).strict();
-export const staffSellerPrincipalRatePolicyMutationSchema = z.object({
-  policy: sellerPrincipalRatePolicyVersionSchema,
-}).strict();
-export const safeFileSchema = z.object({
-  file_object_id: z.string(), file_version: z.number().int().positive(),
-  purpose: z.enum(['ORDER_EVIDENCE', 'REVIEW_EVIDENCE', 'BUYER_REFUND_PROOF', 'SELLER_SETTLEMENT_PROOF']),
-  visibility: z.enum(['BUYER_VISIBLE', 'SELLER_VISIBLE', 'INTERNAL_ONLY']),
-}).strict();
+const sellerPrincipalRatePolicyVersionSchema = z
+  .object({
+    policy_version_id: z.string(),
+    scope_type: sellerPrincipalRatePolicyScopeSchema,
+    seller_organization_id: z.string().nullable(),
+    source_currency_code: z.string(),
+    quote_currency_code: z.literal('CNY'),
+    version_no: z.number().int().positive(),
+    markup_rate_value: z.string().regex(/^(0|[1-9][0-9]*)$/u),
+    markup_rate_scale: z.string().regex(/^100000000$/u),
+    effective_from: z.number().int().nonnegative(),
+    created_by_staff_id: z.string(),
+    created_at: z.number().int().nonnegative(),
+    replayed: z.boolean(),
+  })
+  .strict();
+// Stage 6.6A (D-056): one save immediately forms the new effective base-rate
+// version (no submit/confirm dual approval). `effective_from` is the version's
+// creation time.
+const buyerDailyExchangeRateVersionSchema = z
+  .object({
+    rate_version_id: z.string(),
+    business_date: z.string(),
+    version_no: z.number().int().positive(),
+    rate_value: integerString,
+    rate_scale: z.string().regex(/^100000000$/u),
+    created_by_staff_id: z.string(),
+    created_at: epoch,
+  })
+  .strict();
+export const staffSellerPrincipalRatePolicySchema = z
+  .object({
+    source_currency_code: z.string(),
+    quote_currency_code: z.literal('CNY'),
+    seller_organization_id: z.string().nullable(),
+    default_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
+    seller_override_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
+    default_next_version: z.number().int().positive(),
+    seller_override_next_version: z.number().int().positive().nullable(),
+    selected_policy: sellerPrincipalRatePolicyVersionSchema.nullable(),
+  })
+  .strict();
+export const staffSellerPrincipalRatePoliciesResponseSchema = z
+  .object({
+    policies: staffSellerPrincipalRatePolicySchema,
+  })
+  .strict();
+export const staffSellerPrincipalRatePolicyMutationSchema = z
+  .object({
+    policy: sellerPrincipalRatePolicyVersionSchema,
+  })
+  .strict();
+export const staffRateCenterSchema = z
+  .object({
+    business_date: z.string(),
+    source_currency_code: z.literal('JPY'),
+    quote_currency_code: z.literal('CNY'),
+    base_rate: z
+      .object({
+        business_date: z.string(),
+        versions: z.array(buyerDailyExchangeRateVersionSchema),
+        active_version: buyerDailyExchangeRateVersionSchema.nullable(),
+        next_version: z.number().int().positive(),
+      })
+      .strict(),
+    seller_organizations: z.array(
+      z
+        .object({
+          seller_organization_id: z.string(),
+          seller_organization_name: z.string(),
+          marketplace_code: z.string(),
+        })
+        .strict(),
+    ),
+    policies: staffSellerPrincipalRatePolicySchema,
+  })
+  .strict();
+export const staffRateCenterBaseMutationSchema = z
+  .object({
+    base_rate: z
+      .object({
+        rate_version_id: z.string(),
+        business_date: z.string(),
+        version_no: z.number().int().positive(),
+        rate_value: integerString,
+        rate_scale: z.string().regex(/^100000000$/u),
+        effective_from: epoch,
+        replayed: z.boolean().optional(),
+      })
+      .strict(),
+  })
+  .strict();
+const serviceFeeReviewTypeSchema = z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']);
+const serviceFeeEffectiveSchema = z
+  .object({
+    rule_version_id: z.string(),
+    version_no: z.number().int().positive(),
+    fee_cny_fen: integerString,
+    effective_from: epoch,
+    created_at: epoch,
+  })
+  .strict();
+export const sellerServiceFeeVersionSchema = z
+  .object({
+    rule_version_id: z.string(),
+    seller_organization_id: z.string(),
+    marketplace_code: z.string(),
+    review_type: serviceFeeReviewTypeSchema,
+    version_no: z.number().int().positive(),
+    fee_cny_fen: integerString,
+    effective_from: epoch,
+    replayed: z.boolean(),
+  })
+  .strict();
+const signedIntegerStringSchema = z.string().regex(/^-?(0|[1-9][0-9]*)$/u);
+const financeRateDetailSchema = z
+  .object({
+    buyer_rate_business_date: z.string().nullable(),
+    buyer_cny_per_jpy_e8: z.string().nullable(),
+    markup_rate_value: z.string().nullable(),
+    final_rate_value: z.string().nullable(),
+    policy_scope_type: z
+      .enum(['CURRENCY_PAIR_DEFAULT', 'SELLER_ORGANIZATION'])
+      .nullable(),
+    policy_version_no: z.number().int().positive().nullable(),
+    policy_effective_from: epoch.nullable(),
+  })
+  .strict();
+const financePositionSchema = z
+  .object({
+    formal_order_id: z.string(),
+    amazon_order_number: z.string(),
+    seller_organization_id: z.string(),
+    store_id: z.string(),
+    product_id: z.string(),
+    asin: z.string(),
+    product_name: z.string(),
+    review_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']),
+    confirmed_at: epoch,
+    confirmed_business_date: z.string(),
+    review_approved_at: epoch.nullable(),
+    review_approved_business_date: z.string().nullable(),
+    last_cash_business_date: z.string().nullable(),
+    final_paid_jpy: integerString,
+    financial_snapshot_id: z.string().nullable(),
+    buyer_self_pay_bps: z.number().int().nonnegative().nullable(),
+    buyer_self_pay_jpy: integerString.nullable(),
+    buyer_expected_principal_cny_fen: integerString.nullable(),
+    seller_expected_principal_cny_fen: integerString.nullable(),
+    service_fee_snapshot_cny_fen: integerString.nullable(),
+    projected_gross_profit_cny_fen: signedIntegerStringSchema.nullable(),
+    completed_gross_profit_cny_fen: signedIntegerStringSchema.nullable(),
+    seller_principal_due_cny_fen: integerString,
+    seller_principal_collected_cny_fen: integerString,
+    seller_principal_outstanding_cny_fen: integerString,
+    seller_service_fee_due_cny_fen: integerString,
+    seller_service_fee_collected_cny_fen: integerString,
+    seller_service_fee_outstanding_cny_fen: integerString,
+    buyer_refund_due_cny_fen: integerString,
+    buyer_refund_net_paid_cny_fen: integerString,
+    buyer_refund_outstanding_cny_fen: integerString,
+    buyer_refund_overpaid_cny_fen: integerString,
+    attributed_cash_net_cny_fen: signedIntegerStringSchema,
+    finance_status: z.string(),
+  })
+  .strict();
+export const internalFinanceOrderDetailSchema = z
+  .object({
+    order: z
+      .object({
+        position: financePositionSchema,
+        frozen_snapshot: z
+          .object({
+            financial_snapshot_id: z.string().nullable(),
+            buyer_self_pay_bps: z.number().int().nonnegative().nullable(),
+            buyer_self_pay_jpy: integerString.nullable(),
+            buyer_expected_principal_cny_fen: integerString.nullable(),
+            seller_expected_principal_cny_fen: integerString.nullable(),
+            service_fee_cny_fen: integerString.nullable(),
+            rate_detail: financeRateDetailSchema.nullable(),
+          })
+          .strict(),
+        seller_payables: z
+          .object({
+            principal_due_cny_fen: integerString,
+            principal_collected_cny_fen: integerString,
+            principal_outstanding_cny_fen: integerString,
+            service_fee_due_cny_fen: integerString,
+            service_fee_collected_cny_fen: integerString,
+            service_fee_outstanding_cny_fen: integerString,
+          })
+          .strict(),
+        buyer_refund: z
+          .object({
+            due_cny_fen: integerString,
+            net_paid_cny_fen: integerString,
+            outstanding_cny_fen: integerString,
+            overpaid_cny_fen: integerString,
+          })
+          .strict(),
+        attributed_cash: z
+          .object({
+            seller_allocated_net_cny_fen: integerString,
+            buyer_refund_net_paid_cny_fen: integerString,
+            net_cny_fen: signedIntegerStringSchema,
+          })
+          .strict(),
+        calculations: z.object({
+          projected_gross_profit: z.object({
+            formula: z.string(),
+            seller_expected_principal_cny_fen: integerString.nullable(),
+            service_fee_cny_fen: integerString.nullable(),
+            buyer_expected_principal_cny_fen: integerString.nullable(),
+            result_cny_fen: signedIntegerStringSchema.nullable(),
+          }).strict(),
+          completed_gross_profit: z.object({
+            formula: z.string(),
+            eligible: z.boolean(),
+            seller_principal_payable_cny_fen: integerString,
+            seller_service_fee_payable_cny_fen: integerString,
+            buyer_refund_due_cny_fen: integerString,
+            result_cny_fen: signedIntegerStringSchema.nullable(),
+          }).strict(),
+          current_attributed_cash: z.object({
+            formula: z.string(),
+            seller_current_net_allocation_cny_fen: integerString,
+            buyer_refund_net_paid_cny_fen: integerString,
+            result_cny_fen: signedIntegerStringSchema,
+          }).strict(),
+        }).strict(),
+        finance_status: z.string(),
+        exception_codes: z.array(z.string()),
+        suggested_actions: z.array(z.string()),
+      })
+      .strict(),
+  })
+  .strict();
+/**
+ * D-056 §4.5: the single aggregate staff formal-order detail
+ * (`GET /api/staff/formal-orders/:id`). Sections outside the caller's
+ * authority (financial_adjustments / financial_snapshot / finance_source)
+ * are omitted by the backend rather than concealed behind another route.
+ */
+/** Stage 7.5 batch 1: authoritative order responsibility projection. */
+export const orderResponsibilitySchema = z
+  .object({
+    stage: z.enum(['BUYER_REFUND', 'SELLER_SETTLEMENT', 'COMPLETED']),
+    responsible_role: z.enum(['owner', 'pre_sales', 'seller_ops', 'buyer_refund']),
+    responsible_staff: z
+      .object({
+        staff_id: z.string(),
+        display_name: z.string(),
+      })
+      .strict()
+      .nullable(),
+    next_action: z.enum([
+      'PROCESS_BUYER_REFUND',
+      'FOLLOW_SELLER_SETTLEMENT',
+      'REVIEW_COMPLETED_ORDER',
+      'RESOLVE_EXCEPTION',
+      'ASSIGN_RESPONSIBLE_STAFF',
+    ]),
+    next_action_due_at: epoch.nullable(),
+    is_overdue: z.boolean(),
+    overdue_since: epoch.nullable(),
+    exception_state: z.enum(['NONE', 'OPEN']),
+    exception_reason: z.string().nullable(),
+    available_actions: z.array(z.string()),
+  })
+  .strict();
 
-export const staffWorkItemsSchema = z.object({
-  work_items: z.array(z.object({
-    work_item_id: z.string(), work_type: workTypeSchema,
-    source_entity_type: z.string(), source_entity_id: z.string(),
-    buyer_customer_id: z.string().nullable(), seller_organization_id: z.string().nullable(),
-    store_id: z.string().nullable(),
-    duty_code: z.enum(['SELLER_ACCOUNT_MANAGER', 'BUYER_PRE_SALES_OWNER', 'BUYER_AFTER_SALES_OWNER', 'BUYER_REFUND_OWNER']),
-    fixed_assignment_id: z.string(), assigned_staff_id: z.string(),
-    status: workStatusSchema, version: z.number().int().positive(),
-    created_at: epoch, updated_at: epoch, completed_at: epoch.nullable(), cancelled_at: epoch.nullable(),
-  }).strict()),
-  next_cursor: z.string().nullable(),
-}).strict();
+export const staffFormalOrderDetailSchema = z
+  .object({
+    order: z
+      .object({
+        formal_order_id: z.string(),
+        marketplace_code: z.string(),
+        amazon_order_number: z.string(),
+        amazon_order_date: z.string().nullable(),
+        status: z.string(),
+        confirmed_at: epoch,
+      })
+      .strict(),
+    buyer: z
+      .object({
+        buyer_customer_id: z.string(),
+        display_name: z.string(),
+        customer_no: z.string().nullable(),
+      })
+      .strict(),
+    seller: z
+      .object({
+        seller_organization_id: z.string(),
+        store_display_name: z.string(),
+      })
+      .strict(),
+    payment_screenshot: z
+      .object({
+        file_object_id: z.string(),
+        file_version: z.number().int().positive(),
+      })
+      .strict()
+      .nullable(),
+    communication_screenshots: z.array(
+      z
+        .object({
+          file_object_id: z.string(),
+          file_version: z.number().int().positive(),
+          purpose: z.literal('ORDER_COMMUNICATION_SCREENSHOT'),
+          visibility: z.literal('SELLER_VISIBLE'),
+          uploaded_at: epoch,
+          uploaded_by_staff_id: z.string().nullable(),
+          uploaded_by_staff_name: z.string().nullable().optional(),
+        })
+        .strict(),
+    ),
+    buyer_advance: z
+      .object({
+        authoritative_advance_amount_cny_fen: z.string(),
+        recorded_advance_amount_cny_fen: z.string(),
+        remaining_advance_amount_cny_fen: z.string(),
+        can_record_advance_payment: z.boolean(),
+      })
+      .strict()
+      .optional(),
+    operational_events: z.array(
+      z
+        .object({
+          event_id: z.string(),
+          event_type: z.string(),
+          reason: z.string().nullable(),
+          actor_staff_id: z.string(),
+          created_at: epoch,
+        })
+        .strict(),
+    ),
+    financial_adjustments: z
+      .array(
+        z
+          .object({
+            adjustment_id: z.string(),
+            adjustment_scope: z.string(),
+            amount_cny_fen: signedIntegerStringSchema,
+            reason: z.string().nullable(),
+            actor_staff_id: z.string(),
+            created_at: epoch,
+          })
+          .strict(),
+      )
+      .optional(),
+    financial_snapshot: z
+      .object({
+        financial_snapshot_id: z.string(),
+        buyer_self_pay_bps: z.number().int().nonnegative(),
+        buyer_self_pay_jpy: signedIntegerStringSchema,
+        buyer_expected_principal_cny_fen: signedIntegerStringSchema,
+        seller_expected_principal_cny_fen: signedIntegerStringSchema,
+        service_fee_cny_fen: signedIntegerStringSchema,
+      })
+      .strict()
+      .nullable()
+      .optional(),
+    finance_source: z.literal('internal-finance').optional(),
+    // Stage 7.5 batch 1: authoritative responsibility projection.
+    responsibility: orderResponsibilitySchema.optional(),
+  })
+  .strict();
+export type StaffFormalOrderDetail = z.output<typeof staffFormalOrderDetailSchema>;
+export const staffSellerServiceFeesSchema = z
+  .object({
+    seller_organization_id: z.string(),
+    fees: z.array(
+      z
+        .object({
+          review_type: serviceFeeReviewTypeSchema,
+          effective_fee: serviceFeeEffectiveSchema.nullable(),
+          next_version: z.number().int().positive(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export const staffSellerServiceFeeMutationSchema = z
+  .object({
+    fee: sellerServiceFeeVersionSchema,
+  })
+  .strict();
+export const safeFileSchema = z
+  .object({
+    file_object_id: z.string(),
+    file_version: z.number().int().positive(),
+    purpose: z.enum([
+      'ORDER_EVIDENCE',
+      'REVIEW_EVIDENCE',
+      'BUYER_REFUND_PROOF',
+      'SELLER_SETTLEMENT_PROOF',
+      'ORDER_COMMUNICATION_SCREENSHOT',
+    ]),
+    visibility: z.enum(['BUYER_VISIBLE', 'SELLER_VISIBLE', 'INTERNAL_ONLY']),
+  })
+  .strict();
 
-const workflow = z.object({
-  work_item_id: z.string().nullable(), assigned_staff_id: z.string().nullable(),
-  assigned_team_id: z.string().nullable(), fixed_assignment_id: z.string().nullable(),
-}).strict();
+export const staffWorkItemsSchema = z
+  .object({
+    work_items: z.array(
+      z
+        .object({
+          work_item_id: z.string(),
+          work_type: workTypeSchema,
+          source_entity_type: z.string(),
+          source_entity_id: z.string(),
+          buyer_customer_id: z.string().nullable(),
+          seller_organization_id: z.string().nullable(),
+          store_id: z.string().nullable(),
+          duty_code: z.enum([
+            'SELLER_ACCOUNT_MANAGER',
+            'BUYER_PRE_SALES_OWNER',
+            'BUYER_AFTER_SALES_OWNER',
+            'BUYER_REFUND_OWNER',
+          ]),
+          fixed_assignment_id: z.string(),
+          assigned_staff_id: z.string(),
+          status: workStatusSchema,
+          version: z.number().int().positive(),
+          created_at: epoch,
+          updated_at: epoch,
+          completed_at: epoch.nullable(),
+          cancelled_at: epoch.nullable(),
+          // Stage 7.5 batch 1: backend-authoritative SLA metadata.
+          sla_due_at: epoch.nullable(),
+          is_overdue: z.boolean(),
+          overdue_since: epoch.nullable(),
+          next_action: z.string(),
+          responsible_role: z.enum(['owner', 'pre_sales', 'seller_ops', 'buyer_refund']),
+          responsible_staff_name: z.string().nullable(),
+          priority: z.enum(['OVERDUE', 'DUE_TODAY', 'NORMAL']),
+        })
+        .strict(),
+    ),
+    next_cursor: z.string().nullable(),
+  })
+  .strict();
 
-export const staffOrderEvidenceSchema = z.object({ order_evidence: z.object({
-  submission_id: z.string(), reservation_id: z.string(), marketplace: z.literal('JP'),
-  status: z.enum(['PENDING_VERIFICATION', 'CHANGES_REQUESTED', 'VERIFIED', 'WITHDRAWN', 'CONSUMED']),
-  version: z.number().int().positive(), evidence_version_no: z.number().int().positive(),
-  amazon_order_number_raw: z.string(), amazon_order_number_normalized: z.string(),
-  amazon_order_date: z.string().nullable(), final_paid_jpy: integerString,
-  buyer_note: z.string().nullable(), public_change_reason: z.string().nullable(),
-  submitted_at: epoch, updated_at: epoch, verified_at: epoch.nullable(), withdrawn_at: epoch.nullable(),
-  buyer_customer_id: z.string(), internal_review_note: z.string().nullable(),
-  verified_by_staff_id: z.string().nullable(), duplicate_signal_count: z.number().int().nonnegative(),
-  reference_order_amount_jpy: integerString, price_difference_jpy: signedIntegerString,
-  price_mismatch: z.boolean(), screenshot: safeFileSchema,
-  buyer: z.object({ buyer_customer_id: z.string(), buyer_customer_no: z.string().nullable() }).strict(),
-  instruction: z.object({ instruction_id: z.string(), instruction_version_id: z.string(),
-    buyer_self_pay_bps: z.number().int().nonnegative(), buyer_self_pay_jpy: integerString,
-    buyer_refundable_principal_jpy: integerString }).strict(),
-  reservation: z.object({ reservation_id: z.string(), status: z.string(), version: z.number().int().positive() }).strict(),
-  version_history: z.array(z.object({ evidence_version_id: z.string(), version_no: z.number().int().positive(), final_paid_jpy: integerString, submitted_at: epoch }).strict()),
-  workflow,
-}).strict() }).strict();
+export const staffWorkbenchSummaryEnvelopeSchema = z
+  .object({ summary: z.lazy(() => staffWorkbenchSummarySchema) })
+  .strict();
 
-const reviewFile = z.object({
-  file_object_id: z.string(), file_entity_link_id: z.string(), file_version: z.number().int().positive(),
-  purpose: z.literal('REVIEW_EVIDENCE'), visibility: z.literal('SELLER_VISIBLE'),
-  client_file_name: z.string(), mime: z.string(), byte_size: z.number().int().nonnegative(), verified_at: epoch,
-}).strict();
-const reviewEvidence = z.object({
-  evidence_version_id: z.string(), version_no: z.number().int().positive(),
-  review_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']), review_url: z.string().nullable(),
-  buyer_note: z.string().nullable(), submitted_by_buyer_id: z.string(), submitted_at: epoch,
-  files: z.array(reviewFile),
-}).strict();
-export const staffReviewValueSchema = z.object({
-  review_case_id: z.string(), formal_order_id: z.string(), buyer_customer_id: z.string(),
-  seller_organization_id: z.string(), review_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']),
-  status: z.enum(['PENDING_REVIEW', 'CHANGES_REQUESTED', 'REJECTED', 'WITHDRAWN', 'APPROVED']),
-  version: z.number().int().positive(), current_evidence_version_no: z.number().int().positive(),
-  public_change_reason: z.string().nullable(), internal_review_note: z.string().nullable(),
-  submitted_at: epoch, updated_at: epoch, decided_at: epoch.nullable(), current_evidence: reviewEvidence,
-}).strict();
+export const staffWorkbenchSummarySchema = z
+  .object({
+    open_count: z.number().int().nonnegative(),
+    due_today_count: z.number().int().nonnegative(),
+    overdue_count: z.number().int().nonnegative(),
+    exception_order_count: z.number().int().nonnegative(),
+    refund_due_today_cny_fen: z.string().nullable(),
+    recent: z.array(
+      z.lazy(() => staffWorkItemsSchema.shape.work_items.element),
+    ),
+  })
+  .strict();
+
+/** Stage 7.5 batch 1: staff formal-order cursor list. */
+export type StaffOrderListItem = z.output<
+  typeof staffOrderListPageSchema
+>['items'][number];
+export const staffOrderListPageSchema = z
+  .object({
+    items: z.array(
+      z
+        .object({
+          formal_order_id: z.string(),
+          marketplace_code: z.string(),
+          amazon_order_number: z.string(),
+          amazon_order_date: z.string().nullable(),
+          confirmed_at: epoch,
+          buyer_customer_id: z.string(),
+          buyer_customer_no: z.string(),
+          buyer_display_name: z.string(),
+          seller_organization_id: z.string(),
+          store_display_name: z.string(),
+          product_name_snapshot: z.string(),
+          review_type: z.string(),
+          buyer_expected_principal_cny_fen: z.string().nullable(),
+          seller_expected_principal_cny_fen: z.string().nullable(),
+          responsibility: orderResponsibilitySchema,
+        })
+        .strict(),
+    ),
+    next_cursor: z.string().nullable(),
+  })
+  .strict();
+
+const workflow = z
+  .object({
+    work_item_id: z.string().nullable(),
+    assigned_staff_id: z.string().nullable(),
+    assigned_team_id: z.string().nullable(),
+    fixed_assignment_id: z.string().nullable(),
+  })
+  .strict();
+
+export const staffOrderEvidenceSchema = z
+  .object({
+    order_evidence: z
+      .object({
+        submission_id: z.string(),
+        reservation_id: z.string(),
+        marketplace: z.literal('AMAZON_JP'),
+        status: z.enum([
+          'PENDING_VERIFICATION',
+          'CHANGES_REQUESTED',
+          'VERIFIED',
+          'WITHDRAWN',
+          'CONSUMED',
+        ]),
+        version: z.number().int().positive(),
+        evidence_version_no: z.number().int().positive(),
+        amazon_order_number_raw: z.string(),
+        amazon_order_number_normalized: z.string(),
+        amazon_order_date: z.string().nullable(),
+        final_paid_jpy: integerString,
+        buyer_note: z.string().nullable(),
+        public_change_reason: z.string().nullable(),
+        submitted_at: epoch,
+        updated_at: epoch,
+        verified_at: epoch.nullable(),
+        withdrawn_at: epoch.nullable(),
+        buyer_customer_id: z.string(),
+        internal_review_note: z.string().nullable(),
+        verified_by_staff_id: z.string().nullable(),
+        duplicate_signal_count: z.number().int().nonnegative(),
+        reference_order_amount_jpy: integerString,
+        price_difference_jpy: signedIntegerString,
+        price_mismatch: z.boolean(),
+        screenshot: safeFileSchema,
+        buyer: z
+          .object({ buyer_customer_id: z.string(), buyer_customer_no: z.string().nullable() })
+          .strict(),
+        instruction: z
+          .object({
+            instruction_id: z.string(),
+            instruction_version_id: z.string(),
+            buyer_self_pay_bps: z.number().int().nonnegative(),
+            buyer_self_pay_jpy: integerString,
+            buyer_refundable_principal_jpy: integerString,
+          })
+          .strict(),
+        reservation: z
+          .object({
+            reservation_id: z.string(),
+            status: z.string(),
+            version: z.number().int().positive(),
+          })
+          .strict(),
+        version_history: z.array(
+          z
+            .object({
+              evidence_version_id: z.string(),
+              version_no: z.number().int().positive(),
+              final_paid_jpy: integerString,
+              submitted_at: epoch,
+            })
+            .strict(),
+        ),
+        workflow,
+      })
+      .strict(),
+  })
+  .strict();
+
+export const staffOrderEvidencePreflightSchema = z
+  .object({
+    preflight: z
+      .object({
+        submission_id: z.string(),
+        amazon_order_date: z.string().nullable(),
+        ready: z.boolean(),
+        checks: z.array(
+          z
+            .object({
+              code: z.enum([
+                'ORDER_DAY_BASE_RATE',
+                'SELLER_PRINCIPAL_MARKUP',
+                'SELLER_SERVICE_FEE',
+              ]),
+              status: z.enum(['READY', 'MISSING']),
+              message: z.string(),
+              action_path: z.string(),
+              required_access: z.string(),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+  })
+  .strict();
+
+const reviewFile = z
+  .object({
+    file_object_id: z.string(),
+    file_entity_link_id: z.string(),
+    file_version: z.number().int().positive(),
+    purpose: z.literal('REVIEW_EVIDENCE'),
+    visibility: z.literal('SELLER_VISIBLE'),
+    client_file_name: z.string(),
+    mime: z.string(),
+    byte_size: z.number().int().nonnegative(),
+    verified_at: epoch,
+  })
+  .strict();
+const reviewEvidence = z
+  .object({
+    evidence_version_id: z.string(),
+    version_no: z.number().int().positive(),
+    review_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']),
+    review_url: z.string().nullable(),
+    buyer_note: z.string().nullable(),
+    submitted_by_buyer_id: z.string(),
+    submitted_at: epoch,
+    files: z.array(reviewFile),
+  })
+  .strict();
+export const staffReviewValueSchema = z
+  .object({
+    review_case_id: z.string(),
+    formal_order_id: z.string(),
+    buyer_customer_id: z.string(),
+    seller_organization_id: z.string(),
+    review_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']),
+    status: z.enum(['PENDING_REVIEW', 'CHANGES_REQUESTED', 'REJECTED', 'WITHDRAWN', 'APPROVED']),
+    version: z.number().int().positive(),
+    current_evidence_version_no: z.number().int().positive(),
+    public_change_reason: z.string().nullable(),
+    internal_review_note: z.string().nullable(),
+    submitted_at: epoch,
+    updated_at: epoch,
+    decided_at: epoch.nullable(),
+    current_evidence: reviewEvidence,
+  })
+  .strict();
 export const staffReviewSchema = z.object({ review: staffReviewValueSchema }).strict();
 
-const refundBase = z.object({
-  obligation_id: z.string(), buyer_customer_id: z.string(), formal_order_id: z.string(),
-  due_amount_cny_fen: integerString, gross_paid_cny_fen: integerString,
-  reversed_cny_fen: integerString, net_paid_cny_fen: integerString,
-  outstanding_amount_cny_fen: integerString, overpaid_amount_cny_fen: integerString,
-  status: z.enum(['DUE', 'PARTIALLY_PAID', 'PAID', 'OVERPAID']), version: z.number().int().positive(),
-  created_at: epoch, updated_at: epoch, reminder_count: z.number().int().nonnegative(), last_reminded_at: epoch.nullable(),
-  buyer: z.object({ buyer_customer_id: z.string(), buyer_customer_no: z.string().nullable() }).strict(),
-  order: z.object({ formal_order_id: z.string(), marketplace: z.literal('JP'),
-    amazon_order_number_normalized: z.string(), product_id: z.string(), asin: z.string() }).strict(),
-  workflow,
-}).strict();
-export const staffBuyerRefundSchema = z.object({ buyer_refund: refundBase.extend({
-  source_review_event_id: z.string(), review_case_id: z.string(),
-  payments: z.array(z.object({ payment_entry_id: z.string(), amount_cny_fen: integerString,
-    paid_at: epoch, china_business_date: z.string(),
-    payment_channel: z.enum(['WECHAT', 'ALIPAY', 'BANK_TRANSFER', 'OTHER_MANUAL']),
-    public_note: z.string().nullable(), internal_note: z.string().nullable(),
-    proofs: z.array(safeFileSchema),
-  }).strict()),
-  reversals: z.array(z.object({ reversal_entry_id: z.string(), original_payment_entry_id: z.string(),
-    amount_cny_fen: integerString, reversed_at: epoch, china_business_date: z.string(),
-    payment_channel: z.enum(['WECHAT', 'ALIPAY', 'BANK_TRANSFER', 'OTHER_MANUAL']),
-    public_note: z.string().nullable(), internal_note: z.string().nullable(),
-  }).strict()),
-}).strict() }).strict();
+const refundBase = z
+  .object({
+    obligation_id: z.string(),
+    buyer_customer_id: z.string(),
+    formal_order_id: z.string(),
+    due_amount_cny_fen: integerString,
+    gross_paid_cny_fen: integerString,
+    reversed_cny_fen: integerString,
+    net_paid_cny_fen: integerString,
+    outstanding_amount_cny_fen: integerString,
+    overpaid_amount_cny_fen: integerString,
+    status: z.enum(['DUE', 'PARTIALLY_PAID', 'PAID', 'OVERPAID']),
+    version: z.number().int().positive(),
+    created_at: epoch,
+    updated_at: epoch,
+    review_approved_at: epoch.nullable(),
+    promise_deadline_at: epoch.nullable(),
+    reminder_count: z.number().int().nonnegative(),
+    last_reminded_at: epoch.nullable(),
+    buyer: z
+      .object({ buyer_customer_id: z.string(), buyer_customer_no: z.string().nullable() })
+      .strict(),
+    order: z
+      .object({
+        formal_order_id: z.string(),
+        marketplace: z.literal('AMAZON_JP'),
+        amazon_order_number_normalized: z.string(),
+        product_id: z.string(),
+        asin: z.string(),
+      })
+      .strict(),
+    workflow,
+  })
+  .strict();
+export const staffSearchSchema = z
+  .object({
+    query: z.string(),
+    buyers: z.array(
+      z
+        .object({
+          buyer_customer_id: z.string(),
+          buyer_customer_no: z.string().nullable(),
+          display_name: z.string(),
+          marketplace_code: z.string(),
+        })
+        .strict(),
+    ),
+    products: z.array(
+      z
+        .object({
+          product_id: z.string(),
+          product_name: z.string(),
+          asin_display: z.string(),
+          marketplace_code: z.string(),
+          status: z.string(),
+        })
+        .strict(),
+    ),
+    orders: z.array(
+      z
+        .object({
+          formal_order_id: z.string(),
+          amazon_order_number_normalized: z.string(),
+          asin_display: z.string(),
+          marketplace_code: z.string(),
+        })
+        .strict(),
+    ),
+    demands: z.array(
+      z
+        .object({
+          demand_batch_id: z.string(),
+          product_name: z.string(),
+          status: z.string(),
+          marketplace_code: z.string(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export type StaffSearchResults = z.output<typeof staffSearchSchema>;
 
-const refundLedgerMutation = z.object({
-  obligation_id: z.string(), buyer_customer_id: z.string(), formal_order_id: z.string(),
-  due_amount_cny_fen: integerString, net_paid_cny_fen: integerString,
-  outstanding_amount_cny_fen: integerString, overpaid_amount_cny_fen: integerString,
-  status: z.enum(['DUE', 'PARTIALLY_PAID', 'PAID', 'OVERPAID']), version: z.number().int().positive(),
-}).strict();
-export const refundPaymentMutationSchema = z.object({
-  obligation: refundLedgerMutation,
-  payment: z.object({ payment_entry_id: z.string(), amount_cny_fen: integerString,
-    paid_at: epoch, china_business_date: z.string(),
-    payment_channel: z.enum(['WECHAT', 'ALIPAY', 'BANK_TRANSFER', 'OTHER_MANUAL']),
-    public_note: z.string().nullable(), internal_note: z.string().nullable(),
-    proofs: z.array(safeFileSchema) }).strict(),
-  replayed: z.boolean(),
-}).strict();
-export const refundReversalMutationSchema = z.object({
-  obligation: refundLedgerMutation,
-  reversal: z.object({ reversal_entry_id: z.string(), obligation_id: z.string(), entry_type: z.literal('REVERSAL'),
-    original_payment_entry_id: z.string(), amount_cny_fen: integerString, reversed_at: epoch,
-    china_business_date: z.string(), payment_channel: z.enum(['WECHAT', 'ALIPAY', 'BANK_TRANSFER', 'OTHER_MANUAL']),
-    public_note: z.string().nullable() }).strict(),
-  replayed: z.boolean(),
-}).strict();
+export const staffBuyerRefundListSchema = z
+  .object({
+    items: z.array(refundBase),
+    next_cursor: z.string().nullable(),
+  })
+  .strict();
+export type StaffBuyerRefundListItem = z.output<
+  typeof staffBuyerRefundListSchema
+>['items'][number];
+export const staffBuyerRefundSchema = z
+  .object({
+    buyer_refund: refundBase
+      .extend({
+        source_review_event_id: z.string(),
+        review_case_id: z.string(),
+        refund_account_name: z.string().nullable(),
+        refund_account_identifier: z.string().nullable(),
+        payments: z.array(
+          z
+            .object({
+              payment_entry_id: z.string(),
+              amount_cny_fen: integerString,
+              paid_at: epoch,
+              china_business_date: z.string(),
+              payment_channel: z.enum(['WECHAT', 'ALIPAY', 'BANK_TRANSFER', 'OTHER_MANUAL']),
+              public_note: z.string().nullable(),
+              internal_note: z.string().nullable(),
+              proofs: z.array(safeFileSchema),
+            })
+            .strict(),
+        ),
+        reversals: z.array(
+          z
+            .object({
+              reversal_entry_id: z.string(),
+              original_payment_entry_id: z.string(),
+              amount_cny_fen: integerString,
+              reversed_at: epoch,
+              china_business_date: z.string(),
+              payment_channel: z.enum(['WECHAT', 'ALIPAY', 'BANK_TRANSFER', 'OTHER_MANUAL']),
+              public_note: z.string().nullable(),
+              internal_note: z.string().nullable(),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+  })
+  .strict();
 
-export const settlementSummarySchema = z.object({ settlement: z.object({
-  outstanding_principal_cny_fen: integerString, outstanding_service_fee_cny_fen: integerString,
-  total_outstanding_cny_fen: integerString, unallocated_credit_cny_fen: integerString,
-}).strict() }).strict();
-export const settlementPayablesSchema = z.object({
-  items: z.array(z.object({ payable_id: z.string(), formal_order_id: z.string(),
-    amazon_order_number: z.string(), store: z.object({ id: z.string(), display_name: z.string() }).strict(),
-    product: z.object({ id: z.string(), asin: z.string(), name: z.string() }).strict(),
-    payable_type: z.enum(['SELLER_PRINCIPAL', 'SELLER_SERVICE_FEE']),
-    due_amount_cny_fen: integerString, paid_amount_cny_fen: integerString,
-    outstanding_amount_cny_fen: integerString, status: z.enum(['UNPAID', 'PARTIALLY_PAID', 'PAID']),
-    due_at: epoch, created_at: epoch,
-  }).strict()),
-  page: z.object({ limit: z.number().int().positive(), next_cursor: z.string().nullable() }).strict(),
-}).strict();
+const refundLedgerMutation = z
+  .object({
+    obligation_id: z.string(),
+    buyer_customer_id: z.string(),
+    formal_order_id: z.string(),
+    due_amount_cny_fen: integerString,
+    net_paid_cny_fen: integerString,
+    outstanding_amount_cny_fen: integerString,
+    overpaid_amount_cny_fen: integerString,
+    status: z.enum(['DUE', 'PARTIALLY_PAID', 'PAID', 'OVERPAID']),
+    version: z.number().int().positive(),
+  })
+  .strict();
+export const refundPaymentMutationSchema = z
+  .object({
+    obligation: refundLedgerMutation,
+    payment: z
+      .object({
+        payment_entry_id: z.string(),
+        amount_cny_fen: integerString,
+        paid_at: epoch,
+        china_business_date: z.string(),
+        payment_channel: z.enum(['WECHAT', 'ALIPAY', 'BANK_TRANSFER', 'OTHER_MANUAL']),
+        public_note: z.string().nullable(),
+        internal_note: z.string().nullable(),
+        proofs: z.array(safeFileSchema),
+      })
+      .strict(),
+    replayed: z.boolean(),
+  })
+  .strict();
+export const refundReversalMutationSchema = z
+  .object({
+    obligation: refundLedgerMutation,
+    reversal: z
+      .object({
+        reversal_entry_id: z.string(),
+        obligation_id: z.string(),
+        entry_type: z.literal('REVERSAL'),
+        original_payment_entry_id: z.string(),
+        amount_cny_fen: integerString,
+        reversed_at: epoch,
+        china_business_date: z.string(),
+        payment_channel: z.enum(['WECHAT', 'ALIPAY', 'BANK_TRANSFER', 'OTHER_MANUAL']),
+        public_note: z.string().nullable(),
+      })
+      .strict(),
+    replayed: z.boolean(),
+  })
+  .strict();
 
-const settlementPaymentSchema = z.object({
-  payment_id: z.string(), amount_cny_fen: integerString, paid_at: epoch,
-  recorded_at: epoch, allocated_amount_cny_fen: integerString,
-  unallocated_amount_cny_fen: integerString,
-  status: z.enum(['REVERSED', 'UNALLOCATED', 'PARTIALLY_ALLOCATED', 'FULLY_ALLOCATED']),
-  version: z.number().int().positive(),
-  allocations: z.array(z.object({ allocation_id: z.string(), payable_id: z.string(),
-    payable_type: z.enum(['SELLER_PRINCIPAL', 'SELLER_SERVICE_FEE']),
-    allocated_amount_cny_fen: integerString, reversed_amount_cny_fen: integerString,
-    net_amount_cny_fen: integerString, allocated_at: epoch }).strict()),
-  proof: safeFileSchema.extend({
-    purpose: z.literal('SELLER_SETTLEMENT_PROOF'), visibility: z.literal('INTERNAL_ONLY'),
-  }).strict(),
-}).strict();
-export const settlementPaymentsSchema = z.object({
-  items: z.array(settlementPaymentSchema),
-  page: z.object({ limit: z.number().int().positive(), next_cursor: z.string().nullable() }).strict(),
-}).strict();
-export const settlementPaymentMutationSchema = z.object({
-  payment: settlementPaymentSchema, replayed: z.boolean(),
-}).strict();
+export const settlementSummarySchema = z
+  .object({
+    settlement: z
+      .object({
+        outstanding_principal_cny_fen: integerString,
+        outstanding_service_fee_cny_fen: integerString,
+        total_outstanding_cny_fen: integerString,
+        unallocated_credit_cny_fen: integerString,
+        settlement_account_name: z.string().nullable(),
+        settlement_account_identifier: z.string().nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+export const settlementPayablesSchema = z
+  .object({
+    items: z.array(
+      z
+        .object({
+          payable_id: z.string(),
+          formal_order_id: z.string(),
+          amazon_order_number: z.string(),
+          store: z.object({ id: z.string(), display_name: z.string() }).strict(),
+          product: z.object({ id: z.string(), asin: z.string(), name: z.string() }).strict(),
+          payable_type: z.enum(['SELLER_PRINCIPAL', 'SELLER_SERVICE_FEE']),
+          due_amount_cny_fen: integerString,
+          paid_amount_cny_fen: integerString,
+          outstanding_amount_cny_fen: integerString,
+          status: z.enum(['UNPAID', 'PARTIALLY_PAID', 'PAID']),
+          due_at: epoch,
+          created_at: epoch,
+        })
+        .strict(),
+    ),
+    page: z
+      .object({ limit: z.number().int().positive(), next_cursor: z.string().nullable() })
+      .strict(),
+  })
+  .strict();
 
-export const invitationViewSchema = z.object({ invitation: z.object({
-  invitation_id: z.string(), wechat_id: z.string(),
-  marketplace_code: z.enum(['AMAZON_JP', 'AMAZON_US', 'COUPANG_KR']),
-  issued_by_staff_id: z.string(), status: z.enum(['ACTIVE', 'CONSUMED', 'REVOKED', 'EXPIRED']),
-  version: z.number().int().positive(), issued_at: epoch, expires_at: epoch,
-  consumed_at: epoch.nullable(), revoked_at: epoch.nullable(),
-}).strict() }).strict();
+const settlementPaymentSchema = z
+  .object({
+    payment_id: z.string(),
+    amount_cny_fen: integerString,
+    paid_at: epoch,
+    recorded_at: epoch,
+    allocated_amount_cny_fen: integerString,
+    unallocated_amount_cny_fen: integerString,
+    status: z.enum(['REVERSED', 'UNALLOCATED', 'PARTIALLY_ALLOCATED', 'FULLY_ALLOCATED']),
+    version: z.number().int().positive(),
+    allocations: z.array(
+      z
+        .object({
+          allocation_id: z.string(),
+          payable_id: z.string(),
+          payable_type: z.enum(['SELLER_PRINCIPAL', 'SELLER_SERVICE_FEE']),
+          allocated_amount_cny_fen: integerString,
+          reversed_amount_cny_fen: integerString,
+          net_amount_cny_fen: integerString,
+          allocated_at: epoch,
+        })
+        .strict(),
+    ),
+    proof: safeFileSchema
+      .extend({
+        purpose: z.literal('SELLER_SETTLEMENT_PROOF'),
+        visibility: z.literal('INTERNAL_ONLY'),
+      })
+      .strict(),
+  })
+  .strict();
+export const settlementPaymentsSchema = z
+  .object({
+    items: z.array(settlementPaymentSchema),
+    page: z
+      .object({ limit: z.number().int().positive(), next_cursor: z.string().nullable() })
+      .strict(),
+  })
+  .strict();
+export const settlementPaymentMutationSchema = z
+  .object({
+    payment: settlementPaymentSchema,
+    replayed: z.boolean(),
+  })
+  .strict();
+
+export const invitationViewSchema = z
+  .object({
+    invitation: z
+      .object({
+        invitation_id: z.string(),
+        wechat_id: z.string(),
+        marketplace_code: z.enum(['AMAZON_JP', 'AMAZON_US', 'COUPANG_KR']),
+        issued_by_staff_id: z.string(),
+        status: z.enum(['ACTIVE', 'CONSUMED', 'REVOKED', 'EXPIRED']),
+        version: z.number().int().positive(),
+        issued_at: epoch,
+        expires_at: epoch,
+        consumed_at: epoch.nullable(),
+        revoked_at: epoch.nullable(),
+      })
+      .strict(),
+  })
+  .strict();
 
 export type StaffWorkItem = z.output<typeof staffWorkItemsSchema>['work_items'][number];
 export type StaffOrderEvidence = z.output<typeof staffOrderEvidenceSchema>['order_evidence'];
+export type StaffOrderEvidencePreflight = z.output<
+  typeof staffOrderEvidencePreflightSchema
+>['preflight'];
 export type StaffReview = z.output<typeof staffReviewSchema>['review'];
 export type StaffBuyerRefund = z.output<typeof staffBuyerRefundSchema>['buyer_refund'];
 
-export const acquisitionChannelSchema = z.object({
-  channel_id: z.string(), code: z.string(),
-  channel_type: z.enum(['XIAOHONGSHU','PRIVATE_WECHAT','REFERRAL','OTHER']),
-  display_name: z.string(), status: z.enum(['ACTIVE','DISABLED']),
-  version: z.number().int().positive(), created_at: epoch, updated_at: epoch,
-}).strict();
-export const acquisitionAssignmentSchema = z.object({
-  assignment_id: z.string(), staff_id: z.string(),
-  lead_type: z.enum(['BUYER','SELLER']), channel_id: z.string(), channel_name: z.string(),
-  effective_from: epoch, effective_until: epoch.nullable(),
-  status: z.enum(['ACTIVE','REVOKED']), version: z.number().int().positive(),
-}).strict();
-export const acquisitionConsultationSchema = z.object({
-  consultation_id: z.string(), channel_id: z.string(),
-  lead_type: z.enum(['BUYER','SELLER']), business_date: z.string(),
-  person_count: z.number().int().nonnegative(), version: z.number().int().positive(),
-  updated_by_staff_id: z.string(), updated_at: epoch,
-}).strict();
-export const acquisitionConsultationEventSchema = z.object({
-  event_id: z.string(), event_type: z.enum(['RECORDED','CORRECTED']),
-  previous_count: z.number().int().nonnegative().nullable(),
-  next_count: z.number().int().nonnegative(),
-  previous_version: z.number().int().positive().nullable(),
-  next_version: z.number().int().positive(), actor_staff_id: z.string(),
-  reason: z.string(), created_at: epoch,
-}).strict();
-export const acquisitionLeadSchema = z.object({
-  lead_id: z.string(), lead_type: z.enum(['BUYER','SELLER']), wechat_masked: z.string(),
-  display_name: z.string().nullable(), note: z.string().nullable(),
-  origin_channel_id: z.string(), origin_channel_name: z.string(),
-  origin_staff_id: z.string(), current_owner_staff_id: z.string(),
-  status: z.enum(['ACTIVE','INVALIDATED','ANONYMIZED']), version: z.number().int().positive(),
-  created_business_date: z.string(), latest_followup_at: epoch, retention_due_at: epoch,
-  retention_hold_reason: z.enum(['SECURITY','DISPUTE','LEGAL']).nullable(),
-  registered: z.boolean(), reservation_submitted: z.boolean(), no_participation: z.boolean(),
-  formal_order_count: z.number().int().nonnegative(), seller_cooperation: z.boolean(),
-  created_at: epoch, updated_at: epoch,
-}).strict();
-const acquisitionFunnelBuyerSchema = z.object({
-  consultation_count: z.number().int().nonnegative(), wechat_added_count: z.number().int().nonnegative(),
-  registered_count: z.number().int().nonnegative(), reservation_submitted_count: z.number().int().nonnegative(),
-  no_participation_count: z.number().int().nonnegative(), formal_order_count: z.number().int().nonnegative(),
-  projected_gross_profit_cny_fen: signedIntegerString.nullable(),
-  completed_gross_profit_cny_fen: signedIntegerString.nullable(),
-}).strict();
-export const acquisitionFunnelSchema = z.object({
-  from_date: z.string(), to_date: z.string(), data_as_of: epoch,
-  buyer: acquisitionFunnelBuyerSchema.nullable(),
-  seller: z.object({ consultation_count: z.number().int().nonnegative(),
-    wechat_added_count: z.number().int().nonnegative(), cooperation_count: z.number().int().nonnegative() }).strict().nullable(),
-}).strict();
-
-export type AcquisitionChannel = z.output<typeof acquisitionChannelSchema>;
-export type AcquisitionAssignment = z.output<typeof acquisitionAssignmentSchema>;
-export type AcquisitionConsultation = z.output<typeof acquisitionConsultationSchema>;
-export type AcquisitionLead = z.output<typeof acquisitionLeadSchema>;
-
-export const orderCadenceSchema = z.object({
-  order_interval_days: z.number().int().positive(),
-  orders_per_run: z.number().int().positive(),
-}).strict();
-export const staffProductListItemSchema = z.object({
-  product_id: z.string(), seller_organization_id: z.string(),
-  store_id: z.string(), store_name: z.string(), marketplace_code: z.string(),
-  asin: z.string(), status: z.enum(['ACTIVE', 'DISABLED']),
-  aggregate_version: z.number().int().positive(),
-  current_version_no: z.number().int().positive(), product_name: z.string(),
-  cadence: orderCadenceSchema.nullable(), updated_at: epoch,
-}).strict();
-export const staffProductPageSchema = z.object({ page: z.object({
-  items: z.array(staffProductListItemSchema),
-  next_cursor: z.string().nullable(), data_as_of: epoch,
-}).strict() }).strict();
-export const staffProductVersionSchema = z.object({
-  product_version_id: z.string(), version_no: z.number().int().positive(),
-  product_name: z.string(), search_keywords: z.array(z.string()),
-  ordering_guide_expected_amount_jpy: z.number().int().nonnegative(),
-  color_spec_mode: z.enum(['MAIN_IMAGE_VARIANT', 'ANY_VARIANT']),
-  default_buyer_self_pay_bps: z.number().int().min(0).max(10_000),
-  product_url: z.string().nullable(), buyer_visible_notes: z.string().nullable(),
-  internal_notes: z.string().nullable(), cadence: orderCadenceSchema.nullable(),
-  created_at: epoch,
-}).strict();
-export const staffProductDemandSchema = z.object({
-  demand_batch_id: z.string(),
-  status: z.enum(['SUBMITTED','PUBLISHED','REJECTED','WITHDRAWN','CLOSED']),
-  target_quantity: z.number().int().positive(),
-  effective_reservation_count: z.number().int().nonnegative(),
-  order_deadline: epoch, demand_version: z.number().int().positive(),
-  schedule_version: z.number().int().positive().nullable(),
-  first_order_date: z.string().nullable(),
-}).strict();
-export const staffProductDetailSchema = z.object({ product:
-  staffProductListItemSchema.extend({
-    versions: z.array(staffProductVersionSchema),
-    demands: z.array(staffProductDemandSchema),
-    timezone: businessTimezoneSchema, data_as_of: epoch,
-  }).strict(),
-}).strict();
-export const demandReviewContextSchema = z.object({ review_context: z.object({
-  demand_batch_id: z.string(), demand_version: z.number().int().positive(),
-  status: z.literal('SUBMITTED'), seller_organization_id: z.string(),
-  store_id: z.string(), product_id: z.string(),
-  product_version_no: z.number().int().positive(), product_name: z.string(),
-  task_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']),
-  target_quantity: z.number().int().positive(),
-  reservation_deadline: epoch, order_deadline: epoch,
-  cadence: orderCadenceSchema.nullable(), can_publish: z.boolean(),
-  timezone: businessTimezoneSchema,
-  data_as_of: epoch,
-}).strict() }).strict();
-export const demandOrderScheduleVersionSchema = orderCadenceSchema.extend({
-  schedule_version_id: z.string(), version_no: z.number().int().positive(),
-  demand_version: z.number().int().positive(), first_order_date: z.string(),
-  theoretical_last_order_date: z.string(),
-  affected_reservation_count: z.number().int().nonnegative(),
-  preview_hash: z.string().regex(/^[0-9a-f]{64}$/u), change_reason: z.string(),
-  changed_by_staff_id: z.string(), created_at: epoch,
-}).strict();
-export const staffReservationSchedulePageSchema = z.object({ page: z.object({
-  demand: z.object({
-    demand_batch_id: z.string(), product_id: z.string(), product_name: z.string(),
+export const orderCadenceSchema = z
+  .object({
+    order_interval_days: z.number().int().positive(),
+    orders_per_run: z.number().int().positive(),
+  })
+  .strict();
+export const staffProductListItemSchema = z
+  .object({
+    product_id: z.string(),
+    seller_organization_id: z.string(),
+    store_id: z.string(),
+    store_name: z.string(),
+    marketplace_code: z.string(),
+    asin: z.string(),
+    status: z.enum(['ACTIVE', 'DISABLED']),
+    aggregate_version: z.number().int().positive(),
+    current_version_no: z.number().int().positive(),
+    product_name: z.string(),
+    cadence: orderCadenceSchema.nullable(),
+    updated_at: epoch,
+    // Stage 7.5 batch 2: responsibility marker (optional for old fixtures).
+    primary_contact_member_id: z.string().nullable().optional(),
+    primary_contact_member_name: z.string().nullable().optional(),
+  })
+  .strict();
+export const staffProductPageSchema = z
+  .object({
+    page: z
+      .object({
+        items: z.array(staffProductListItemSchema),
+        next_cursor: z.string().nullable(),
+        data_as_of: epoch,
+      })
+      .strict(),
+  })
+  .strict();
+export const staffProductVersionSchema = z
+  .object({
+    product_version_id: z.string(),
+    version_no: z.number().int().positive(),
+    product_name: z.string(),
+    search_keywords: z.array(z.string()),
+    ordering_guide_expected_amount_jpy: z.number().int().nonnegative(),
+    color_spec_mode: z.enum(['MAIN_IMAGE_VARIANT', 'ANY_VARIANT']),
+    default_buyer_self_pay_bps: z.number().int().min(0).max(10_000),
+    product_url: z.string().nullable(),
+    buyer_visible_notes: z.string().nullable(),
+    internal_notes: z.string().nullable(),
+    cadence: orderCadenceSchema.nullable(),
+    main_image: z
+      .object({
+        file_object_id: z.string(),
+        file_version: z.number().int().positive(),
+        client_file_name: z.string(),
+        bound_at: epoch,
+      })
+      .nullable(),
+    created_at: epoch,
+  })
+  .strict();
+export const mainImageMutationSchema = z
+  .object({
+    main_image: z
+      .object({
+        product_id: z.string(),
+        product_version_id: z.string(),
+        product_version_no: z.number().int().positive(),
+        file_entity_link_id: z.string(),
+        file_object_id: z.string(),
+        seller_organization_id: z.string(),
+        store_id: z.string(),
+        authorization_mode: z.literal('EXPLICIT_AUDIENCES'),
+        replayed: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
+export const staffProductDemandSchema = z
+  .object({
+    demand_batch_id: z.string(),
+    status: z.enum(['SUBMITTED', 'PUBLISHED', 'REJECTED', 'WITHDRAWN', 'CLOSED']),
     target_quantity: z.number().int().positive(),
     effective_reservation_count: z.number().int().nonnegative(),
-    order_deadline: epoch, demand_version: z.number().int().positive(),
-    schedule: demandOrderScheduleVersionSchema.nullable(),
-  }).strict(),
-  items: z.array(z.object({
-    reservation_id: z.string(),
-    status: z.enum(['PENDING_REVIEW','APPROVED','REJECTED','CANCELLED','EXPIRED']),
-    submitted_at: epoch, rank: z.number().int().positive().nullable(),
-    planned_order_date: z.string().nullable(), buyer_reference: z.string(),
-    buyer_customer_id: z.string().nullable(), buyer_display_name: z.string().nullable(),
-    actual_order_status: z.string().nullable(), actual_order_date: z.string().nullable(),
-  }).strict()),
-  next_cursor: z.string().nullable(), timezone: businessTimezoneSchema,
-  sorting: z.literal('submitted_at ASC, id ASC'), data_as_of: epoch,
-}).strict() }).strict();
-export const demandSchedulePreviewSchema = z.object({ preview:
-  orderCadenceSchema.extend({
-    demand_batch_id: z.string(), expected_version: z.number().int().positive(),
-    current_schedule_version: z.number().int().positive().nullable(),
-    first_order_date: z.string(), theoretical_last_order_date: z.string(),
-    order_deadline_date: z.string(),
-    effective_reservation_count: z.number().int().nonnegative(),
+    order_deadline: epoch,
+    demand_version: z.number().int().positive(),
+    schedule_version: z.number().int().positive().nullable(),
+    first_order_date: z.string().nullable(),
+  })
+  .strict();
+export const staffProductDetailSchema = z
+  .object({
+    product: staffProductListItemSchema
+      .extend({
+        versions: z.array(staffProductVersionSchema),
+        demands: z.array(staffProductDemandSchema),
+        timezone: businessTimezoneSchema,
+        data_as_of: epoch,
+      })
+      .strict(),
+  })
+  .strict();
+export const demandReviewContextSchema = z
+  .object({
+    review_context: z
+      .object({
+        demand_batch_id: z.string(),
+        demand_version: z.number().int().positive(),
+        status: z.literal('SUBMITTED'),
+        seller_organization_id: z.string(),
+        store_id: z.string(),
+        product_id: z.string(),
+        product_version_no: z.number().int().positive(),
+        product_name: z.string(),
+        task_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']),
+        target_quantity: z.number().int().positive(),
+        reservation_deadline: epoch,
+        order_deadline: epoch,
+        cadence: orderCadenceSchema.nullable(),
+        main_image: z.object({
+          file_object_id: z.string(),
+          file_version: z.number().int().positive(),
+          client_file_name: z.string(),
+        }).strict().nullable(),
+        ordering_guide_expected_amount_jpy: z.number().int().nonnegative().nullable(),
+        color_spec_mode: z.enum(['MAIN_IMAGE_VARIANT', 'ANY_VARIANT']).nullable(),
+        buyer_self_pay_bps_snapshot: z.number().int().min(0).max(10_000).nullable(),
+        can_publish: z.boolean(),
+        timezone: businessTimezoneSchema,
+        data_as_of: epoch,
+      })
+      .strict(),
+  })
+  .strict();
+export const demandOrderScheduleVersionSchema = orderCadenceSchema
+  .extend({
+    schedule_version_id: z.string(),
+    version_no: z.number().int().positive(),
+    demand_version: z.number().int().positive(),
+    first_order_date: z.string(),
+    theoretical_last_order_date: z.string(),
     affected_reservation_count: z.number().int().nonnegative(),
-    before_first_order_date: z.string().nullable(),
-    before_theoretical_last_order_date: z.string().nullable(),
     preview_hash: z.string().regex(/^[0-9a-f]{64}$/u),
-    timezone: businessTimezoneSchema, data_as_of: epoch,
-  }).strict(),
-}).strict();
-export const demandScheduleConfirmationSchema = z.object({
-  schedule_confirmation: z.object({
-    demand_batch_id: z.string(), demand_version: z.number().int().positive(),
-    schedule: demandOrderScheduleVersionSchema, replayed: z.boolean(),
-  }).strict(),
-}).strict();
-export const demandReviewMutationSchema = z.object({ demand_review: z.object({
-  demand_batch_id: z.string(), status: z.enum(['PUBLISHED','REJECTED']),
-  version: z.number().int().positive(), review_reason: z.string().nullable(),
-  schedule: demandOrderScheduleVersionSchema.nullable(), replayed: z.boolean(),
-}).strict() }).strict();
-export const productVersionMutationSchema = z.object({ product_version: z.object({
-  product_id: z.string(), product_version_id: z.string(),
-  version_no: z.number().int().positive(), aggregate_version: z.number().int().positive(),
-  product_version: z.object({
-    productName: z.string(), searchKeywords: z.array(z.string()),
-    orderingGuideExpectedAmountJpy: z.number().int().nonnegative(),
-    colorSpecMode: z.enum(['MAIN_IMAGE_VARIANT','ANY_VARIANT']),
-    defaultBuyerSelfPayBps: z.number().int().min(0).max(10_000),
-    productUrl: z.string().nullable(), buyerVisibleNotes: z.string().nullable(),
-    internalNotes: z.string().nullable(), orderIntervalDays: z.number().int().positive(),
-    ordersPerRun: z.number().int().positive(),
-  }).strict(),
-  replayed: z.boolean(),
-}).strict() }).strict();
+    change_reason: z.string(),
+    changed_by_staff_id: z.string(),
+    created_at: epoch,
+  })
+  .strict();
+export const staffReservationSchedulePageSchema = z
+  .object({
+    page: z
+      .object({
+        demand: z
+          .object({
+            demand_batch_id: z.string(),
+            product_id: z.string(),
+            product_name: z.string(),
+            target_quantity: z.number().int().positive(),
+            effective_reservation_count: z.number().int().nonnegative(),
+            order_deadline: epoch,
+            demand_version: z.number().int().positive(),
+            status: z.enum(['SUBMITTED', 'PUBLISHED', 'REJECTED', 'WITHDRAWN', 'CLOSED']),
+            can_close: z.boolean(),
+            schedule: demandOrderScheduleVersionSchema.nullable(),
+          })
+          .strict(),
+        items: z.array(
+          z
+            .object({
+              reservation_id: z.string(),
+              status: z.enum(['PENDING_REVIEW', 'APPROVED', 'REJECTED', 'CANCELLED', 'EXPIRED']),
+              decision_source: z.enum(['AUTO', 'STAFF']).nullable(),
+              version: z.number().int().positive(),
+              submitted_at: epoch,
+              rank: z.number().int().positive().nullable(),
+              planned_order_date: z.string().nullable(),
+              buyer_reference: z.string(),
+              buyer_customer_id: z.string().nullable(),
+              buyer_display_name: z.string().nullable(),
+              actual_order_status: z.string().nullable(),
+              actual_order_date: z.string().nullable(),
+            })
+            .strict(),
+        ),
+        next_cursor: z.string().nullable(),
+        timezone: businessTimezoneSchema,
+        sorting: z.literal('submitted_at ASC, id ASC'),
+        data_as_of: epoch,
+      })
+      .strict(),
+  })
+  .strict();
+export const demandSchedulePreviewSchema = z
+  .object({
+    preview: orderCadenceSchema
+      .extend({
+        demand_batch_id: z.string(),
+        expected_version: z.number().int().positive(),
+        current_schedule_version: z.number().int().positive().nullable(),
+        first_order_date: z.string(),
+        theoretical_last_order_date: z.string(),
+        order_deadline_date: z.string(),
+        effective_reservation_count: z.number().int().nonnegative(),
+        affected_reservation_count: z.number().int().nonnegative(),
+        before_first_order_date: z.string().nullable(),
+        before_theoretical_last_order_date: z.string().nullable(),
+        preview_hash: z.string().regex(/^[0-9a-f]{64}$/u),
+        timezone: businessTimezoneSchema,
+        data_as_of: epoch,
+      })
+      .strict(),
+  })
+  .strict();
+export const demandScheduleConfirmationSchema = z
+  .object({
+    schedule_confirmation: z
+      .object({
+        demand_batch_id: z.string(),
+        demand_version: z.number().int().positive(),
+        schedule: demandOrderScheduleVersionSchema,
+        replayed: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
+export const demandReviewMutationSchema = z
+  .object({
+    demand_review: z
+      .object({
+        demand_batch_id: z.string(),
+        status: z.enum(['PUBLISHED', 'REJECTED']),
+        version: z.number().int().positive(),
+        review_reason: z.string().nullable(),
+        schedule: demandOrderScheduleVersionSchema.nullable(),
+        replayed: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
+export const demandCloseMutationSchema = z
+  .object({
+    demand_close: z
+      .object({
+        demand_batch_id: z.string(),
+        status: z.literal('CLOSED'),
+        version: z.number().int().positive(),
+        close_reason: z.string(),
+        replayed: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
+export const productVersionMutationSchema = z
+  .object({
+    product_version: z
+      .object({
+        product_id: z.string(),
+        product_version_id: z.string(),
+        version_no: z.number().int().positive(),
+        aggregate_version: z.number().int().positive(),
+        main_image_file_object_id: z.string().nullable(),
+        product_version: z
+          .object({
+            productName: z.string(),
+            searchKeywords: z.array(z.string()),
+            orderingGuideExpectedAmountJpy: z.number().int().nonnegative(),
+            colorSpecMode: z.enum(['MAIN_IMAGE_VARIANT', 'ANY_VARIANT']),
+            defaultBuyerSelfPayBps: z.number().int().min(0).max(10_000),
+            productUrl: z.string().nullable(),
+            buyerVisibleNotes: z.string().nullable(),
+            internalNotes: z.string().nullable(),
+            orderIntervalDays: z.number().int().positive(),
+            ordersPerRun: z.number().int().positive(),
+          })
+          .strict(),
+        replayed: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const reservationReopenSchema = z
+  .object({
+    reservation_reopen: z
+      .object({
+        reservation_id: z.string(),
+        demand_batch_id: z.string(),
+        status: z.literal('PENDING_REVIEW'),
+        version: z.number().int().positive(),
+        reopened_count: z.number().int().nonnegative(),
+        reason: z.string(),
+        replayed: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
 
 export type StaffProduct = z.output<typeof staffProductListItemSchema>;
 export type StaffProductDetail = z.output<typeof staffProductDetailSchema>['product'];
 export type DemandReviewContext = z.output<typeof demandReviewContextSchema>['review_context'];
-export type StaffReservationSchedulePage = z.output<typeof staffReservationSchedulePageSchema>['page'];
+export type DemandReviewMutation = z.output<typeof demandReviewMutationSchema>;
+export type DemandCloseMutation = z.output<typeof demandCloseMutationSchema>;
+export type StaffReservationSchedulePage = z.output<
+  typeof staffReservationSchedulePageSchema
+>['page'];
 export type DemandSchedulePreview = z.output<typeof demandSchedulePreviewSchema>['preview'];
 
-export const dashboardProfitSchema = z.object({
-  amount_cny_fen: signedIntegerString,
-  valid_order_count: z.number().int().nonnegative(),
-  conflict_order_count: z.number().int().nonnegative(),
-}).strict();
-const dashboardStageSchema = z.object({
-  code: z.string(), label: z.string(), count: z.number().int().nonnegative(),
-  conversion_rate_bps: z.number().int().min(0).max(10_000).nullable(),
-}).strict();
-const dashboardPerformanceSchema = z.object({
-  dimension_id: z.string(), dimension_name: z.string(),
-  buyer_lead_count: z.number().int().nonnegative(),
-  buyer_registered_count: z.number().int().nonnegative(),
-  buyer_reservation_count: z.number().int().nonnegative(),
-  buyer_formal_order_count: z.number().int().nonnegative(),
-  buyer_business_completed_count: z.number().int().nonnegative(),
-  buyer_no_participation_count: z.number().int().nonnegative(),
-  seller_lead_count: z.number().int().nonnegative(),
-  seller_cooperation_count: z.number().int().nonnegative(),
-  current_owner_active_lead_count: z.number().int().nonnegative().nullable(),
-  consultation_count: z.number().int().nonnegative().nullable(),
-  projected_profit: dashboardProfitSchema,
-  completed_profit: dashboardProfitSchema,
-}).strict();
-export const adminDashboardSummarySchema = z.object({ summary: z.object({
-  window: z.object({ key: z.enum(['TODAY','WEEK','MONTH']), from_date: z.string(),
-    to_date: z.string(), timezone: businessTimezoneSchema, data_as_of: epoch }).strict(),
-  cards: z.object({ new_buyers: z.number().int().nonnegative(),
-    reservations: z.number().int().nonnegative(), formal_orders: z.number().int().nonnegative(),
-    business_completions: z.number().int().nonnegative() }).strict(),
-  buyer_funnel: z.object({ stages: z.array(dashboardStageSchema),
-    no_participation_count: z.number().int().nonnegative() }).strict(),
-  seller_funnel: z.object({ stages: z.array(dashboardStageSchema) }).strict(),
-  projected_profit: dashboardProfitSchema, completed_profit: dashboardProfitSchema,
-  staff_performance: z.array(dashboardPerformanceSchema),
-  channel_performance: z.array(dashboardPerformanceSchema),
-}).strict() }).strict();
+export const dashboardProfitSchema = z
+  .object({
+    amount_cny_fen: signedIntegerString,
+    valid_order_count: z.number().int().nonnegative(),
+    conflict_order_count: z.number().int().nonnegative(),
+  })
+  .strict();
+export const adminDashboardSummarySchema = z
+  .object({
+    summary: z
+      .object({
+        window: z
+          .object({
+            key: z.enum(['TODAY', 'WEEK', 'MONTH']),
+            from_date: z.string(),
+            to_date: z.string(),
+            timezone: businessTimezoneSchema,
+            data_as_of: epoch,
+          })
+          .strict(),
+        cards: z
+          .object({
+            new_customers_buyer: z.number().int().nonnegative(),
+            new_customers_seller: z.number().int().nonnegative(),
+            reservations: z.number().int().nonnegative(),
+            formal_orders: z.number().int().nonnegative(),
+          })
+          .strict(),
+        pending: z
+          .object({
+            buyer_refunds: z.number().int().nonnegative(),
+            seller_settlements: z.number().int().nonnegative(),
+          })
+          .strict(),
+        overdue: z
+          .object({
+            open_work_items: z.number().int().nonnegative(),
+            finance_exceptions: z.number().int().nonnegative(),
+          })
+          .strict(),
+        owner_summary: z
+          .object({
+            projected_profit: dashboardProfitSchema,
+            completed_profit: dashboardProfitSchema,
+          })
+          .strict(),
+      })
+      .strict(),
+  })
+  .strict();
 const staffAccessRoleSchema = z.discriminatedUnion('code', [
   z.object({ code: z.literal('owner'), display_name: z.literal('总管理员') }).strict(),
-  z.object({ code: z.literal('acquisition'), display_name: z.literal('获客') }).strict(),
   z.object({ code: z.literal('pre_sales'), display_name: z.literal('售前') }).strict(),
   z.object({ code: z.literal('seller_ops'), display_name: z.literal('卖家对接') }).strict(),
   z.object({ code: z.literal('buyer_refund'), display_name: z.literal('买家返款') }).strict(),
 ]);
-const staffMarketplaceScopeSchema=z.object({code:z.string(),scope_kind:z.enum(['PRIMARY','SUPPORT'])}).strict();
-export const staffAccessEmployeeSchema = z.object({
-  staff_id: z.string(), display_name: z.string(), email:z.string().nullable(),
-  status: z.enum(['ACTIVE', 'DISABLED']), version: z.number().int().positive(),
-  role: staffAccessRoleSchema,
-  marketplace_codes:z.array(z.string()),
-  marketplace_scopes:z.array(staffMarketplaceScopeSchema).optional(),
-  last_login_at:epoch.nullable(),
-  updated_at: epoch,
-}).strict();
-export const staffAccessOverviewSchema = z.object({
-  employees: z.array(staffAccessEmployeeSchema),
-  available_marketplaces:z.array(z.object({code:z.string(),display_name:z.string(),status:z.enum(['ACTIVE','DISABLED'])}).strict()),
-}).strict();
-export const staffAccessMutationSchema = z.object({
-  employee: staffAccessEmployeeSchema, replayed: z.boolean(),
-}).strict();
+const staffMarketplaceScopeSchema = z
+  .object({ code: z.string(), scope_kind: z.enum(['PRIMARY', 'SUPPORT']) })
+  .strict();
+export const staffAccessEmployeeSchema = z
+  .object({
+    staff_id: z.string(),
+    display_name: z.string(),
+    email: z.string().nullable(),
+    status: z.enum(['ACTIVE', 'DISABLED']),
+    version: z.number().int().positive(),
+    role: staffAccessRoleSchema,
+    marketplace_codes: z.array(z.string()),
+    marketplace_scopes: z.array(staffMarketplaceScopeSchema).optional(),
+    last_login_at: epoch.nullable(),
+    updated_at: epoch,
+  })
+  .strict();
+export const staffAccessOverviewSchema = z
+  .object({
+    employees: z.array(staffAccessEmployeeSchema),
+    available_marketplaces: z.array(
+      z
+        .object({
+          code: z.string(),
+          display_name: z.string(),
+          status: z.enum(['ACTIVE', 'DISABLED']),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export const staffAccessMutationSchema = z
+  .object({
+    employee: staffAccessEmployeeSchema,
+    replayed: z.boolean(),
+  })
+  .strict();
 
 export type StaffAccessEmployee = z.output<typeof staffAccessEmployeeSchema>;

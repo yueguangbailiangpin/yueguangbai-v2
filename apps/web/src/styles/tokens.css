@@ -1,89 +1,249 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand: var(--color-brand);
+  --color-brand: var(--color-primary);
   --color-surface: var(--color-surface);
   --color-text: var(--color-text);
 }
 
+/* ============================================================
+   月光白 V2 设计 Tokens（阶段 7 三端统一 / Material 3）
+   视觉权威：moonwhite-google-console.html（员工端）
+            moonwhite-buyer-seller-portals.html（买家/卖家端）
+   员工端与买家端主色为月光白蓝 #0b57d0；卖家端为克制绿 #137333。
+   原则：语义化命名，固定语义色，8px 间距体系，克制阴影。
+   ============================================================ */
+
 :root {
   color-scheme: light;
 
-  --color-canvas: #f6f7f9;
-  --color-surface: #ffffff;
-  --color-surface-subtle: #f0f3f7;
-  --color-surface-raised: #fbfcfe;
-  --color-border: #dce2ea;
-  --color-border-strong: #aeb9c8;
-  --color-text: #172033;
-  --color-text-muted: #526176;
-  --color-text-disabled: #687588;
-  --color-text-inverse: #ffffff;
+  /* ---- 背景与表面 ---- */
+  --color-canvas: #f8fafd;          /* 页面底色（Google 灰蓝画布） */
+  --color-surface: #ffffff;         /* 卡片/面板表面 */
+  --color-surface-subtle: #edf3fc;  /* 次级表面（软蓝） */
+  --color-surface-raised: #fbfcfd;  /* 浮起表面 */
+  --color-surface-inset: #e9eef6;   /* 内嵌表面（搜索框背景） */
+  --color-surface-strong: #d3e3fd;  /* 强调表面（选中态/M3 secondary container） */
+  --color-on-surface-strong: #041e49; /* 强调表面上的文字 */
 
-  --color-brand: #2457d6;
-  --color-brand-hover: #1d49b7;
-  --color-brand-active: #173b96;
-  --color-brand-soft: #eaf0ff;
-  --color-focus: #1745b5;
+  /* ---- 文字 ---- */
+  --color-text: #1f1f1f;            /* 正文 */
+  --color-text-secondary: #444746;  /* 次级文字 */
+  --color-text-muted: #5f6368;      /* 辅助/占位文字 */
+  --color-text-disabled: #9aa0a6;   /* 禁用文字 */
+  --color-text-inverse: #ffffff;    /* 反色文字 */
+  --color-text-link: var(--color-primary);
 
-  --color-buyer: #2b63d9;
-  --color-buyer-soft: #eaf1ff;
-  --color-seller: #237a57;
-  --color-seller-soft: #e8f5ef;
-  --color-staff: #7150b7;
-  --color-staff-soft: #f0ebfa;
+  /* ---- 边框 ---- */
+  --color-border: #dde3ea;          /* 常规边框 */
+  --color-border-strong: #b8c1cc;   /* 强调边框 */
+  --color-border-subtle: #e8ebef;   /* 细边框（分隔线） */
+  --color-border-focus: var(--color-primary);
 
-  --color-neutral: #526176;
-  --color-neutral-soft: #f0f3f7;
-  --color-processing: #245aab;
-  --color-processing-soft: #eaf2ff;
-  --color-success: #217a4a;
-  --color-success-soft: #e7f5ed;
-  --color-warning: #8a5200;
-  --color-warning-soft: #fff3d6;
-  --color-danger: #ad202b;
-  --color-danger-soft: #fff0f1;
-  --color-expired: #6b566d;
-  --color-expired-soft: #f4eff5;
-  --color-conflict: #9a3e13;
-  --color-conflict-soft: #fff0e8;
+  /* ---- 主色（月光白蓝，员工端与买家端唯一主色） ---- */
+  --color-primary: #0b57d0;
+  --color-primary-hover: #0a4abb;
+  --color-primary-active: #0842a3;
+  --color-primary-soft: #e8f0fe;
+  --color-primary-soft-hover: #d9e5fd;
+  --color-primary-container: #d3e3fd;
+  --color-on-primary-container: #041e49;
 
-  --shadow-card: 0 1px 2px rgb(23 32 51 / 5%);
-  --shadow-drawer: -8px 0 28px rgb(23 32 51 / 12%);
-  --shadow-dialog: 0 14px 42px rgb(23 32 51 / 16%);
-  --color-overlay: rgb(23 32 51 / 28%);
+  /* ---- 语义色（固定，不随主题变化） ---- */
+  --color-success: #137333;
+  --color-success-hover: #0f5c2b;
+  --color-success-soft: #e6f4ea;
+  --color-success-container: #c4eed0;
+  --color-on-success-container: #06351c;
 
-  --radius-control: 0.5rem;
-  --radius-card: 0.75rem;
-  --radius-panel: 0.875rem;
+  --color-warning: #8a4f00;
+  --color-warning-hover: #6f4000;
+  --color-warning-soft: #fef3df;
+
+  --color-danger: #b3261e;
+  --color-danger-hover: #99201a;
+  --color-danger-soft: #fce8e6;
+
+  --color-info: #0b57d0;
+  --color-info-hover: #0a4abb;
+  --color-info-soft: #e8f0fe;
+
+  --color-purple: #7c4d9e;
+  --color-purple-soft: #f1e8f7;
+
+  /* ---- 状态色（StatusBadge 用） ---- */
+  --color-neutral: var(--color-text-muted);
+  --color-neutral-soft: #eef0f3;
+  --color-processing: var(--color-primary);
+  --color-processing-soft: var(--color-primary-soft);
+  --color-expired: #6b5b73;
+  --color-expired-soft: #f1edf4;
+  --color-conflict: #8d3a69;
+  --color-conflict-soft: #f7e8f2;
+
+  /* ---- 三端身份色（员工=蓝 买家=蓝 卖家=绿） ---- */
+  --color-buyer: #0b57d0;
+  --color-buyer-soft: #e8f0fe;
+  --color-buyer-container: #d3e3fd;
+  --color-on-buyer-container: #041e49;
+  --color-seller: #137333;
+  --color-seller-soft: #e6f4ea;
+  --color-seller-container: #c4eed0;
+  --color-on-seller-container: #06351c;
+  --color-staff: var(--color-primary);  /* 员工端与主色统一 */
+  --color-staff-soft: var(--color-primary-soft);
+
+  /* ---- 覆盖层 ---- */
+  --color-overlay: rgba(32, 33, 36, 0.32);
+  --color-overlay-subtle: rgba(32, 33, 36, 0.18);
+
+  /* ---- 阴影（克制） ---- */
+  --shadow-xs: 0 1px 2px rgba(60, 64, 67, 0.16);
+  --shadow-sm: 0 1px 2px rgba(60, 64, 67, 0.18);
+  --shadow-md: 0 1px 3px rgba(60, 64, 67, 0.20);
+  --shadow-lg: 0 8px 30px rgba(32, 33, 36, 0.22);
+  --shadow-focus: 0 0 0 3px rgba(11, 87, 208, 0.35);
+
+  /* ---- 圆角（Material 3） ---- */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-control: 12px;      /* 表单控件/chip */
+  --radius-card: 16px;         /* 卡片 */
+  --radius-panel: 24px;        /* 大面板/surface */
+  --radius-nav: 20px;          /* 胶囊导航项 */
   --radius-pill: 999px;
 
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.25rem;
-  --space-6: 1.5rem;
-  --space-8: 2rem;
-  --space-10: 2.5rem;
-  --space-12: 3rem;
+  /* ---- 间距（8px 体系） ---- */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
 
-  --font-family-sans: -apple-system, blinkmacsystemfont, "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
-  --font-size-xs: 0.75rem;
-  --font-size-sm: 0.8125rem;
-  --font-size-body: 0.875rem;
-  --font-size-lead: 1rem;
-  --font-size-section: 1.25rem;
-  --font-size-title: 1.75rem;
-  --line-height-tight: 1.3;
-  --line-height-body: 1.6;
-  --font-weight-medium: 550;
-  --font-weight-semibold: 650;
-  --font-weight-bold: 750;
+  /* ---- 排版 ---- */
+  --font-family-sans: "Google Sans Text", "Roboto", "Noto Sans SC",
+    "PingFang SC", -apple-system, BlinkMacSystemFont, "Hiragino Sans GB",
+    "Microsoft YaHei", sans-serif;
+  --font-family-mono: "SF Mono", "JetBrains Mono", "Fira Code", monospace;
 
+  /* ---- 员工端排版层级（只由 .staff-app 消费） ----
+     使用同一套本地优先字体栈覆盖中英文；Google Sans Text/Roboto 若已安装
+     则保持 Workspace 字形，否则回退到系统 CJK/西文字体，避免运行时下载大体积字体。 */
+  --staff-font-family: "Google Sans Text", "Roboto", "Noto Sans SC",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui,
+    -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --staff-font-size-body: 15px;
+  --staff-font-size-nav: 15px;
+  --staff-font-size-group: 12px;
+  --staff-font-size-title: 32px;
+  --staff-font-size-title-mobile: 26px;
+  --staff-font-size-section: 18px;
+  --staff-font-size-task: 15px;
+  --staff-font-size-meta: 13px;
+  --staff-font-size-button: 15px;
+  --staff-font-weight-regular: 400;
+  --staff-font-weight-medium: 500;
+  --staff-font-weight-semibold: 600;
+  --staff-line-height-body: 1.55;
+  --staff-line-height-title: 1.15;
+
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-body: 13px;      /* 正文 */
+  --font-size-lead: 14px;      /* 引导/标签 */
+  --font-size-base: 15px;
+  --font-size-section: 16px;   /* 区块标题 */
+  --font-size-title: 20px;
+  --font-size-page: 28px;      /* 页面 H1（M3 display-small 密度） */
+  --font-size-display: 28px;
+
+  --line-height-tight: 1.15;
+  --line-height-snug: 1.4;
+  --line-height-body: 1.55;
+  --line-height-relaxed: 1.7;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* ---- 焦点环 ---- */
+  /* portal-compat.css 的 :focus-visible 依赖 --color-focus；阶段 7 tokens 重写时误删导致
+     全部焦点环失效（无障碍回归），此处恢复为 Material 3 主色。 */
+  --color-focus: var(--color-primary);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --focus-ring-color: var(--color-primary);
+  --focus-ring: var(--focus-ring-width) solid var(--focus-ring-color);
+
+  /* ---- z-index 层级 ---- */
+  --z-base: 0;
   --z-sticky: 10;
   --z-navigation: 20;
+  --z-dropdown: 30;
   --z-overlay: 40;
-  --z-toast: 60;
+  --z-drawer: 50;
+  --z-modal: 60;
+  --z-toast: 70;
+  --z-tooltip: 80;
+
+  /* ---- 过渡动画 ---- */
+  --transition-fast: 120ms ease;
+  --transition-base: 180ms ease;
+  --transition-slow: 280ms ease;
+  --transition-reduced: 0ms;
+
+  /* ---- 表格密度 ---- */
+  --table-row-height: 48px;
+  --table-row-height-dense: 42px;
+  --table-cell-padding-x: 12px;
+  --table-cell-padding-y: 8px;
+  --table-header-height: 42px;
+
+  /* ---- 表单控件尺寸 ---- */
+  --control-height-sm: 32px;
+  --control-height: 36px;
+  --control-height-lg: 40px;
+  --control-height-xl: 48px;     /* 全局搜索框 */
+  --control-padding-x: 14px;
+  --control-padding-y: 6px;
+  --control-font-size: var(--font-size-body);
+  --control-border-radius: var(--radius-pill);
+
+  /* ---- 布局尺寸（模板：64px appbar / 240px 侧栏） ---- */
+  --sidebar-width: 240px;
+  --sidebar-width-collapsed: 78px;
+  --topbar-height: 64px;
+  --content-max-width: 1600px;
+  --content-padding: 24px;
+
+  /* ---- 断点 ---- */
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+}
+
+/* ---- 减少动画偏好 ---- */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-fast: var(--transition-reduced);
+    --transition-base: var(--transition-reduced);
+    --transition-slow: var(--transition-reduced);
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

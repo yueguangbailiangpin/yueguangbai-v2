@@ -7,6 +7,7 @@ import { resolveStaffMarketplaceCodes } from '../staff-assignment/data-scope';
 export function registerBuyerInvitationDutyGuard(app:Hono<any>):void{
   const guard=async(context:any,next:any)=>{
     const actor=context.get('staffAuthorization') as AssignmentStaffAuthorization|undefined;
+    // 签发权限开放 pre_sales 与总管理员（获客 CRM 已随 D-056 退役）。
     if(!actor||actor.staffStatus!=='ACTIVE'||(!actor.roles.has('owner')&&!actor.roles.has('pre_sales'))){
       return context.json(apiFailure('FORBIDDEN','只有售前或总管理员可以处理买家注册链接',requestIdFromContext(context)),403);
     }

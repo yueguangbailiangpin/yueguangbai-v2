@@ -27,10 +27,10 @@ export interface ResolvedCloudflareRuntime {
 }
 
 const DISABLED_RELEASE_FLAGS = [
-  'DRIVE_ARCHIVE_ENABLED',
-  'DRIVE_ARCHIVE_COPY_ENABLED',
-  'DRIVE_ARCHIVE_PROXY_READ_ENABLED',
-  'DRIVE_ARCHIVE_R2_DELETE_ENABLED',
+  'ARCHIVE_SELECTOR_ENABLED',
+  'ARCHIVE_DRIVE_UPLOAD_ENABLED',
+  'ARCHIVE_HOT_DELETE_ENABLED',
+  'ARCHIVE_RESTORE_WORKER_ENABLED',
 ] as const;
 
 export async function resolveCloudflareRuntime(
@@ -66,8 +66,6 @@ export async function resolveCloudflareRuntime(
     || Object.keys(bindings).some((name) => name.startsWith('STAFF_MCP_'))
     || !validStaffAccessReleaseBindings(bindings, appOrigin)
     || !booleanFlag(bindings.SCHEDULED_OPERATIONS_ENABLED)
-    || !booleanFlag(bindings.OUTBOX_DELIVERY_ENABLED)
-    || !booleanFlag(bindings.ACQUISITION_MAINTENANCE_ENABLED)
     || !releaseSha
     || !await validOperationalAlertReleaseBindings(bindings,environment)) return null;
 
@@ -96,9 +94,7 @@ export function isApiRequestPath(pathname: string): boolean {
   return pathname === '/health'
     || pathname === '/ready'
     || pathname === '/api'
-    || pathname.startsWith('/api/')
-    || pathname === '/mcp'
-    || pathname === '/.well-known/oauth-protected-resource/mcp';
+    || pathname.startsWith('/api/');
 }
 
 export function isAllowedSameOriginApiRequest(

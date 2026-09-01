@@ -5,7 +5,14 @@ import {
   normalizeFrontendControllerError,
 } from '../api/errors';
 import type { RequestIdentity } from '../api/identity-request';
-import { createIdentityFileReadIntent } from './file-read-api';
+import {
+  createIdentityFileReadIntentCoalesced,
+} from './file-read-api';
+import {
+  peekSessionBlob,
+  sessionBlobCacheKey,
+  storeSessionBlob,
+} from './blob-session-cache';
 import {
   safeFileReferenceSchema,
   type SafeFileReference,
@@ -67,6 +74,17 @@ export class FileReadController {
   private retryAvailableAt: number | null = null;
   private cancelRetryAvailability: (() => void) | null = null;
   private objectUrl: string | null = null;
+  private ownsObjectUrl = true;
+  private sessionCacheKey: string | null = null;
+  private providerCacheKey: string | null = null;
+
+  // Tests inject deterministic object-URL adapters; the shared session cache
+  // only participates for the default browser adapter to stay invisible.
+  // Resolved lazily because class fields initialize before constructor
+  // parameter properties are assigned.
+  private sessionCacheEnabled(): boolean {
+    return this.objectUrls === browserObjectUrlAdapter;
+  }
 
   constructor(
     private readonly client: QueryClient,
@@ -94,6 +112,7 @@ export class FileReadController {
       return Promise.resolve();
     }
     this.identity = identity;
+    this.providerCacheKey = null;
     this.publish({
       ...initialFileReadSnapshot,
       identity,
@@ -128,6 +147,9 @@ export class FileReadController {
     }
     this.identity = provider.identity;
     this.provider = provider;
+    this.providerCacheKey = provider.cacheKey
+      ? provider.cacheKey()
+      : null;
     this.publish({
       ...initialFileReadSnapshot,
       identity: provider.identity,
@@ -184,8 +206,11 @@ export class FileReadController {
 
   release(): void {
     if (this.objectUrl !== null) {
-      this.objectUrls.revokeObjectURL(this.objectUrl);
+      if (this.ownsObjectUrl) {
+        this.objectUrls.revokeObjectURL(this.objectUrl);
+      }
       this.objectUrl = null;
+      this.ownsObjectUrl = true;
     }
     if (this.snapshot.ephemeralObjectUrl !== null) {
       this.publish({
@@ -217,6 +242,50 @@ export class FileReadController {
 
   private async createAndDownload(): Promise<void> {
     if (!this.identity || (!this.reference && !this.provider)) return;
+    this.sessionCacheKey = null;
+    if (this.sessionCacheEnabled() && this.identity !== null && this.reference !== null) {
+      this.sessionCacheKey = sessionBlobCacheKey({
+        identity: this.identity,
+        reference: this.reference,
+      });
+    } else if (this.sessionCacheEnabled() && this.providerCacheKey !== null) {
+      this.sessionCacheKey = this.providerCacheKey;
+    }
+    if (this.sessionCacheKey !== null) {
+      const cached = peekSessionBlob(this.sessionCacheKey);
+      if (cached) {
+        this.ownsObjectUrl = false;
+        this.objectUrl = cached.objectUrl;
+        this.releaseIntentAuthority();
+        // The state machine requires the full chain; replay it synchronously.
+        this.publish({
+          ...this.snapshot,
+          state: 'READ_READY',
+          safeError: null,
+        });
+        this.publish({
+          ...this.snapshot,
+          state: 'DOWNLOADING',
+          safeError: null,
+        });
+        this.publish({
+          ...this.snapshot,
+          state: 'READY',
+          contentType: cached.contentType,
+          byteSize: cached.byteSize,
+          ephemeralObjectUrl: cached.objectUrl,
+          progress: Object.freeze({
+            loadedBytes: cached.byteSize,
+            totalBytes: cached.byteSize,
+            percent: 100,
+          }),
+          safeError: null,
+          canRetry: false,
+          restartRequired: false,
+        }, true);
+        return;
+      }
+    }
     this.abortController = new AbortController();
     this.createKey = this.generateKey();
     try {
@@ -231,7 +300,7 @@ export class FileReadController {
           access_token_available: data.accessTokenAvailable,
           replayed: data.replayed,
         }, requestId: data.requestId }))
-        : await createIdentityFileReadIntent({
+        : await createIdentityFileReadIntentCoalesced({
           client: this.client,
           identity: this.identity,
           reference: this.reference!,
@@ -302,8 +371,18 @@ export class FileReadController {
       });
       this.intent.accessToken = null;
       const blob = new Blob([result.bytes], { type: result.contentType });
-      this.release();
-      this.objectUrl = this.objectUrls.createObjectURL(blob);
+      const stored = this.sessionCacheKey !== null
+        ? storeSessionBlob(this.sessionCacheKey, blob, result.contentType)
+        : null;
+      if (stored !== null) {
+        this.release();
+        this.ownsObjectUrl = false;
+        this.objectUrl = stored.objectUrl;
+      } else {
+        this.release();
+        this.ownsObjectUrl = true;
+        this.objectUrl = this.objectUrls.createObjectURL(blob);
+      }
       this.releaseIntentAuthority();
       this.publish({
         ...this.snapshot,

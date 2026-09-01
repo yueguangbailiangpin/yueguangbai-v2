@@ -50,8 +50,12 @@ export interface SellerPortalMeDto {
     id: string;
     seller_code: string;
     name: string;
-    marketplace_code: 'JP';
+    marketplace_code: 'AMAZON_JP';
     status: 'ACTIVE';
+    /** 结算收款人姓名（P16；null = 未填写，设置页可后补）。 */
+    settlement_account_name: string | null;
+    /** 结算收款支付宝账号（P16；null = 未填写）。 */
+    settlement_account_identifier: string | null;
   };
   access: {
     read_scope: 'ORGANIZATION' | 'ASSIGNED_STORES';
@@ -63,7 +67,7 @@ export interface SellerPortalMeDto {
 
 export interface SellerPortalStoreDto {
   id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   canonical_marketplace_code: CanonicalMarketplaceCode;
   transaction_currency_code: CurrencyCode;
   transaction_currency_exponent: CurrencyExponent;
@@ -95,7 +99,7 @@ export interface SellerPortalProductDto {
     id: string;
     display_name: string;
   };
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   seller_code: string;
   asin: string;
   status: ProductStatus;
@@ -104,6 +108,9 @@ export interface SellerPortalProductDto {
   created_at: number;
   updated_at: number;
   current_version: SellerPortalProductVersionDto;
+  /** Stage 7.5 batch 2: responsibility marker only (never narrows visibility). */
+  primary_contact_member_id: string | null;
+  primary_contact_member_name: string | null;
 }
 
 export interface SellerPortalProductApplicationDto {
@@ -112,13 +119,14 @@ export interface SellerPortalProductApplicationDto {
     id: string;
     display_name: string;
   };
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   asin: string;
   product_name: string;
   search_keywords: readonly string[];
   product_url: string | null;
   buyer_visible_notes: string | null;
   seller_notes: string | null;
+  ordering_guide_expected_amount_jpy: number | null;
   status: ProductApplicationStatus;
   review_reason: string | null;
   product_id: string | null;
@@ -143,7 +151,7 @@ export interface SellerPortalDemandBatchDto {
     search_keywords: readonly string[];
     product_url: string | null;
   };
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   task_type: DemandTaskType;
   target_quantity: number;
   held_quantity: number;
@@ -174,6 +182,7 @@ export interface SubmitSellerPortalProductApplicationBody {
   product_url: string | null;
   buyer_visible_notes: string | null;
   seller_notes: string | null;
+  ordering_guide_expected_amount_jpy: number;
   image_files: readonly {
     file_object_id: string;
     expected_file_version: number;
@@ -190,7 +199,4 @@ export interface SubmitSellerPortalDemandBatchBody {
   target_quantity: number;
   buyer_visible_notes: string | null;
   seller_notes: string | null;
-  open_at: number;
-  reservation_deadline: number;
-  order_deadline: number;
 }

@@ -44,7 +44,7 @@ export async function seedPhase3GInstructionFixture(
       status, current_version_no, version, published_at,
       initial_deadline_at, resubmission_deadline_at,
       expired_at, cancelled_at, completed_at, created_at, updated_at
-    ) VALUES (?, ?, ?, 'JP', 'UNPUBLISHED', 0, 1, NULL,
+    ) VALUES (?, ?, ?, 'AMAZON_JP', 'UNPUBLISHED', 0, 1, NULL,
       NULL, NULL, NULL, NULL, NULL, ?, ?)
   `).bind(
     instructionId,
@@ -223,7 +223,7 @@ export async function bindPhase3GEvidenceFixture(
         evidence_submission_id, current_evidence_version_id,
         formal_order_id, status, version, claimed_at, updated_at,
         finalized_at, released_at
-      ) VALUES (?, 'JP', ?, ?, ?, NULL, 'PROVISIONAL', 1, ?, ?, NULL, NULL)
+      ) VALUES (?, 'AMAZON_JP', ?, ?, ?, NULL, 'PROVISIONAL', 1, ?, ?, NULL, NULL)
     `).bind(
       `phase3g-order-claim-${input.suffix}`,
       input.amazonOrderNumber,

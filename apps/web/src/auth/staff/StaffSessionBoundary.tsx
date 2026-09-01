@@ -6,6 +6,8 @@ import { staffAuthApi, type StaffAuthApiAdapter, type StaffSession } from './sta
 
 const StaffSessionContext = createContext<StaffSession | null>(null);
 
+export { StaffSessionContext };
+
 export function useCurrentStaffSession(): StaffSession {
   const session = useContext(StaffSessionContext);
   if (!session) throw new Error('staff_session_context_unavailable');

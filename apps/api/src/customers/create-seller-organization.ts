@@ -17,10 +17,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   batchWithFixedAssignmentRetry,
   prepareInitialSellerAssignment,
 } from '../staff-assignment';
@@ -35,7 +31,6 @@ import {
   type CustomerMasterActor,
 } from './master-data-shared';
 import {
-  legacyMarketplaceProjection,
   resolveMarketplace,
 } from '../marketplaces/registry';
 
@@ -159,20 +154,6 @@ export async function createSellerOrganization(
       replayed: false,
     };
 
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `seller-org-created:${organizationId}`,
-      eventType: 'SELLER_ORGANIZATION_CREATED',
-      aggregateType: 'SELLER_ORGANIZATION',
-      aggregateId: organizationId,
-      payload: {
-        seller_organization_id: organizationId,
-        seller_code: sellerCode,
-        marketplace_code: input.marketplaceCode,
-        status: 'DISABLED',
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -222,7 +203,7 @@ export async function createSellerOrganization(
         )
       `).bind(
         organizationId,
-        legacyMarketplaceProjection(),
+        'AMAZON_JP',
         sellerCode,
         channel.id,
         channel.id,
@@ -309,7 +290,6 @@ export async function createSellerOrganization(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,
@@ -345,7 +325,7 @@ export async function createSellerOrganization(
       database,
       () => prepareInitialSellerAssignment(database, {
         sellerOrganizationId: organizationId,
-        marketplaceCode: 'JP',
+        marketplaceCode: 'AMAZON_JP',
         actorType: 'STAFF',
         actorId: command.actor.staffId,
         requestId: command.requestId ?? null,

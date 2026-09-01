@@ -10,8 +10,10 @@ import { useLocation } from 'react-router';
 import '../test/msw/lifecycle';
 import { FrontendApiError, isFrontendApiError } from '../api/errors';
 import { type RequestIdentity } from '../api/identity-request';
-import { protectedResourcesApi } from '../api/protected-resources';
 import { queryKeys } from '../api/query-client';
+import { buyerApi } from '../buyer/api/client';
+import { sellerApi } from '../seller/api/client';
+import { staffApi } from '../staff/api/client';
 import { RequestIdDisplay } from '../ui/primitives';
 import {
   buyerSessionFixture,
@@ -32,9 +34,9 @@ const identityPaths = [
 ] as const;
 
 function readProtected(identity: RequestIdentity, client: QueryClient, signal?: AbortSignal) {
-  if (identity === 'buyer') return protectedResourcesApi.readBuyerMe(client, signal);
-  if (identity === 'seller') return protectedResourcesApi.readSellerMe(client, signal);
-  return protectedResourcesApi.readStaffAssignments(client, signal);
+  if (identity === 'buyer') return buyerApi.me(client, signal);
+  if (identity === 'seller') return sellerApi.me(client, signal);
+  return staffApi.assignments(client, signal);
 }
 
 function seedEveryIdentity(client: QueryClient): void {

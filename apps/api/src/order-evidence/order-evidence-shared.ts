@@ -57,7 +57,7 @@ export class OrderEvidenceError extends Error {
 export function validateBuyerOrderEvidenceActor(
   actor: BuyerOrderEvidenceActor,
 ): void {
-  if (actor.marketplaceCode !== 'JP') {
+  if (actor.marketplaceCode !== 'AMAZON_JP') {
     throw new OrderEvidenceError('VALIDATION_ERROR', 400);
   }
   if (actor.accessStatus !== 'ACTIVE') {

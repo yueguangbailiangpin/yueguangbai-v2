@@ -12,14 +12,14 @@ export const statusLabels: Readonly<Record<string, string>> = Object.freeze({
   CHANGES_REQUESTED: '需要修改',
   VERIFIED: '资料已核验',
   WITHDRAWN: '已撤回',
-  CONSUMED: '已用于确认订单',
+  CONSUMED: '已生成订单',
   CONFIRMED: '已确认',
   DUE: '待返款',
   PARTIALLY_PAID: '部分返款',
   PAID: '已返款',
   OVERPAID: '超额返款',
   PAYMENT_RECORDED: '记录付款',
-  PAYMENT_REVERSED: '付款冲正',
+  PAYMENT_REVERSED: '付款撤回',
 });
 
 export function statusLabel(value: string): string {
@@ -38,14 +38,9 @@ export function reviewTypeLabel(value: string): string {
 }
 
 export const marketplaceLabels: Readonly<Record<string, string>> = Object.freeze({
-  JP: '日本站',
-  AMAZON_JP: '日本亚马逊',
-  US: '美国站',
-  AMAZON_US: '美国亚马逊',
-  KR: '韩国站',
+  AMAZON_JP: '日本站',
+  AMAZON_US: '美国站',
   COUPANG_KR: '韩国 Coupang',
-  RAKUTEN_JP: '乐天日本站（未接入）',
-  TIKTOK_JP: 'TikTok 日本站（未接入）',
 });
 
 export function marketplaceLabel(value: string): string {

@@ -10,6 +10,7 @@ import { BuyerPagination } from '../shared/BuyerPagination';
 import { BuyerEmpty, BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
 import { BuyerJourney } from '../shared/BuyerJourney';
 import { reviewTypeLabel } from '../shared/status';
+import { StageContactCard, STAGE_FOR_ROUTE } from '../shared/StageContactCard';
 
 export function BuyerFormalOrdersPage(): React.JSX.Element {
   const client = useQueryClient();
@@ -47,12 +48,13 @@ export function BuyerFormalOrdersPage(): React.JSX.Element {
   }
   return (
     <section className="buyer-page buyer-flow-page buyer-list-page">
-      <BuyerJourney current="materials" />
+      <BuyerJourney current="evidence" />
       <PageHeader
         eyebrow="订单资料阶段"
         title="正式订单"
-        description="这里显示确认时保存的只读订单快照。"
+        description="这里显示确认订单时保存的信息，之后不会变。"
       />
+    <StageContactCard stage={STAGE_FOR_ROUTE['/buyer/orders']} />
       <form className="buyer-filter-form" role="search" onSubmit={submit} aria-label="正式订单筛选">
         <FormField label="市场" htmlFor="order-market">
           <Select name="marketplace" defaultValue="">
@@ -73,7 +75,7 @@ export function BuyerFormalOrdersPage(): React.JSX.Element {
             ))}
           </Select>
         </FormField>
-        <FormField label="确认业务日期" htmlFor="order-confirmed-date">
+        <FormField label="确认日期" htmlFor="order-confirmed-date">
           <TextInput name="confirmed_business_date" type="date" />
         </FormField>
         <FormField label="正式订单号" htmlFor="order-id">
@@ -105,7 +107,7 @@ export function BuyerFormalOrdersPage(): React.JSX.Element {
                   <dd>{formatDateOnly(item.amazon_order_date)}</dd>
                 </div>
                 <div>
-                  <dt>确认业务日期</dt>
+                  <dt>确认日期</dt>
                   <dd>{item.confirmed_business_date}</dd>
                 </div>
                 <div>

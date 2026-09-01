@@ -10,10 +10,6 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
 import { requireCurrentOrderEvidenceForBuyer } from './order-evidence-records';
 import {
   cleanOrderEvidenceIdentifier,
@@ -104,22 +100,6 @@ export async function withdrawOrderEvidence(
       withdrawn_at: now,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey:
-        `order-evidence-withdrawn:${submissionId}:${response.version}`,
-      eventType: 'ORDER_EVIDENCE_WITHDRAWN',
-      aggregateType: 'ORDER_EVIDENCE',
-      aggregateId: submissionId,
-      payload: {
-        submission_id: submissionId,
-        reservation_id: source.reservation_id,
-        buyer_customer_id: source.buyer_customer_id,
-        evidence_version_id: source.evidence_version_id,
-        aggregate_version: response.version,
-      },
-      createdAt: now,
-    });
 
     await database.batch([
       database.prepare(`
@@ -185,7 +165,6 @@ export async function withdrawOrderEvidence(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

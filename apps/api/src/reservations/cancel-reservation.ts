@@ -16,10 +16,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   cleanReservationIdentifier,
   insertReservationEventStatement,
   normalizeReservationError,
@@ -27,6 +23,7 @@ import {
   ReservationError,
   type BuyerReservationActor,
 } from './reservation-shared';
+import { prepareWorkItemCompletionStatements } from '../staff-assignment';
 
 interface CancellationSource {
   reservation_id: string;
@@ -130,16 +127,6 @@ export async function cancelReservation(
       version: nextVersion,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey:
-        `reservation-cancelled:${reservationId}:${nextVersion}`,
-      eventType: 'RESERVATION_CANCELLED',
-      aggregateType: 'RESERVATION',
-      aggregateId: reservationId,
-      payload: response,
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -199,7 +186,6 @@ export async function cancelReservation(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,
@@ -225,7 +211,23 @@ export async function cancelReservation(
       ),
     ];
 
-    await database.batch(statements);
+    await database.batch([
+      ...statements,
+      // 买家取消 PENDING_REVIEW 预约时同步取消 RESERVATION_DECISION 待办，
+      // 避免队列残留点开必报错的死项。
+      ...await prepareWorkItemCompletionStatements(database, {
+        workType: 'RESERVATION_DECISION',
+        sourceEntityType: 'RESERVATION',
+        sourceEntityId: reservationId,
+        outcome: 'CANCELLED',
+        actorType: 'SYSTEM',
+        actorId: `buyer:${command.actor.buyerCustomerId}`,
+        requestId: command.requestId ?? null,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        reason: 'reservation cancelled by buyer',
+        now,
+      }),
+    ]);
     return response;
   } catch (error) {
     const normalized = normalizeReservationError(error);

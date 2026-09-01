@@ -9,16 +9,12 @@ import {
 } from '../foundation/idempotency';
 import { normalizeStaffEmail } from '../staff-auth/cloudflare-access';
 
-const TARGET_SCHEMA = 70;
-const STAGING_BUYER_CHANNEL_ID = 'staging-buyer-channel';
+const TARGET_SCHEMA = 41;
+const STAGING_BUYER_CHANNEL_ID = 'buyer-channel-wechat-b';
 const STAGING_DATABASE_NAME = /^yueguangbai-v2-staging(?:-[a-z0-9-]+)?$/u;
 const DATABASE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const STAGING_ZERO_STOCK_TABLES = [
-  'acquisition_channels',
-  'acquisition_leads',
-  'acquisition_prospects',
   'audit_events',
-  'buyer_channels',
   'buyer_customers',
   'buyer_refund_obligations',
   'customer_account_personas',
@@ -27,10 +23,8 @@ const STAGING_ZERO_STOCK_TABLES = [
   'demand_batches',
   'file_objects',
   'formal_orders',
-  'integration_outbox',
   'order_evidence_submissions',
   'order_instructions',
-  'platform_order_identities',
   'product_applications',
   'product_reservations',
   'products',
@@ -38,11 +32,9 @@ const STAGING_ZERO_STOCK_TABLES = [
   'seller_member_invitations',
   'seller_organization_members',
   'seller_organizations',
-  'seller_partner_import_batches',
   'seller_payables',
   'seller_payments',
   'seller_stores',
-  'standard_products',
 ] as const;
 
 export interface StagingFirstOwnerInput {
@@ -156,11 +148,6 @@ export async function bootstrapStagingFirstOwner(
       }),
       now,
     ),
-    database.prepare(`INSERT INTO buyer_channels(
-      id,code,name,status,next_sequence,version,created_at,updated_at,disabled_at
-    ) VALUES(?,'STG','Staging synthetic buyer','ACTIVE',1,1,?,?,NULL)`).bind(
-      STAGING_BUYER_CHANNEL_ID, now, now,
-    ),
     stagingBootstrapAuditStatement(
       database,
       `staging-audit-${crypto.randomUUID()}`,
@@ -227,30 +214,20 @@ function normalizeInput(input: StagingFirstOwnerInput): StagingFirstOwnerInput {
 function emptyStagingAssertion(database: SqlDatabase): SqlStatement {
   return database.prepare(`INSERT INTO transaction_assertions(assertion_value)
     SELECT CASE WHEN
-      EXISTS(SELECT 1 FROM app_schema_state WHERE singleton_id=1 AND schema_version=70)
+      EXISTS(SELECT 1 FROM app_schema_state WHERE singleton_id=1 AND schema_version=${TARGET_SCHEMA})
       AND NOT EXISTS(SELECT 1 FROM staff_users)
       AND NOT EXISTS(SELECT 1 FROM staff_role_assignments)
       AND NOT EXISTS(SELECT 1 FROM staff_email_identities)
       AND NOT EXISTS(SELECT 1 FROM staff_marketplace_scopes)
-      AND NOT EXISTS(SELECT 1 FROM staff_team_memberships)
-      AND NOT EXISTS(SELECT 1 FROM staff_team_leaders)
       AND NOT EXISTS(SELECT 1 FROM staff_permission_overrides)
-      AND NOT EXISTS(SELECT 1 FROM staff_availability)
-      AND NOT EXISTS(SELECT 1 FROM staff_assignment_fallbacks)
       AND NOT EXISTS(SELECT 1 FROM staff_sessions)
-      AND NOT EXISTS(SELECT 1 FROM staff_mcp_subject_bindings)
-      AND NOT EXISTS(SELECT 1 FROM staff_mcp_token_revocations)
-      AND NOT EXISTS(SELECT 1 FROM staff_mcp_replay_records)
-      AND NOT EXISTS(SELECT 1 FROM staff_mcp_rate_limits)
       AND NOT EXISTS(SELECT 1 FROM staff_assignment_events)
-      AND NOT EXISTS(SELECT 1 FROM staff_assignment_cursors)
-      AND NOT EXISTS(SELECT 1 FROM staff_reassignment_batches)
-      AND NOT EXISTS(SELECT 1 FROM staff_reassignment_batch_items)
       AND NOT EXISTS(SELECT 1 FROM staff_work_items)
-      AND NOT EXISTS(SELECT 1 FROM staff_role_consolidation_mappings)
       AND NOT EXISTS(SELECT 1 FROM staff_authorization_events)
       ${STAGING_ZERO_STOCK_TABLES.map((table) =>
         `AND NOT EXISTS(SELECT 1 FROM ${table})`).join('\n      ')}
+      AND (SELECT COUNT(*) FROM buyer_channels
+        WHERE next_sequence<>1 OR status<>'ACTIVE')=0
     THEN 1 ELSE 0 END`);
 }
 
@@ -269,10 +246,10 @@ function finalAuthorityAssertion(
         WHERE id=? AND staff_id=? AND status='ACTIVE')=1
       AND (SELECT COUNT(*) FROM staff_marketplace_scopes)=0
       AND (SELECT COUNT(*) FROM staff_sessions)=0
-      AND (SELECT COUNT(*) FROM buyer_channels)=1
+      AND (SELECT COUNT(*) FROM buyer_channels WHERE code IN ('B','C'))=2
       AND (SELECT COUNT(*) FROM buyer_channels
-        WHERE id='staging-buyer-channel' AND code='STG'
-          AND status='ACTIVE' AND version=1)=1
+        WHERE id='buyer-channel-wechat-b' AND code='B'
+          AND status='ACTIVE')=1
       AND (SELECT COUNT(*) FROM staff_authorization_events
         WHERE staff_id=? AND authorization_version=1
           AND event_type='STAGING_FIRST_OWNER_BOOTSTRAPPED')=1
@@ -280,8 +257,8 @@ function finalAuthorityAssertion(
         WHERE aggregate_type='STAFF' AND aggregate_id=?
           AND event_type='STAGING_FIRST_OWNER_BOOTSTRAPPED')=1
     THEN 1 ELSE 0 END`).bind(
-      staffId, staffId, identityId, staffId, staffId, staffId,
-    );
+    staffId, staffId, identityId, staffId, staffId, staffId,
+  );
 }
 
 async function bootstrapState(database: SqlDatabase): Promise<{
@@ -293,25 +270,15 @@ async function bootstrapState(database: SqlDatabase): Promise<{
     +(SELECT COUNT(*) FROM staff_role_assignments)
     +(SELECT COUNT(*) FROM staff_email_identities)
     +(SELECT COUNT(*) FROM staff_marketplace_scopes)
-    +(SELECT COUNT(*) FROM staff_team_memberships)
-    +(SELECT COUNT(*) FROM staff_team_leaders)
     +(SELECT COUNT(*) FROM staff_permission_overrides)
-    +(SELECT COUNT(*) FROM staff_availability)
-    +(SELECT COUNT(*) FROM staff_assignment_fallbacks)
     +(SELECT COUNT(*) FROM staff_sessions)
-    +(SELECT COUNT(*) FROM staff_mcp_subject_bindings)
-    +(SELECT COUNT(*) FROM staff_mcp_token_revocations)
-    +(SELECT COUNT(*) FROM staff_mcp_replay_records)
-    +(SELECT COUNT(*) FROM staff_mcp_rate_limits)
     +(SELECT COUNT(*) FROM staff_assignment_events)
-    +(SELECT COUNT(*) FROM staff_assignment_cursors)
-    +(SELECT COUNT(*) FROM staff_reassignment_batches)
-    +(SELECT COUNT(*) FROM staff_reassignment_batch_items)
     +(SELECT COUNT(*) FROM staff_work_items)
-    +(SELECT COUNT(*) FROM staff_role_consolidation_mappings)
     +(SELECT COUNT(*) FROM staff_authorization_events) AS staff_total,
     ${STAGING_ZERO_STOCK_TABLES.map((table) =>
-      `(SELECT COUNT(*) FROM ${table})`).join('\n    +')} AS business_total`
+      `(SELECT COUNT(*) FROM ${table})`).join('\n    +')}
+    +(SELECT COUNT(*) FROM buyer_channels
+      WHERE next_sequence<>1 OR status<>'ACTIVE') AS business_total`
   ).first<{staff_total:number;business_total:number}>();
   return {
     staffEmpty: Number(row?.staff_total ?? -1) === 0,

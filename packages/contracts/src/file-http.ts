@@ -30,15 +30,15 @@ export const FILE_HTTP_PURPOSE_ROUTES = Object.freeze({
     purpose: 'SELLER_SETTLEMENT_PROOF',
     visibility: 'INTERNAL_ONLY',
   },
-  staffSellerOrderChatScreenshot: {
-    path: '/api/staff/file-uploads/seller-order-chat-screenshots/intents',
-    purpose: 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
-    visibility: 'SELLER_VISIBLE',
-  },
   staffProductImage: {
     path: '/api/staff/file-uploads/product-images/intents',
     purpose: 'PRODUCT_IMAGE',
     visibility: 'SELLER_VISIBLE',
+  },
+  staffServiceChannelQr: {
+    path: '/api/staff/file-uploads/service-channel-qr/intents',
+    purpose: 'SERVICE_CHANNEL_QR',
+    visibility: 'BUYER_VISIBLE',
   },
 } as const satisfies Record<string, {
   path: string;
@@ -133,6 +133,9 @@ export const FILE_HTTP_LIFECYCLE_PATHS = Object.freeze({
   buyerReadIntent: '/api/buyer-portal/files/:fileObjectId/read-intents',
   sellerReadIntent: '/api/seller-portal/files/:fileObjectId/read-intents',
   staffReadIntent: '/api/staff/files/:fileObjectId/read-intents',
+  buyerReadIntentBatch: '/api/buyer-portal/file-read-intents/batch',
+  sellerReadIntentBatch: '/api/seller-portal/file-read-intents/batch',
+  staffReadIntentBatch: '/api/staff/file-read-intents/batch',
   buyerRead: '/api/buyer-portal/file-read-intents/:id/content',
   sellerRead: '/api/seller-portal/file-read-intents/:id/content',
   staffRead: '/api/staff/file-read-intents/:id/content',

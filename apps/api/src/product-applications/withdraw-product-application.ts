@@ -15,10 +15,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   cleanApplicationIdentifier,
   insertProductApplicationEventStatement,
   normalizeProductApplicationError,
@@ -27,6 +23,7 @@ import {
   ProductApplicationError,
   type SellerProductApplicationActor,
 } from './product-application-shared';
+import { prepareWorkItemCompletionStatements } from '../staff-assignment';
 
 interface ApplicationSource {
   application_id: string;
@@ -140,22 +137,6 @@ export async function withdrawProductApplication(
       application_version: nextVersion,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey:
-        `product-application-withdrawn:${applicationId}`,
-      eventType: 'PRODUCT_APPLICATION_WITHDRAWN',
-      aggregateType: 'PRODUCT_APPLICATION',
-      aggregateId: applicationId,
-      payload: {
-        application_id: applicationId,
-        seller_organization_id: source.organization_id,
-        store_id: source.store_id,
-        status: 'WITHDRAWN',
-        application_version: nextVersion,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -212,7 +193,6 @@ export async function withdrawProductApplication(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,
@@ -235,7 +215,23 @@ export async function withdrawProductApplication(
       ),
     ];
 
-    await database.batch(statements);
+    await database.batch([
+      ...statements,
+      // 卖家撤回 SUBMITTED 申请时同步取消 PRODUCT_APPLICATION_REVIEW 待办，
+      // 避免队列残留点开必报错的死项。
+      ...await prepareWorkItemCompletionStatements(database, {
+        workType: 'PRODUCT_APPLICATION_REVIEW',
+        sourceEntityType: 'PRODUCT_APPLICATION',
+        sourceEntityId: applicationId,
+        outcome: 'CANCELLED',
+        actorType: 'SYSTEM',
+        actorId: `seller:${command.actor.memberId}`,
+        requestId: command.requestId ?? null,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        reason: 'product application withdrawn by seller',
+        now,
+      }),
+    ]);
     return response;
   } catch (error) {
     const normalized =

@@ -1,10 +1,16 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { RateSummaryCard } from '../shared/RateSummaryCard';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
+import { z } from 'zod';
 import { isFrontendApiError } from '../../api/errors';
+import { identityApiRequest } from '../../api/identity-request';
+import { operationHeaders } from '../../api/idempotency';
 import { useCurrentStaffSession } from '../../auth/staff/StaffSessionBoundary';
+import { useFileUpload } from '../../buyer/shared/useFileUpload';
+import { FileDropZone } from '../../ui/FileDropZone';
 import {
-  Alert, Button, Card, DataTable, EmptyState, FormField,
+  Alert, Button, Card, Checkbox, DataTable, EmptyState, FormField,
   RequestIdDisplay, Select, StatusBadge, TextInput,
 } from '../../ui/primitives';
 import { staffApi } from '../api/client';
@@ -18,6 +24,7 @@ import {
   StaffMutationAuthority,
   type StaffMutationRequest,
 } from '../mutations/StaffMutationAuthority';
+import { StaffProtectedImage } from '../shared/StaffProtectedImage';
 import { formatShanghai } from '../shared/format';
 
 export function ProductSchedulingWorkspace(): React.JSX.Element {
@@ -62,10 +69,12 @@ function ProductList(): React.JSX.Element {
         description="请检查搜索条件，或确认产品所在卖家/买家在您的有效数据范围内。" />
       : <Card><DataTable caption="员工产品库"><thead><tr>
           <th scope="col">产品</th><th scope="col">店铺 / ASIN</th>
+          <th scope="col">主要对接人</th>
           <th scope="col">下单节奏</th><th scope="col">状态</th><th scope="col">操作</th>
         </tr></thead><tbody>{query.data.items.map((product) => <tr key={product.product_id}>
-          <th scope="row">{product.product_name}<small>版本 {product.current_version_no}</small></th>
+          <th scope="row">{product.product_name}<small>当前 v{product.current_version_no}</small></th>
           <td>{product.store_name}<small>{product.asin}</small></td>
+          <td>{product.primary_contact_member_name ?? '未设置'}</td>
           <td>{cadenceLabel(product.cadence)}</td>
           <td><StatusBadge tone={product.status === 'ACTIVE' ? 'success' : 'neutral'}>
             {product.status === 'ACTIVE' ? '有效' : '已停用'}
@@ -117,7 +126,10 @@ function ProductDetail({ productId }: { productId: string }): React.JSX.Element 
         <p>周六、周日及所有节假日连续计入，不接入工作日日历。</p>
         <CadenceExamples /></Card>
     </section>
+    <PrimaryContactCard product={product} />
+    <RateSummaryCard organizationId={null} />
     {canEdit ? <ProductVersionForm product={product} /> : null}
+    {product.versions.length > 0 ? <MainImageCard product={product} canEdit={canEdit} /> : null}
     <section aria-labelledby="product-demands-title"><h2 id="product-demands-title">需求与预约</h2>
       {product.demands.length === 0 ? <EmptyState title="暂无需求" description="该产品还没有需求记录。" />
         : <Card><DataTable caption="产品需求排期"><thead><tr><th scope="col">需求</th>
@@ -134,12 +146,115 @@ function ProductDetail({ productId }: { productId: string }): React.JSX.Element 
             </Link></td>
           </tr>)}</tbody></DataTable></Card>}
     </section>
-    <section aria-labelledby="product-versions-title"><h2 id="product-versions-title">版本历史</h2>
+    <details className="product-version-history">
+      <summary><h2 id="product-versions-title">版本历史（{product.versions.length}）</h2></summary>
+    <section aria-labelledby="product-versions-title">
       <ol className="version-history">{product.versions.map((version) => <li key={version.product_version_id}>
-        <strong>版本 {version.version_no} · {version.product_name}</strong>
+        <strong>版本 v{version.version_no} · {version.product_name}</strong>
         <span>{cadenceLabel(version.cadence)} · {formatShanghai(version.created_at)}</span>
+        <span>{version.main_image
+          ? `已绑定主图（${version.main_image.client_file_name}）`
+          : '未绑定主图'}</span>
       </li>)}</ol></section>
+    </details>
   </main>;
+}
+
+function MainImageCard({ product, canEdit }: {
+  product: StaffProductDetail;
+  canEdit: boolean;
+}): React.JSX.Element | null {
+  const client = useQueryClient();
+  const [uploader, upload] = useFileUpload();
+  const current = product.versions[0]!;
+  const authority = useMemo(
+    () => new StaffMutationAuthority<Awaited<ReturnType<typeof staffApi.linkMainImage>>>(),
+    [],
+  );
+  const mutation = useMutation({
+    mutationFn: (request: StaffMutationRequest | null) =>
+      request === null
+        ? authority.retry()
+        : authority.execute(request, ({ body }, key) =>
+            staffApi.linkMainImage(client, current.product_version_id, body, key)),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: staffWorkbenchKeys.productsRoot });
+    },
+  });
+  const bound = current.main_image;
+  const uploaded = upload.manifest?.files[0] ?? null;
+  function bind(): void {
+    if (!uploaded) return;
+    mutation.mutate({
+      action: 'link-product-version-main-image',
+      path: `/api/staff/catalog/product-versions/${encodeURIComponent(current.product_version_id)}/main-image`,
+      body: {
+        file_object_id: uploaded.file_object_id,
+        expected_file_version: uploaded.file_version,
+      },
+    });
+  }
+  return <Card className="product-main-image">
+    <h2>当前版本主图 · 当前 v{current.version_no}</h2>
+    {bound ? <>
+      <dl><dt>文件</dt><dd>{bound.client_file_name}</dd>
+        <dt>绑定时间</dt><dd>{formatShanghai(bound.bound_at)}</dd></dl>
+      <StaffProtectedImage
+        alt={`${current.product_name} 主图`}
+        className="protected-product-main-image"
+        fallback={<span className="protected-image-placeholder">主图加载中</span>}
+        reference={{
+          file_object_id: bound.file_object_id,
+          file_version: bound.file_version,
+          purpose: 'PRODUCT_IMAGE',
+          visibility: 'SELLER_VISIBLE',
+        }}
+      />
+      <p>主图与产品版本一次绑定，不可改写；如需更换，请新增产品版本后为新版本绑定。</p>
+    </> : <>
+      <Alert tone="warning">该版本尚未绑定主图；未绑定主图的版本不能通过需求发布审核。</Alert>
+      {canEdit ? <>
+        <FileDropZone
+          id="staff-product-main-image"
+          aria-label="产品主图"
+          accept="image/jpeg,image/png,image/webp"
+          disabled={mutation.isPending}
+          maximumFiles={1}
+          maximumBytes={10 * 1024 * 1024}
+          buttonLabel="选择主图"
+          emptyLabel="尚未选择主图"
+          onFilesChange={(files) => {
+            if (!mutation.isPending) {
+              authority.release();
+              mutation.reset();
+            }
+            const file = files[0];
+            if (file) void uploader.start('staffProductImage', [file]);
+          }}
+        />
+        <p className="staff-upload-state">上传状态：{upload.state}</p>
+        <Button
+          disabled={upload.state !== 'VERIFIED' || !uploaded || mutation.isPending}
+          loading={mutation.isPending}
+          loadingLabel="绑定中…"
+          onClick={bind}
+        >
+          绑定为主图
+        </Button>
+      </> : <p>需要具有商品审核权限的员工补齐主图。</p>}
+    </>}
+    {mutation.isError ? <>
+      <Alert tone="danger">主图绑定未完成。（错误码：{mainImageError(mutation.error)}）</Alert>
+      <RequestIdDisplay
+        requestId={isFrontendApiError(mutation.error) ? mutation.error.requestId : null}
+      />
+    </> : null}
+  </Card>;
+}
+
+function mainImageError(error: unknown): string {
+  if (!isFrontendApiError(error)) return 'UNKNOWN';
+  return error.code;
 }
 
 function ProductVersionForm({ product }: { product: StaffProductDetail }): React.JSX.Element {
@@ -147,11 +262,16 @@ function ProductVersionForm({ product }: { product: StaffProductDetail }): React
   const authority = useMemo(() => new StaffMutationAuthority<
     Awaited<ReturnType<typeof staffApi.addProductVersion>>
   >(), []);
+  const [uploader, upload] = useFileUpload();
   const current = product.versions[0];
+  const [mainImageChoice, setMainImageChoice] = useState<'INHERIT' | 'NONE' | 'UPLOAD'>(
+    current?.main_image ? 'INHERIT' : 'NONE',
+  );
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string|null>(null);
   const [requestId, setRequestId] = useState<string|null>(null);
   if (!current) return <Alert tone="warning">当前产品没有可复制的版本。</Alert>;
+  const uploaded = upload.manifest?.files[0] ?? null;
   async function execute(request: StaffMutationRequest | null): Promise<void> {
     setBusy(true); setMessage(null); setRequestId(null);
     try {
@@ -172,6 +292,11 @@ function ProductVersionForm({ product }: { product: StaffProductDetail }): React
       void execute(null);
       return;
     }
+    if (mainImageChoice === 'UPLOAD'
+      && (upload.state !== 'VERIFIED' || !uploaded)) {
+      setMessage('请先完成新主图上传，或改选继承上一版主图。');
+      return;
+    }
     const data = new FormData(event.currentTarget);
     const body = {
       expected_version: product.aggregate_version,
@@ -188,6 +313,12 @@ function ProductVersionForm({ product }: { product: StaffProductDetail }): React
         order_interval_days: Number(data.get('interval')),
         orders_per_run: Number(data.get('per_run')),
       },
+      main_image: mainImageChoice === 'UPLOAD' && uploaded
+        ? {
+            file_object_id: uploaded.file_object_id,
+            expected_file_version: uploaded.file_version,
+          }
+        : mainImageChoice,
     };
     void execute({ action: 'add-product-version',
       path: `/api/staff/catalog/products/${encodeURIComponent(product.product_id)}/versions`, body });
@@ -226,6 +357,43 @@ function ProductVersionForm({ product }: { product: StaffProductDetail }): React
         name="buyer_notes" defaultValue={current.buyer_visible_notes ?? ''} /></FormField>
         <FormField label="内部说明" htmlFor="version-internal-notes"><textarea id="version-internal-notes"
         name="internal_notes" defaultValue={current.internal_notes ?? ''} /></FormField>
+        <fieldset className="form-fieldset version-main-image-choice">
+          <legend>新版本主图</legend>
+          {current.main_image ? <label className="version-main-image-option">
+            <input type="radio" name="version_main_image" value="INHERIT"
+              checked={mainImageChoice === 'INHERIT'}
+              onChange={() => setMainImageChoice('INHERIT')} />
+            继承上一版主图（推荐，保存后立即生效）
+          </label> : null}
+          <label className="version-main-image-option">
+            <input type="radio" name="version_main_image" value="UPLOAD"
+              checked={mainImageChoice === 'UPLOAD'}
+              onChange={() => setMainImageChoice('UPLOAD')} />
+            上传新主图，作为本版本主图
+          </label>
+          <label className="version-main-image-option">
+            <input type="radio" name="version_main_image" value="NONE"
+              checked={mainImageChoice === 'NONE'}
+              onChange={() => setMainImageChoice('NONE')} />
+            暂不设置（稍后在产品详情手动上传绑定）
+          </label>
+          {mainImageChoice === 'UPLOAD' ? <>
+            <FileDropZone
+              id="version-new-main-image"
+              aria-label="新版本主图"
+              accept="image/jpeg,image/png,image/webp"
+              maximumFiles={1}
+              maximumBytes={10 * 1024 * 1024}
+              buttonLabel="选择新主图"
+              emptyLabel="尚未选择主图"
+              onFilesChange={(files) => {
+                const file = files[0];
+                if (file) void uploader.start('staffProductImage', [file]);
+              }}
+            />
+            <p className="staff-upload-state">上传状态：{upload.state}</p>
+          </> : null}
+        </fieldset>
         <CadenceExamples />
       </fieldset>
       {message ? <Alert tone={message.startsWith('新产品') ? 'success' : 'danger'}>{message}</Alert> : null}
@@ -274,17 +442,31 @@ function ReservationScheduleDetail({ demandId }: { demandId: string }): React.JS
       <Card><p className="eyebrow">当前排期</p><strong>{page.demand.schedule
         ? cadenceLabel(page.demand.schedule) : '尚未配置排期'}</strong>
         <span>{page.demand.schedule?.first_order_date ?? '需要卖家对接人工补齐'}</span></Card>
+      <Card><p className="eyebrow">需求状态</p>
+        <StatusBadge tone={page.demand.status === 'PUBLISHED' ? 'success' : 'neutral'}>
+          {demandStatus(page.demand.status)}
+        </StatusBadge></Card>
     </section>
+    {page.demand.status === 'PUBLISHED' && page.demand.can_close
+      ? <DemandCloseForm demandId={demandId} page={page} /> : null}
     {canEdit ? <ScheduleChangeForm demandId={demandId} page={page} /> : null}
     <Card><DataTable caption="预约排名与预计下单日期"><thead><tr>
       <th scope="col">排名</th><th scope="col">买家标识</th><th scope="col">预约时间</th>
       <th scope="col">状态</th><th scope="col">预计日期</th><th scope="col">实际订单</th>
+      <th scope="col">操作</th>
     </tr></thead><tbody>{page.items.map((item) => <tr key={item.reservation_id}>
       <td>{item.rank ?? '—'}</td><th scope="row">{item.buyer_reference}
         {item.buyer_display_name ? <small>{item.buyer_display_name}</small> : null}</th>
-      <td>{formatShanghai(item.submitted_at)}</td><td>{reservationStatus(item.status)}</td>
+      <td>{formatShanghai(item.submitted_at)}</td>
+      <td>{reservationStatus(item.status)}
+        {item.status === 'APPROVED' && item.decision_source === 'AUTO'
+          ? <span className="auto-approved-badge">自动通过</span>
+          : null}</td>
       <td>{item.planned_order_date ?? '—'}</td><td>{item.actual_order_status
         ? `${item.actual_order_status}${item.actual_order_date ? ` · ${item.actual_order_date}` : ''}` : '尚无'}</td>
+      <td>{item.status === 'APPROVED' && item.decision_source === 'AUTO'
+        ? <ReopenReservationForm item={item} />
+        : null}</td>
     </tr>)}</tbody></DataTable></Card>
     <nav className="pagination-actions" aria-label="预约分页"><Button className="secondary"
       disabled={cursorHistory.length === 0} onClick={() => {
@@ -293,6 +475,147 @@ function ReservationScheduleDetail({ demandId }: { demandId: string }): React.JS
         setCursorHistory((all) => [...all, cursor]); setCursor(page.next_cursor);
       }}>下一页</Button></nav>
   </main>;
+}
+
+function DemandCloseForm({ demandId, page }: {
+  demandId: string; page: StaffReservationSchedulePage;
+}): React.JSX.Element {
+  const session = useCurrentStaffSession();
+  const client = useQueryClient();
+  const authority = useMemo(() => new StaffMutationAuthority<
+    Awaited<ReturnType<typeof staffApi.closeDemand>>
+  >(), []);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string|null>(null);
+  const [requestId, setRequestId] = useState<string|null>(null);
+
+  async function execute(request: StaffMutationRequest | null): Promise<void> {
+    setBusy(true); setMessage(null); setRequestId(null);
+    try {
+      const response = request === null
+        ? await authority.retry()
+        : await authority.execute(request, ({ body }, key) =>
+            staffApi.closeDemand(client, demandId, body, key));
+      setRequestId(response.requestId);
+      setMessage(response.data.demand_close.replayed
+        ? '需求已关闭，已复用首次请求结果。'
+        : '需求已关闭。');
+      await Promise.all([
+        client.invalidateQueries({
+          queryKey: ['staff', 'products', session.authorization_version,
+            'reservation-schedule', demandId],
+        }),
+        client.invalidateQueries({ queryKey: staffWorkbenchKeys.productsRoot }),
+        client.invalidateQueries({ queryKey: staffWorkbenchKeys.queueRoot }),
+      ]);
+    } catch (error) {
+      setRequestId(isFrontendApiError(error) ? error.requestId : null);
+      setMessage(errorMessage(error));
+    } finally { setBusy(false); }
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    if (authority.canRetry()) {
+      void execute(null);
+      return;
+    }
+    const data = new FormData(event.currentTarget);
+    const reason = String(data.get('close_reason') ?? '').trim();
+    if (!reason) {
+      setMessage('请填写关闭原因。');
+      return;
+    }
+    void execute({
+      action: 'close-demand-batch',
+      path: `/api/staff/demand-batches/${encodeURIComponent(demandId)}/close`,
+      body: {
+        expected_version: page.demand.demand_version,
+        close_reason: reason,
+      },
+    });
+  }
+
+  return <Card className="demand-close-form">
+    <h2>关闭需求</h2>
+    {!open ? <>
+      <p>需求当前为已发布状态；关闭后将不再出现在买家公开需求列表。</p>
+      <Button type="button" onClick={() => setOpen(true)}>关闭需求</Button>
+    </> : <form onSubmit={submit} onChange={() => {
+      if (busy) return;
+      authority.release(); setMessage(null); setRequestId(null);
+    }}>
+      <fieldset disabled={busy}>
+        <p>当前需求版本：v{page.demand.demand_version}</p>
+        <FormField label="关闭确认" htmlFor="demand-close-confirm">
+          <Checkbox
+            name="confirm_close"
+            label="我确认关闭该已发布需求"
+            required
+          />
+        </FormField>
+        <FormField label="关闭原因" htmlFor="demand-close-reason">
+          <textarea name="close_reason" required maxLength={1000}
+            placeholder="请输入关闭原因，便于后续审计追溯" />
+        </FormField>
+      </fieldset>
+      <Button type="submit" disabled={busy} loading={busy} loadingLabel="关闭中…">
+        确认关闭需求
+      </Button>
+      <Button type="button" className="secondary" disabled={busy} onClick={() => {
+        authority.release(); setOpen(false); setMessage(null); setRequestId(null);
+      }}>取消</Button>
+    </form>}
+    {message ? <Alert tone={message.startsWith('需求已关闭') ? 'success' : 'danger'}>{message}</Alert> : null}
+    <RequestIdDisplay requestId={requestId} />
+    {authority.canRetry() ? <Button type="button" className="secondary" disabled={busy}
+      onClick={() => { void execute(null); }}>重试原请求</Button> : null}
+  </Card>;
+}
+
+function ReopenReservationForm({ item }: {
+  item: StaffReservationSchedulePage['items'][number];
+}): React.JSX.Element {
+  const client = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  async function reopen(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const reason = String(new FormData(event.currentTarget).get('reason') ?? '');
+    setBusy(true); setMessage(null);
+    try {
+      await staffApi.reopenReservation(client, item.reservation_id, {
+        expected_version: item.version,
+        reason,
+      });
+      setMessage('已重开为待人工审核，请到工作台任务队列处理。');
+      await client.invalidateQueries({ queryKey: staffWorkbenchKeys.productsRoot });
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally { setBusy(false); }
+  }
+  return <div className="reopen-reservation">
+    {open ? <form onSubmit={reopen}>
+      <TextInput
+        id={`reopen-reason-${item.reservation_id}`}
+        name="reason"
+        placeholder="重开原因（买家可见流程留痕）"
+        required
+        maxLength={500}
+      />
+      <Button type="submit" className="secondary" disabled={busy} loading={busy}>
+        确认重开
+      </Button>
+      <Button type="button" className="secondary" disabled={busy} onClick={() => setOpen(false)}>
+        取消
+      </Button>
+    </form> : <Button className="secondary" onClick={() => setOpen(true)}>
+      重开人工复核
+    </Button>}
+    {message ? <p className="hint">{message}</p> : null}
+  </div>;
 }
 
 function ScheduleChangeForm({ demandId, page }: {
@@ -411,6 +734,9 @@ function errorMessage(error: unknown): string {
   if (error.code === 'SCHEDULE_WINDOW_CONFLICT') return '最后一个理论名额晚于下单截止日，请调整日期或节奏。';
   if (error.code === 'FORBIDDEN') return '当前身份没有该操作权限。';
   if (error.code === 'NOT_FOUND') return '资源不存在，或已不在您的有效数据范围内。';
+  if (error.code === 'DEMAND_BATCH_NOT_PUBLISHED') return '需求状态已变化，请刷新后重试。';
+  if (error.code === 'IDEMPOTENCY_CONFLICT') return '原请求标识已对应其他内容，请刷新后重新发起。';
+  if (error.code === 'REQUEST_IN_PROGRESS') return '原请求仍在处理中，请稍后重试原请求。';
   return '操作未完成，请核对输入后重试。';
 }
 
@@ -440,4 +766,98 @@ function beijingToday(): string {
   }).formatToParts(new Date());
   const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${value['year']}-${value['month']}-${value['day']}`;
+}
+
+/**
+ * Stage 7.5 batch 2: product primary contact. One responsible member per
+ * product; setting/clearing goes through the existing
+ * POST /api/staff/products/:id/primary-contact (idempotency key, expected
+ * version, reason; the server enforces same-organization ACTIVE members).
+ */
+function PrimaryContactCard({
+  product,
+}: {
+  product: {
+    product_id: string;
+    aggregate_version: number;
+    primary_contact_member_id?: string | null | undefined;
+    primary_contact_member_name?: string | null | undefined;
+  };
+}): React.JSX.Element {
+  const session = useCurrentStaffSession();
+  const client = useQueryClient();
+  const [message, setMessage] = useState<string | null>(null);
+  const canManage = (session.role.code === 'owner' || session.role.code === 'seller_ops')
+    && session.permissions.includes('SELLER_MANAGE');
+  const mutationSchema = z.object({
+    product: z.object({
+      product_id: z.string(),
+      primary_contact_member_id: z.string().nullable(),
+      primary_contact_member_name: z.string().nullable(),
+      version: z.number().int().positive(),
+    }).strict(),
+    replayed: z.boolean(),
+  }).strict();
+  const setContact = useMutation({
+    mutationFn: (request: { body: unknown; key: string }) =>
+      identityApiRequest('staff', client, {
+        path: `/api/staff/products/${encodeURIComponent(product.product_id)}/primary-contact`,
+        method: 'POST',
+        schema: mutationSchema,
+        body: request.body,
+        headers: operationHeaders({ key: request.key, body: request.body }),
+      }),
+    onSuccess: (response) => {
+      setMessage(response.data.replayed ? '重复请求：联系人保持不变。' : '产品主要对接人已更新。');
+      void client.invalidateQueries({
+        queryKey: staffWorkbenchKeys.product(session.authorization_version, product.product_id),
+      });
+    },
+    onError: (error) => {
+      setMessage(
+        `更新未完成${isFrontendApiError(error) ? `（${error.code}）` : ''}：请确认成员属于本卖家组织且为有效成员。`,
+      );
+    },
+  });
+  return (
+    <Card>
+      <p className="eyebrow">业务对接人</p>
+      <h2>产品主要对接人</h2>
+      <p>
+        {product.primary_contact_member_name
+          ? `${product.primary_contact_member_name}（成员 ID ${product.primary_contact_member_id}）`
+          : '未设置；本组织全部有效成员仍可查看本产品。'}
+      </p>
+      {canManage ? (
+        <form
+          onSubmit={(event: FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            const data = new FormData(event.currentTarget);
+            const raw = String(data.get('member_id') ?? '').trim();
+            setContact.mutate({
+              body: {
+                primary_contact_member_id: raw === '' ? null : raw,
+                expected_version: product.aggregate_version,
+                reason: String(data.get('reason') ?? ''),
+              },
+              key: crypto.randomUUID(),
+            });
+          }}
+        >
+          <FormField label="成员 ID（留空即清除）" htmlFor="primary-contact-member">
+            <input id="primary-contact-member" name="member_id" defaultValue={product.primary_contact_member_id ?? ''} />
+          </FormField>
+          <FormField label="变更原因" htmlFor="primary-contact-reason">
+            <input id="primary-contact-reason" name="reason" minLength={3} required />
+          </FormField>
+          <Button type="submit" loading={setContact.isPending}>
+            {product.primary_contact_member_id ? '转移 / 清除主要对接人' : '设置主要对接人'}
+          </Button>
+        </form>
+      ) : null}
+      {message ? (
+        <Alert tone={setContact.isSuccess ? 'success' : 'info'}>{message}</Alert>
+      ) : null}
+    </Card>
+  );
 }

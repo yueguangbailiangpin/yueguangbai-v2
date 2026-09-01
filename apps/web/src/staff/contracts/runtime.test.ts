@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  demandCloseMutationSchema,
   demandReviewContextSchema,
   staffReservationSchedulePageSchema,
   staffSellerPrincipalRatePoliciesResponseSchema,
@@ -13,6 +14,9 @@ const item = {
   buyer_customer_id: 'buyer-1', seller_organization_id: 'seller-1', store_id: 'store-1',
   duty_code: 'BUYER_AFTER_SALES_OWNER', fixed_assignment_id: 'assignment-1', assigned_staff_id: 'staff-1',
   status: 'OPEN', version: 1, created_at: 1, updated_at: 1, completed_at: null, cancelled_at: null,
+  sla_due_at: 1 + 48 * 3600 * 1000, is_overdue: false, overdue_since: null,
+  next_action: 'DECIDE_REVIEW', responsible_role: 'buyer_refund',
+  responsible_staff_name: '返款员工', priority: 'NORMAL',
 };
 
 describe('Staff workbench runtime DTOs', () => {
@@ -25,7 +29,6 @@ describe('Staff workbench runtime DTOs', () => {
       source_currency_code: 'JPY', quote_currency_code: 'CNY',
       seller_organization_id: null,
       default_policy: null, seller_override_policy: null,
-      default_pending_policy: null, seller_override_pending_policy: null,
       default_next_version: 1, seller_override_next_version: null,
       selected_policy: null,
     });
@@ -35,6 +38,20 @@ describe('Staff workbench runtime DTOs', () => {
     });
     expect(staffSellerPrincipalRatePoliciesResponseSchema.parse({ policies }))
       .toEqual({ policies });
+  });
+
+  it('rejects retired dual-approval policy fields (D-056 single-save model)', () => {
+    const base = {
+      source_currency_code: 'JPY', quote_currency_code: 'CNY',
+      seller_organization_id: null,
+      default_policy: null, seller_override_policy: null,
+      default_next_version: 1, seller_override_next_version: null,
+      selected_policy: null,
+    };
+    expect(staffSellerPrincipalRatePolicySchema.safeParse({
+      ...base,
+      default_pending_policy: null,
+    }).success).toBe(false);
   });
 
   it.each(['object_key', 'session_token', 'password_hash', 'drive_file_id'])('rejects sensitive/unknown field %s', (field) => {
@@ -47,7 +64,8 @@ describe('Staff workbench runtime DTOs', () => {
       const page = {
         demand: { demand_batch_id: 'demand-1', product_id: 'product-1',
           product_name: '产品', target_quantity: 1, effective_reservation_count: 1,
-          order_deadline: 1, demand_version: 1, schedule: null },
+          order_deadline: 1, demand_version: 1, status: 'PUBLISHED', can_close: false,
+          schedule: null },
         items: [{ reservation_id: 'reservation-1', status: 'APPROVED', submitted_at: 1,
           rank: 1, planned_order_date: null, buyer_reference: 'B001',
           buyer_customer_id: null, buyer_display_name: null,
@@ -66,6 +84,12 @@ describe('Staff workbench runtime DTOs', () => {
       product_id: 'product-1', product_version_no: 3, product_name: '产品',
       task_type: 'IMAGE', target_quantity: 10, reservation_deadline: 1,
       order_deadline: 2, cadence: { order_interval_days: 2, orders_per_run: 5 },
+      main_image: {
+        file_object_id: 'main-image-1', file_version: 1, client_file_name: 'main.webp',
+      },
+      ordering_guide_expected_amount_jpy: 1980,
+      color_spec_mode: 'MAIN_IMAGE_VARIANT',
+      buyer_self_pay_bps_snapshot: null,
       can_publish: true,
       timezone: 'Asia/Shanghai', data_as_of: 1,
     };
@@ -76,6 +100,19 @@ describe('Staff workbench runtime DTOs', () => {
     } }).success).toBe(false);
   });
 
+  it('accepts the strict demand close result and rejects internal fields', () => {
+    const result = {
+      demand_batch_id: 'demand-1', status: 'CLOSED', version: 3,
+      close_reason: '活动结束', replayed: false,
+    };
+    expect(demandCloseMutationSchema.parse({ demand_close: result })).toEqual({
+      demand_close: result,
+    });
+    expect(demandCloseMutationSchema.safeParse({ demand_close: {
+      ...result, staff_id: 'internal-staff-id', assignment_id: 'internal-assignment',
+    } }).success).toBe(false);
+  });
+
   it('accepts the Marketplace-configured Asia/Tokyo business timezone (regression for PR #96)', () => {
     const reviewContext = {
       demand_batch_id: 'demand-1', demand_version: 2, status: 'SUBMITTED',
@@ -83,6 +120,10 @@ describe('Staff workbench runtime DTOs', () => {
       product_id: 'product-1', product_version_no: 3, product_name: '产品',
       task_type: 'IMAGE', target_quantity: 10, reservation_deadline: 1,
       order_deadline: 2, cadence: { order_interval_days: 2, orders_per_run: 5 },
+      main_image: null,
+      ordering_guide_expected_amount_jpy: null,
+      color_spec_mode: null,
+      buyer_self_pay_bps_snapshot: null,
       can_publish: true,
       // Backend returns PRODUCT_SCHEDULE_TIMEZONE (AMAZON_JP = Asia/Tokyo)
       timezone: 'Asia/Tokyo', data_as_of: 1,

@@ -14,10 +14,7 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
+import { prepareWorkItemCompletionStatements } from '../staff-assignment';
 import {
   cleanDemandIdentifier,
   insertDemandBatchEventStatement,
@@ -132,20 +129,6 @@ export async function withdrawDemandBatch(
       version: nextVersion,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `demand-batch-withdrawn:${demandBatchId}`,
-      eventType: 'DEMAND_BATCH_WITHDRAWN',
-      aggregateType: 'DEMAND_BATCH',
-      aggregateId: demandBatchId,
-      payload: {
-        demand_batch_id: demandBatchId,
-        seller_organization_id: source.organization_id,
-        status: 'WITHDRAWN',
-        version: nextVersion,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -206,7 +189,6 @@ export async function withdrawDemandBatch(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,
@@ -229,7 +211,23 @@ export async function withdrawDemandBatch(
       ),
     ];
 
-    await database.batch(statements);
+    await database.batch([
+      ...statements,
+      // 撤回使 DEMAND_REVIEW 待办失去处理对象：同事务取消，避免队列残留
+      // 点开必报错的死项。
+      ...await prepareWorkItemCompletionStatements(database, {
+        workType: 'DEMAND_REVIEW',
+        sourceEntityType: 'DEMAND_BATCH',
+        sourceEntityId: demandBatchId,
+        outcome: 'CANCELLED',
+        actorType: 'SYSTEM',
+        actorId: `seller:${command.actor.memberId}`,
+        requestId: command.requestId ?? null,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        reason: 'demand batch withdrawn by seller',
+        now,
+      }),
+    ]);
     return response;
   } catch (error) {
     const normalized = normalizeDemandBatchError(error);

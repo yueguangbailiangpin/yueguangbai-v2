@@ -31,7 +31,7 @@ export async function createBuyerInstructionImageReadIntent(
   database: SqlDatabase,
   input: {
     reservationId: string;
-    position: number | 'main';
+    position: 'main';
   },
   command: {
     actor: BuyerInstructionActor;
@@ -42,8 +42,7 @@ export async function createBuyerInstructionImageReadIntent(
 ): Promise<BuyerInstructionReadIntentDto> {
   validateBuyerActor(command.actor);
   const now = validateTimestamp(command.now ?? Date.now());
-  if (input.position !== 'main'
-    && (!Number.isSafeInteger(input.position) || input.position < 1)) {
+  if (input.position !== 'main') {
     throw new OrderInstructionError('VALIDATION_ERROR', 400);
   }
   let source = await requireInstructionContextForReservation(
@@ -69,7 +68,6 @@ export async function createBuyerInstructionImageReadIntent(
     database,
     source.instruction_id,
     source.current_version_no,
-    input.position,
     command.actor.buyerCustomerId,
     now,
   );
@@ -186,13 +184,10 @@ async function resolveCurrentImage(
   database: SqlDatabase,
   instructionId: string,
   currentVersionNo: number,
-  position: number | 'main',
   buyerCustomerId: string,
   now: number,
 ): Promise<{ file_object_id: string; file_entity_link_id: string }> {
-  const selector = position === 'main'
-    ? `version.main_image_file_entity_link_id=link.id`
-    : `keyword.file_entity_link_id=link.id AND keyword.keyword_position=?`;
+  const selector = `version.main_image_file_entity_link_id=link.id`;
   const row = await database.prepare(`
     SELECT link.file_object_id, link.id AS file_entity_link_id
     FROM order_instruction_versions version
@@ -201,10 +196,6 @@ async function resolveCurrentImage(
       AND link.entity_id=version.id
       AND link.revoked_at IS NULL
       AND (link.expires_at IS NULL OR link.expires_at>?)
-    ${position === 'main'
-      ? ''
-      : `JOIN order_instruction_keyword_images keyword
-           ON keyword.order_instruction_version_id=version.id`}
     JOIN file_objects object
       ON object.id=link.file_object_id AND object.status='VERIFIED'
     JOIN file_entity_audience_grants grant
@@ -222,7 +213,6 @@ async function resolveCurrentImage(
     now,
     instructionId,
     currentVersionNo,
-    ...(position === 'main' ? [] : [position]),
   ).first<{ file_object_id: string; file_entity_link_id: string }>();
   if (!row) throw new OrderInstructionError('FILE_ACCESS_DENIED', 403);
   return row;

@@ -15,11 +15,13 @@ import {
 
 const BUYER: BuyerPortalContext = {
   buyerCustomerId: 'buyer-1',
-  marketplaceCode: 'JP',
+  marketplaceCode: 'AMAZON_JP',
   accessStatus: 'ACTIVE',
   identityReviewStatus: 'CLEAR',
   customerNumber: 'B000001',
   displayName: '测试买家',
+  refundAccountName: null,
+  refundAccountIdentifier: null,
   sessionExpiresAt: 999_999,
 };
 
@@ -30,7 +32,7 @@ describe('Phase 4B5 buyer refund status read model', () => {
         refundRow('refund-3', 3000, 48_840, 48_841, 'OVERPAID'),
         refundRow('refund-2', 2000, 48_840, 48_840, 'PAID'),
         refundRow('refund-1', 1000, 48_840, 10_000, 'PARTIALLY_PAID'),
-      ]],
+      ], [refundRow('refund-1', 1000, 48_840, 10_000, 'PARTIALLY_PAID')]],
     });
     const page = await listBuyerRefunds(database, BUYER, {
       limit: 2,
@@ -42,6 +44,13 @@ describe('Phase 4B5 buyer refund status read model', () => {
       updatedAt: 2000,
       id: 'refund-2',
     });
+    const secondPage = await listBuyerRefunds(database, BUYER, {
+      limit: 2,
+      cursor: decodeBuyerRefundPortalCursor(page.next_cursor!),
+    });
+    expect(secondPage.items.map((item) => item.refund_obligation_id))
+      .toEqual(['refund-1']);
+    expect(secondPage.next_cursor).toBeNull();
     expect(database.calls[0]?.sql).toContain(
       'ledger.buyer_customer_id=?',
     );
@@ -270,10 +279,8 @@ describe('Phase 4B5 buyer refund status read model', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(70);
-    expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations[42]).toBe('0043_seller_principal_rate_integrity_hardening.sql');
-    expect(migrations.at(-1)).toBe('0070_buyer_refund_reminders.sql');
+    expect(migrations).toHaveLength(41);
+    expect(migrations.at(-1)).toBe('0041_owner_alias_yueguangbai_ygbceping.sql');
   });
 });
 
@@ -288,7 +295,7 @@ function refundRow(
     refund_obligation_id: id,
     buyer_customer_id: 'buyer-1',
     formal_order_id: `formal-${id}`,
-    marketplace_code: 'JP' as const,
+    marketplace_code: 'AMAZON_JP' as const,
     amazon_order_number_normalized: '123-1234567-1234567',
     asin_normalized: 'B0REFUND01',
     product_name_snapshot: '返款测试产品',

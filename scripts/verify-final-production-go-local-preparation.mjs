@@ -9,12 +9,15 @@ const {schema,latestMigration}=resolveProductionSchemaBaseline();
 const migrations=readdirSync(path.join(root,'migrations')).filter((file)=>/^\d{4}_.+\.sql$/u.test(file)).sort();
 assert(migrations.length===schema,`expected ${schema} migrations, found ${migrations.length}`);
 assert(migrations.every((file,index)=>Number(file.slice(0,4))===index+1),'migration chain is not continuous');
-assert(latestMigration==='0070_buyer_refund_reminders.sql','current production schema baseline must include Buyer Refund reminders in 0070');
-assert(migrations.includes('0068_customer_security_deny_password_rate_limit.sql'),'immutable Customer security DENY and password-change rate-limit migration 0068 is missing');
+// Order-day rate center and customer security semantics are carried by the
+// stage 3 clean baseline domain files (former 0072/0068 chain positions
+// retired with the legacy chain under D-054).
+assert(migrations.includes('0008_pricing_rate_center.sql'),'baseline must include the pricing rate center domain');
+assert(migrations.includes('0005_customer_access_security.sql'),'baseline must include the customer access security domain');
 verifyProductionSchemaDocuments();
 
 const production=read('apps/api/wrangler.production.template.jsonc');
-for(const marker of ['"APP_RELEASE_SHA": "REQUIRED_RELEASE_COMMIT_SHA"','"SCHEDULED_OPERATIONS_ENABLED": "true"','"ACQUISITION_MAINTENANCE_ENABLED": "true"','"OPERATIONAL_ALERT_MODE": "bound"','"OPERATIONAL_ALERT_SINK_IDENTITY": "REQUIRED_PRODUCTION_OPERATIONAL_ALERT_SINK_IDENTITY"','"OPERATIONAL_ALERT_SINK_DEPLOYMENT_VERSION": "REQUIRED_PRODUCTION_OPERATIONAL_ALERT_SINK_DEPLOYMENT_VERSION"','"binding": "OPERATIONAL_ALERT_SINK"','"props": {','"STAFF_ACCESS_TEAM_DOMAIN": "REQUIRED_CLOUDFLARE_ACCESS_TEAM_HTTPS_ORIGIN"','"STAFF_ACCESS_AUD": "REQUIRED_CLOUDFLARE_ACCESS_APPLICATION_AUD"','"STAFF_AUTH_ALLOWED_ORIGINS": "REQUIRED_PRODUCTION_HTTPS_ORIGIN"'])assert(production.includes(marker),`production access/readiness marker missing: ${marker}`);
+for(const marker of ['"APP_RELEASE_SHA": "REQUIRED_RELEASE_COMMIT_SHA"','"SCHEDULED_OPERATIONS_ENABLED": "true"','"OPERATIONAL_ALERT_MODE": "bound"','"OPERATIONAL_ALERT_SINK_IDENTITY": "REQUIRED_PRODUCTION_OPERATIONAL_ALERT_SINK_IDENTITY"','"OPERATIONAL_ALERT_SINK_DEPLOYMENT_VERSION": "REQUIRED_PRODUCTION_OPERATIONAL_ALERT_SINK_DEPLOYMENT_VERSION"','"binding": "OPERATIONAL_ALERT_SINK"','"props": {','"STAFF_ACCESS_TEAM_DOMAIN": "REQUIRED_CLOUDFLARE_ACCESS_TEAM_HTTPS_ORIGIN"','"STAFF_ACCESS_AUD": "REQUIRED_CLOUDFLARE_ACCESS_APPLICATION_AUD"','"STAFF_AUTH_ALLOWED_ORIGINS": "REQUIRED_PRODUCTION_HTTPS_ORIGIN"'])assert(production.includes(marker),`production access/readiness marker missing: ${marker}`);
 for(const forbidden of ['"STAFF_AUTH_PROVIDER": "FEISHU"','"STAFF_AUTH_ENABLED": "false"','FEISHU_WORKBENCH_APP_ID'])assert(!production.includes(forbidden),`stale Staff auth production marker remains: ${forbidden}`);
 
 for(const file of ['apps/api/src/operational-readiness/routes.ts','apps/api/src/operational-readiness/alert-attestation.ts','apps/api/src/production-readiness/recovery-attestation-routes.ts','apps/api/src/staff-auth/cloudflare-access.ts','apps/api/src/files/r2-object-storage.ts','docs/OPERATING_INTEGRITY_FREEZE.md','docs/SECOND_LAYER_HARDENING_FREEZE.md'])assert(existsSync(path.join(root,file)),`required production boundary missing: ${file}`);

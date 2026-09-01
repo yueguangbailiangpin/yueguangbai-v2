@@ -8,10 +8,12 @@ import {
   sellerFormalOrdersSchema,
   sellerMeSchema,
   sellerPayablesSchema,
+  sellerPaymentsSchema,
   sellerDemandMutationSchema,
   sellerProductsSchema,
   sellerReviewsSchema,
   sellerSettlementSummarySchema,
+  sellerStoreMutationSchema,
   sellerStoresSchema,
 } from '../contracts/runtime';
 
@@ -26,6 +28,19 @@ function get<T extends Parameters<typeof identityApiRequest>[2]['schema']>(
     method: 'GET',
     schema,
     ...(signal ? { signal } : {}),
+  });
+}
+function patch<T extends Parameters<typeof identityApiRequest>[2]['schema']>(
+  client: QueryClient,
+  path: string,
+  schema: T,
+  body: unknown,
+) {
+  return identityApiRequest('seller', client, {
+    path,
+    method: 'PATCH',
+    schema,
+    body,
   });
 }
 function post<T extends Parameters<typeof identityApiRequest>[2]['schema']>(
@@ -46,8 +61,13 @@ function post<T extends Parameters<typeof identityApiRequest>[2]['schema']>(
   });
 }
 
-function listPath(path: string, cursor: string | null, storeId?: string | null): string {
-  const query = new URLSearchParams({ limit: '100' });
+function listPath(
+  path: string,
+  cursor: string | null,
+  storeId?: string | null,
+  limit = 100,
+): string {
+  const query = new URLSearchParams({ limit: String(limit) });
   if (cursor !== null) query.set('cursor', cursor);
   if (storeId) query.set('store_id', storeId);
   return `${path}?${query.toString()}`;
@@ -56,8 +76,26 @@ function listPath(path: string, cursor: string | null, storeId?: string | null):
 export const sellerApi = Object.freeze({
   me: (client: QueryClient, signal?: AbortSignal) =>
     get(client, '/api/seller-portal/me', sellerMeSchema, signal),
+  updateSettlementAccount: (
+    client: QueryClient,
+    accountName: string,
+    accountIdentifier: string,
+  ) =>
+    patch(client, '/api/seller-portal/me/settlement-account', sellerMeSchema, {
+      account_name: accountName,
+      account_identifier: accountIdentifier,
+    }),
   stores: (client: QueryClient, cursor: string | null, signal?: AbortSignal) =>
     get(client, listPath('/api/seller-portal/stores', cursor), sellerStoresSchema, signal),
+  createStore: (client: QueryClient, body: unknown, key: string, signal?: AbortSignal) =>
+    post(
+      client,
+      '/api/seller-portal/stores',
+      sellerStoreMutationSchema,
+      body,
+      key,
+      signal,
+    ),
   products: (
     client: QueryClient,
     storeId: string | null,
@@ -157,7 +195,9 @@ export const sellerApi = Object.freeze({
   ) =>
     get(
       client,
-      listPath('/api/seller-portal/formal-orders', cursor, storeId),
+      // User decision 2026-08-24: the seller order list pages at 20 rows
+      // (buyer lists already did); every other seller list keeps 100.
+      listPath('/api/seller-portal/formal-orders', cursor, storeId, 20),
       sellerFormalOrdersSchema,
       signal,
     ),
@@ -175,6 +215,13 @@ export const sellerApi = Object.freeze({
     ),
   settlement: (client: QueryClient, signal?: AbortSignal) =>
     get(client, '/api/seller-portal/settlement/summary', sellerSettlementSummarySchema, signal),
+  settlementPayments: (client: QueryClient, cursor: string | null, signal?: AbortSignal) =>
+    get(
+      client,
+      listPath('/api/seller-portal/settlement/payments', cursor),
+      sellerPaymentsSchema,
+      signal,
+    ),
   payables: (client: QueryClient, cursor: string | null, signal?: AbortSignal) =>
     get(
       client,

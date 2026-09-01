@@ -15,9 +15,12 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
+  prepareWorkItemCompletionStatements,
+  requireAssignedWorkflowActor,
+  requireMarketplaceScope,
+  requireSellerOrganizationScope,
+  resolveStaffDataScope,
+} from '../staff-assignment';
 import {
   cleanDemandIdentifier,
   cleanDemandReason,
@@ -32,6 +35,7 @@ interface CloseSource {
   demand_batch_id: string;
   organization_id: string;
   store_id: string;
+  marketplace_code: string;
   product_id: string;
   status: string;
   version: number;
@@ -74,6 +78,13 @@ export async function closeDemandBatch(
     throw new DemandBatchError('VALIDATION_ERROR', 400);
   }
 
+  const initialSource = await requireCloseSource(database, demandBatchId);
+  const initialAuthorization = await requireCloseAuthorization(
+    database,
+    initialSource,
+    command.actor.staffId,
+  );
+
   const requestHash = await hashCanonicalJson({
     action: 'CLOSE_DEMAND_BATCH',
     demand_batch_id: demandBatchId,
@@ -86,7 +97,7 @@ export async function closeDemandBatch(
       database,
       {
         actorType: 'STAFF',
-        actorId: command.actor.staffId,
+        actorId: initialAuthorization.staffId,
         action: 'CLOSE_DEMAND_BATCH',
         targetType: 'DEMAND_BATCH',
         targetId: demandBatchId,
@@ -108,6 +119,17 @@ export async function closeDemandBatch(
       database,
       demandBatchId,
     );
+    const authorization = await requireCloseAuthorization(
+      database,
+      source,
+      command.actor.staffId,
+    );
+    const actor: DemandStaffActor = {
+      staffId: authorization.staffId,
+      displayName: authorization.displayName,
+      roles: Object.freeze([...authorization.roles]),
+      permissions: authorization.permissions,
+    };
     if (source.version !== input.expectedVersion) {
       throw new DemandBatchError(
         'VERSION_CONFLICT',
@@ -129,22 +151,22 @@ export async function closeDemandBatch(
       close_reason: closeReason,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `demand-batch-closed:${demandBatchId}`,
-      eventType: 'DEMAND_BATCH_CLOSED',
-      aggregateType: 'DEMAND_BATCH',
-      aggregateId: demandBatchId,
-      payload: {
-        demand_batch_id: demandBatchId,
-        seller_organization_id: source.organization_id,
-        status: 'CLOSED',
-        version: nextVersion,
-        close_reason: closeReason,
-      },
-      createdAt: now,
-    });
 
+    const workItemStatements = await prepareWorkItemCompletionStatements(
+      database,
+      {
+        workType: 'DEMAND_REVIEW',
+        sourceEntityType: 'DEMAND_BATCH',
+        sourceEntityId: demandBatchId,
+        outcome: 'COMPLETED',
+        actorType: 'STAFF',
+        actorId: actor.staffId,
+        requestId: command.requestId ?? null,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        reason: closeReason,
+        now,
+      },
+    );
     const statements: SqlStatement[] = [
       database.prepare(`
         UPDATE demand_batches
@@ -160,12 +182,13 @@ export async function closeDemandBatch(
           AND version=?
       `).bind(
         closeReason,
-        command.actor.staffId,
+        actor.staffId,
         now,
         now,
         demandBatchId,
         source.version,
       ),
+      assertDemandBatchUpdateChangedOnceStatement(database),
       insertDemandBatchEventStatement(database, {
         demandBatchId,
         organizationId: source.organization_id,
@@ -173,7 +196,7 @@ export async function closeDemandBatch(
         productId: source.product_id,
         eventType: 'DEMAND_BATCH_CLOSED',
         actorType: 'STAFF',
-        actorId: command.actor.staffId,
+        actorId: actor.staffId,
         previousStatus: 'PUBLISHED',
         nextStatus: 'CLOSED',
         demandVersion: nextVersion,
@@ -188,8 +211,8 @@ export async function closeDemandBatch(
         eventType: 'DEMAND_BATCH_CLOSED',
         actor: {
           type: 'STAFF',
-          id: command.actor.staffId,
-          roles: command.actor.roles,
+          id: actor.staffId,
+          roles: actor.roles,
         },
         requestId: command.requestId ?? null,
         idempotencyKey: acquired.claim.idempotencyKey,
@@ -200,7 +223,6 @@ export async function closeDemandBatch(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,
@@ -212,6 +234,7 @@ export async function closeDemandBatch(
           now,
         },
       ),
+      ...workItemStatements,
       assertClosedStatement(
         database,
         acquired.claim,
@@ -237,20 +260,59 @@ export async function closeDemandBatch(
   }
 }
 
+/**
+ * Conservative capability projection for the Staff scheduling read model.
+ * The close command remains the final authority and repeats every check.
+ */
+export async function canCloseDemandBatch(
+  database: SqlDatabase,
+  input: {
+    demandBatchId: string;
+    staffId: string;
+    source?: Pick<CloseSource, 'demand_batch_id' | 'organization_id' | 'marketplace_code' | 'status'>;
+  },
+): Promise<boolean> {
+  const demandBatchId = cleanDemandIdentifier(input.demandBatchId);
+  const source = input.source ?? await requireCloseSource(database, demandBatchId);
+  if (source.status !== 'PUBLISHED') return false;
+  try {
+    await requireCloseAuthorization(database, source, input.staffId);
+    return true;
+  } catch (error) {
+    const normalized = normalizeDemandBatchError(error);
+    if (normalized.code === 'FORBIDDEN' || normalized.code === 'NOT_FOUND') {
+      return false;
+    }
+    throw normalized;
+  }
+}
+
 async function requireCloseSource(
   database: SqlDatabase,
   demandBatchId: string,
 ): Promise<CloseSource> {
   const row = await database.prepare(`
     SELECT
-      id AS demand_batch_id,
-      organization_id,
-      store_id,
-      product_id,
-      status,
-      version
-    FROM demand_batches
-    WHERE id=?
+      demand.id AS demand_batch_id,
+      demand.organization_id,
+      demand.store_id,
+      demand.marketplace_code,
+      demand.product_id,
+      demand.status,
+      demand.version
+    FROM demand_batches demand
+    JOIN products product
+      ON product.id=demand.product_id
+      AND product.organization_id=demand.organization_id
+      AND product.store_id=demand.store_id
+      AND product.marketplace_code=demand.marketplace_code
+    JOIN seller_stores store
+      ON store.id=demand.store_id
+      AND store.organization_id=demand.organization_id
+      AND store.marketplace_code=demand.marketplace_code
+    JOIN seller_organizations organization
+      ON organization.id=demand.organization_id
+    WHERE demand.id=?
   `).bind(
     demandBatchId,
   ).first<CloseSource>();
@@ -262,6 +324,29 @@ async function requireCloseSource(
     );
   }
   return row;
+}
+
+async function requireCloseAuthorization(
+  database: SqlDatabase,
+  source: Pick<CloseSource, 'demand_batch_id' | 'organization_id'>
+    & Partial<Pick<CloseSource, 'marketplace_code'>>,
+  staffId: string,
+) {
+  const authorization = await requireAssignedWorkflowActor(database, {
+    staffId,
+    workType: 'DEMAND_REVIEW',
+    sourceEntityType: 'DEMAND_BATCH',
+    sourceEntityId: source.demand_batch_id,
+    authoritativeSellerOrganizationId: source.organization_id,
+    allowCompleted: true,
+  });
+  requireDemandPublishPermission(authorization);
+  const scope = await resolveStaffDataScope(database, authorization);
+  requireSellerOrganizationScope(scope, source.organization_id);
+  if (source.marketplace_code !== undefined) {
+    requireMarketplaceScope(scope, source.marketplace_code);
+  }
+  return authorization;
 }
 
 function assertClosedStatement(
@@ -283,7 +368,6 @@ function assertClosedStatement(
         WHERE id=?
           AND status='CLOSED'
           AND version=?
-          AND close_reason=?
           AND closed_by_staff_id IS NOT NULL
           AND closed_at IS NOT NULL
       )
@@ -296,14 +380,30 @@ function assertClosedStatement(
           AND status='COMMITTED'
           AND lease_token=?
       )
+      AND NOT EXISTS (
+        SELECT 1 FROM staff_work_items
+        WHERE source_entity_type='DEMAND_BATCH'
+          AND source_entity_id=?
+          AND work_type='DEMAND_REVIEW'
+          AND status='OPEN'
+      )
     THEN 1 ELSE 0 END
   `).bind(
     response.demand_batch_id,
     response.version,
-    response.close_reason,
     claim.actorType,
     claim.actorId,
     claim.idempotencyKey,
     claim.leaseToken,
+    response.demand_batch_id,
   );
+}
+
+function assertDemandBatchUpdateChangedOnceStatement(
+  database: SqlDatabase,
+): SqlStatement {
+  return database.prepare(`
+    INSERT INTO transaction_assertions (assertion_value)
+    SELECT CASE WHEN changes()=1 THEN 1 ELSE 0 END
+  `);
 }

@@ -1,4 +1,5 @@
 import type { SellerMemberRole, SellerPortalMeDto, SqlDatabase } from '@ygb/contracts';
+import { canWriteSellerOperations } from '@ygb/domain';
 import type { Context } from 'hono';
 import { resolveSellerMemberStoreAccess } from '../catalog/seller-member-store-access';
 import { requireCustomerSessionFromContext } from '../middleware/customer-auth';
@@ -13,8 +14,10 @@ interface SellerMemberRow {
   member_status: string;
   seller_code: string;
   organization_name: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   organization_status: string;
+  settlement_account_name: string | null;
+  settlement_account_identifier: string | null;
 }
 export interface SellerPortalActor {
   accountId: string;
@@ -35,8 +38,8 @@ export async function resolveSellerPortalActor(context: Context<any>): Promise<S
   const access = await resolveSellerMemberStoreAccess(context.env.DB, row.member_id);
   if (!access || access.sellerOrganizationId !== row.organization_id || access.role !== row.role)
     throw new SellerPortalError('SESSION_INVALID', 401);
-  const canWrite =
-    access.canManageProducts && (access.role === 'OWNER' || access.role === 'OPERATIONS');
+  const canWrite = access.canManageProducts
+    && canWriteSellerOperations(access.role);
   const me: SellerPortalMeDto = Object.freeze({
     account_id: session.accountId,
     member: Object.freeze({
@@ -51,6 +54,8 @@ export async function resolveSellerPortalActor(context: Context<any>): Promise<S
       name: row.organization_name,
       marketplace_code: row.marketplace_code,
       status: 'ACTIVE' as const,
+      settlement_account_name: row.settlement_account_name,
+      settlement_account_identifier: row.settlement_account_identifier,
     }),
     access: Object.freeze({
       read_scope: access.allActiveStores ? ('ORGANIZATION' as const) : ('ASSIGNED_STORES' as const),
@@ -73,7 +78,7 @@ export async function resolveSellerPortalActor(context: Context<any>): Promise<S
 }
 
 export function requireSellerPortalWriteRole(actor: SellerPortalActor): void {
-  if (!actor.canManageProducts || (actor.role !== 'OWNER' && actor.role !== 'OPERATIONS'))
+  if (!actor.canManageProducts || !canWriteSellerOperations(actor.role))
     throw new SellerPortalError('FORBIDDEN', 403);
 }
 
@@ -84,7 +89,8 @@ async function requireSellerMemberByIdentity(
   const rows = await database
     .prepare(
       `SELECT member.id AS member_id,member.organization_id,member.display_name,member.role,member.primary_owner,
-      member.status AS member_status,organization.seller_code,organization.organization_name,organization.marketplace_code,organization.status AS organization_status
+      member.status AS member_status,organization.seller_code,organization.organization_name,organization.marketplace_code,organization.status AS organization_status,
+      organization.settlement_account_name,organization.settlement_account_identifier
     FROM seller_organization_members member JOIN seller_organizations organization ON organization.id=member.organization_id
     WHERE member.identity_subject_id=? AND member.status='ACTIVE' AND organization.status='ACTIVE'
     ORDER BY member.organization_id,member.id LIMIT 2`,

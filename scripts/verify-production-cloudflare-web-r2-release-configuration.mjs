@@ -1,8 +1,10 @@
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import {
+  archiveReleaseFlags,
   inspectReleaseTemplate,
   readLocalReleaseConfig,
+  retiredArchiveReleaseFlags,
   templatePath,
 } from './preflight-cloudflare-release.mjs';
 import {
@@ -17,16 +19,23 @@ const read = (file) => readRepositoryFile(file, root);
 const migrations = readdirSync(path.join(root, 'migrations'))
   .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
   .sort();
-assert(migrations.length === 70, `expected 70 migrations, found ${migrations.length}`);
-assert(migrations[36] === '0037_product_reservation_order_scheduling.sql'
-  && migrations[37] === '0038_staff_mcp_production_transport_oauth.sql'
-  && migrations[40] === '0041_seller_principal_rate_policy.sql'
-  && migrations[41] === '0042_rakuten_tiktok_jp_marketplace_foundation.sql'
-  && migrations[42] === '0043_seller_principal_rate_integrity_hardening.sql'
-  && migrations[63] === '0064_marketplace_local_date_truth.sql'
-  && migrations[65] === '0066_advance_cash_integrity.sql'
-  && migrations[66] === '0067_advance_v1_full_payment.sql'
-  && migrations[69] === '0070_buyer_refund_reminders.sql',
+assert(migrations.length === 41, `expected 41 migrations, found ${migrations.length}`);
+assert(migrations[0] === '0001_foundation.sql'
+  && migrations[18] === '0019_read_model_views.sql'
+  && migrations[23] === '0024_cold_archive_bundle_model.sql'
+  && migrations[24] === '0025_historical_order_import.sql'
+  && migrations[25] === '0026_stage65_archive_import_closeout.sql'
+  && migrations[26] === '0027_stage66_single_source_convergence.sql'
+  && migrations[27] === '0028_stage66b_fixed_assignment_and_files.sql'
+  && migrations[28] === '0029_stage66c_retire_acquisition_outbox.sql'
+  && migrations[29] === '0030_stage66e_invitation_binding_and_permission_cleanup.sql'
+  && migrations[30] === '0031_stage75_staff_order_list_indexes.sql'
+  && migrations[31] === '0032_stage75_public_service_channels.sql'
+  && migrations[32] === '0033_stage75_seller_settlement_batches.sql'
+  && migrations[33] === '0034_stage75r_service_channel_qr_purpose.sql'
+  && migrations[34] === '0035_stage75r_settlement_batch_cancel_fix.sql'
+  && migrations[35] === '0036_stage75r5_settlement_cancelled_reason_reserved.sql'
+  && migrations[40] === '0041_owner_alias_yueguangbai_ygbceping.sql',
   'current continuous migration ownership drift');
 
 for (const environment of ['staging', 'production']) {
@@ -70,17 +79,14 @@ for (const environment of ['staging', 'production']) {
     && config.assets?.run_worker_first === true,
   `${environment} template SPA asset contract mismatch`);
   const expectedScheduled = environment === 'production' ? 'true' : 'false';
-  for (const flag of ['SCHEDULED_OPERATIONS_ENABLED', 'ACQUISITION_MAINTENANCE_ENABLED']) {
+  for (const flag of ['SCHEDULED_OPERATIONS_ENABLED']) {
     assert(config.vars?.[flag] === expectedScheduled,
       `${environment} template scheduled default drift: ${flag}`);
   }
-  for (const flag of [
-    'DRIVE_ARCHIVE_ENABLED',
-    'DRIVE_ARCHIVE_COPY_ENABLED',
-    'DRIVE_ARCHIVE_PROXY_READ_ENABLED',
-    'DRIVE_ARCHIVE_R2_DELETE_ENABLED',
-  ]) assert(config.vars?.[flag] === 'false',
+  for (const flag of archiveReleaseFlags) assert(config.vars?.[flag] === 'false',
     `${environment} template kill switch not frozen: ${flag}`);
+  for (const flag of retiredArchiveReleaseFlags) assert(!Object.hasOwn(config.vars ?? {}, flag),
+    `${environment} template contains deprecated archive switch: ${flag}`);
   assert(Object.keys(config.vars ?? {}).every(
     (key) => !/SECRET|PASSWORD|REFRESH_TOKEN|CLIENT_SECRET/iu.test(key),
   ), `${environment} template contains a managed Secret key in vars`);
@@ -175,8 +181,8 @@ assert(!existsSync(path.join(root, 'wrangler.production.jsonc')),
 console.log(JSON.stringify({
   status: 'PASS',
   change: 'production-cloudflare-web-r2-release-configuration',
-  schema_change: 'FORWARD_SCHEMA_70_LOCAL_ONLY',
-  migration: '0001-0070_CONTINUOUS',
+  schema_change: 'NO_SCHEMA_CHANGE',
+  migration: '0001-0041_CONTINUOUS',
   release_templates: 'BLOCKED_NEEDS_OPERATOR_INPUT',
   local_implementation: 'PRESENT',
   external_acceptance: 'UNVERIFIED',

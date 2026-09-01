@@ -23,6 +23,7 @@ import {
   bindPhase3GEvidenceFixture,
   seedPhase3GInstructionFixture,
 } from '../../test-support/phase3g-test-fixtures';
+import { registerFileHttpRoutes } from '../files/routes';
 import { registerSellerFormalOrderRoutes } from './routes';
 
 const ORIGIN = 'https://portal.local.test';
@@ -161,18 +162,19 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
       requiredOrders().otherOrganization,
     );
 
+    // D-056 §4.4: every member sees the whole organization — both stores.
     for (const actor of ['ops', 'finance', 'viewer'] as const) {
       const body = await list(app, actor);
-      expect(ids(body)).toEqual([requiredOrders().storeOne]);
-      const outside = await request(
+      expect(ids(body).sort()).toEqual([
+        requiredOrders().storeTwo,
+        requiredOrders().storeOne,
+      ].sort());
+      const reachable = await request(
         app,
         `/api/seller-portal/formal-orders/${requiredOrders().storeTwo}`,
         { headers: { Cookie: await cookie(actor) } },
       );
-      expect(outside.status).toBe(404);
-      await expect(json(outside)).resolves.toMatchObject({
-        error: { code: 'FORMAL_ORDER_NOT_FOUND' },
-      });
+      expect(reachable.status).toBe(200);
     }
 
     const otherOwner = await list(app, 'other-owner');
@@ -237,7 +239,7 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
 
     const cases: readonly [string, string][] = [
       ['store_id=store-portal-1', requiredOrders().storeOne],
-      ['marketplace_code=JP', requiredOrders().storeTwo],
+      ['marketplace_code=AMAZON_JP', requiredOrders().storeTwo],
       ['asin=B0PORT0001', requiredOrders().storeOne],
       ['product_name=' + encodeURIComponent('Portal 产品二'),
         requiredOrders().storeTwo],
@@ -284,44 +286,6 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
     }
   });
 
-  it('preserves the global cursor across mixed legacy/platform pages without loss or duplication', async () => {
-    seedRakutenMixedPaginationOrders(database!);
-    const expected = [
-      { id: requiredOrders().storeOne, confirmedAt: FIRST_CONFIRMED_AT },
-      { id: requiredOrders().storeTwo, confirmedAt: SECOND_CONFIRMED_AT },
-      { id: 'platform-formal-page-new', confirmedAt: FIRST_CONFIRMED_AT + 1000 },
-      { id: 'platform-formal-page-tie', confirmedAt: FIRST_CONFIRMED_AT },
-      { id: 'platform-formal-page-old', confirmedAt: FIRST_CONFIRMED_AT - 1000 },
-    ].sort((left, right) => {
-      const byTime = right.confirmedAt - left.confirmedAt;
-      if (byTime !== 0) return byTime;
-      return left.id === right.id ? 0 : left.id < right.id ? 1 : -1;
-    }).map((entry) => entry.id);
-    const app = testApp();
-    const collected: string[] = [];
-    let cursor: string | null = null;
-    for (let pageNo = 0; pageNo < 10; pageNo += 1) {
-      const query = cursor === null
-        ? '?limit=2'
-        : `?limit=2&cursor=${encodeURIComponent(cursor)}`;
-      const response = await request(
-        app,
-        `/api/seller-portal/formal-orders${query}`,
-        { headers: { Cookie: await cookie('owner') } },
-      );
-      expect(response.status).toBe(200);
-      const body = await json<any>(response);
-      collected.push(...body.data.items.map(
-        (item: { formal_order_id: string }) => item.formal_order_id,
-      ));
-      cursor = body.data.page.next_cursor;
-      if (cursor === null) break;
-    }
-    expect(cursor).toBeNull();
-    expect(collected).toEqual(expected);
-    expect(new Set(collected).size).toBe(collected.length);
-  });
-
   it('returns only the seller-safe immutable order and snapshot projection', async () => {
     const app = testApp();
     const response = await request(
@@ -337,9 +301,7 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
         formal_order: {
           formal_order_id: requiredOrders().storeOne,
           status: 'CONFIRMED',
-          legacy_projection: 'AMAZON',
-          marketplace_code: 'JP',
-          canonical_marketplace_code: 'AMAZON_JP',
+          marketplace_code: 'AMAZON_JP',
           amazon_order_number: '111-1234567-1234567',
           platform_order_identifier: '111-1234567-1234567',
           store: {
@@ -430,10 +392,15 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
         (item: { formal_order_id: string }) =>
           item.formal_order_id === requiredOrders().storeOne,
       );
-      expect(listOrder?.chat_screenshot).toEqual({
-        status: expectedStatus,
-        file_version: expectedVersion,
-      });
+      // D-056 §4.1: the single chat-screenshot projection is now a
+      // communication_screenshots list gated by the audience grant.
+      const screenshots = listOrder?.communication_screenshots ?? [];
+      if (expectedStatus === 'AVAILABLE') {
+        expect(screenshots).toHaveLength(1);
+        expect(screenshots[0]).toMatchObject({ file_version: expectedVersion });
+      } else {
+        expect(screenshots).toHaveLength(0);
+      }
 
       const detailResponse = await request(
         app,
@@ -442,36 +409,18 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
       );
       expect(detailResponse.status).toBe(200);
       const detailBody = await json<any>(detailResponse);
-      expect(detailBody.data.formal_order.chat_screenshot).toEqual({
-        status: expectedStatus,
-        file_version: expectedVersion,
-      });
+      const detailScreenshots =
+        detailBody.data.formal_order.communication_screenshots ?? [];
+      if (expectedStatus === 'AVAILABLE') {
+        expect(detailScreenshots).toHaveLength(1);
+        expect(detailScreenshots[0]).toMatchObject({
+          file_version: expectedVersion,
+        });
+      } else {
+        expect(detailScreenshots).toHaveLength(0);
+      }
     },
   );
-
-  it('returns a non-Amazon formal record through the Seller HTTP API', async () => {
-    seedRakutenPlatformFormalOrder(database!);
-    const app = testApp();
-    const response = await request(
-      app,
-      '/api/seller-portal/formal-orders?marketplace_code=RAKUTEN_JP',
-      { headers: { Cookie: await cookie('owner') } },
-    );
-    expect(response.status).toBe(200);
-    const body = await json<any>(response);
-    expect(body.data.items).toEqual([expect.objectContaining({
-      formal_order_id: 'platform-formal-portal',
-      legacy_projection: 'NONE',
-      marketplace_code: null,
-      canonical_marketplace_code: 'RAKUTEN_JP',
-      amazon_order_number: null,
-      asin: null,
-      platform_order_identifier: '123456-20260810-0000000009',
-      platform_product_identifier: 'rakuten-portal-product',
-      payment: null,
-      business_completion: null,
-    })]);
-  });
 
   it('keeps historical values unchanged after product and pricing rules change', async () => {
     database!.exec(`
@@ -494,36 +443,22 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
 
       INSERT INTO seller_principal_rate_policy_versions (
         id, scope_type, seller_organization_id, source_currency_code,
-        quote_currency_code, version_no, status, markup_rate_value,
-        rate_scale, effective_from, submitted_by_staff_id, submitted_at,
-        decision_version, confirmed_by_staff_id, confirmed_at,
-        rejected_by_staff_id, rejected_at, rejection_reason
+        quote_currency_code, version_no, markup_rate_value,
+        rate_scale, effective_from, created_by_staff_id, created_at
       ) VALUES (
         'principal-rate-portal-v2', 'SELLER_ORGANIZATION', 'org-portal',
-        'JPY', 'CNY', 2, 'SUBMITTED', 3500000, 100000000, 9800,
-        'staff-confirm', 9700, 1, NULL, NULL, NULL, NULL, NULL
+        'JPY', 'CNY', 2, 3500000, 100000000, 9800,
+        'staff-confirm', 9750
       );
-      UPDATE seller_principal_rate_policy_versions
-      SET status='CONFIRMED', decision_version=2,
-          confirmed_by_staff_id='staff-confirm', confirmed_at=9750
-      WHERE id='principal-rate-portal-v2';
 
-      INSERT INTO seller_service_fee_versions (
-        id, organization_id, review_type, version_no,
-        status, fee_cny_fen, effective_from,
-        submitted_by_staff_id, submitted_at, decision_version,
-        confirmed_by_staff_id, confirmed_at,
-        rejected_by_staff_id, rejected_at, rejection_reason
+      INSERT INTO seller_service_fee_rule_versions (
+        id, seller_organization_id, marketplace_code, review_type, version_no,
+        fee_amount_minor, fee_currency_code, fee_currency_exponent,
+        effective_from, created_by_staff_id, created_at
       ) VALUES (
-        'service-fee-portal-image-v2', 'org-portal', 'IMAGE', 2,
-        'SUBMITTED', 9999, 9800,
-        'staff-confirm', 9700, 1,
-        NULL, NULL, NULL, NULL, NULL
+        'service-fee-portal-image-v2', 'org-portal', 'AMAZON_JP', 'IMAGE', 2,
+        9999, 'CNY', 2, 9800, 'staff-confirm', 9750
       );
-      UPDATE seller_service_fee_versions
-      SET status='CONFIRMED', decision_version=2,
-          confirmed_by_staff_id='staff-confirm', confirmed_at=9750
-      WHERE id='service-fee-portal-image-v2';
     `);
 
     const app = testApp();
@@ -583,24 +518,21 @@ describe('Phase 4C2 seller formal order HTTP API', () => {
     expect(await formalOrderCounts()).toEqual(before);
   });
 
-  it('retains the schema 26 history beneath current schema 70', async () => {
+  it('applies the clean baseline 0001-0027', async () => {
     const state = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(70);
+    expect(Number(state?.schema_version)).toBe(41);
 
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(70);
+    expect(migrations).toHaveLength(41);
     expect(migrations[0]?.startsWith('0001_')).toBe(true);
-    expect(migrations[18]?.startsWith('0019_')).toBe(true);
-    expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations[42]).toBe('0043_seller_principal_rate_integrity_hardening.sql');
-    expect(migrations.at(-1)).toBe('0070_buyer_refund_reminders.sql');
+    expect(migrations.at(-1)).toBe('0041_owner_alias_yueguangbai_ygbceping.sql');
   });
 });
 
@@ -608,124 +540,6 @@ function testApp() {
   const app = createApp();
   registerSellerFormalOrderRoutes(app);
   return app;
-}
-
-function seedRakutenPlatformFormalOrder(db: SqliteDatabase): void {
-  db.exec(`
-    INSERT INTO seller_stores (
-      id, organization_id, marketplace_code, display_name,
-      normalized_name, status, version, created_at, updated_at, disabled_at
-    ) VALUES (
-      'store-portal-rakuten','org-portal','JP','Portal 乐天店',
-      'portal 乐天店','ACTIVE',1,1,1,NULL
-    );
-    UPDATE seller_store_marketplaces SET marketplace_code='RAKUTEN_JP'
-    WHERE store_id='store-portal-rakuten';
-    INSERT INTO platform_product_identities (
-      id, marketplace_code, platform_product_identifier,
-      seller_organization_id, seller_store_id, status, created_at, updated_at
-    ) VALUES (
-      'platform-product-portal','RAKUTEN_JP','rakuten-portal-product',
-      'org-portal','store-portal-rakuten','ACTIVE',1,1
-    );
-    INSERT INTO platform_order_identities (
-      id, marketplace_code, platform_order_identifier,
-      platform_product_identity_id, seller_organization_id,
-      seller_store_id, status, created_at, updated_at
-    ) VALUES (
-      'platform-order-portal','RAKUTEN_JP',
-      '123456-20260810-0000000009','platform-product-portal',
-      'org-portal','store-portal-rakuten','ACTIVE',1,1
-    );
-    INSERT INTO platform_order_evidence_records (
-      id, platform_order_identity_id, platform_product_identity_id,
-      marketplace_code, seller_organization_id, seller_store_id,
-      evidence_type, status, created_at, updated_at
-    ) VALUES (
-      'platform-evidence-portal','platform-order-portal',
-      'platform-product-portal','RAKUTEN_JP','org-portal',
-      'store-portal-rakuten','ORDER_FACT','VERIFIED',1,1
-    );
-    INSERT INTO platform_formal_orders (
-      id, order_evidence_record_id, platform_order_identity_id,
-      platform_product_identity_id, marketplace_code,
-      seller_organization_id, seller_store_id, product_name_snapshot,
-      status, confirmed_at, created_at
-    ) VALUES (
-      'platform-formal-portal','platform-evidence-portal',
-      'platform-order-portal','platform-product-portal','RAKUTEN_JP',
-      'org-portal','store-portal-rakuten','Portal 乐天产品',
-      'CONFIRMED',7000,7000
-    );
-  `);
-}
-
-function seedRakutenMixedPaginationOrders(db: SqliteDatabase): void {
-  db.exec(`
-    INSERT INTO seller_stores (
-      id, organization_id, marketplace_code, display_name,
-      normalized_name, status, version, created_at, updated_at, disabled_at
-    ) VALUES (
-      'store-rakuten-pagination','org-portal','JP','分页乐天店',
-      '分页乐天店','ACTIVE',1,1,1,NULL
-    );
-    UPDATE seller_store_marketplaces SET marketplace_code='RAKUTEN_JP'
-    WHERE store_id='store-rakuten-pagination';
-    INSERT INTO platform_product_identities (
-      id, marketplace_code, platform_product_identifier,
-      seller_organization_id, seller_store_id, display_name,
-      status, created_at, updated_at
-    ) VALUES (
-      'platform-product-page','RAKUTEN_JP','rakuten-page-product',
-      'org-portal','store-rakuten-pagination','分页产品','ACTIVE',1,1
-    );
-    INSERT INTO platform_order_identities (
-      id, marketplace_code, platform_order_identifier,
-      platform_product_identity_id, seller_organization_id,
-      seller_store_id, status, created_at, updated_at
-    ) VALUES
-      ('platform-order-page-new','RAKUTEN_JP',
-       '123456-20260810-0000000101','platform-product-page',
-       'org-portal','store-rakuten-pagination','ACTIVE',1,1),
-      ('platform-order-page-tie','RAKUTEN_JP',
-       '123456-20260810-0000000102','platform-product-page',
-       'org-portal','store-rakuten-pagination','ACTIVE',1,1),
-      ('platform-order-page-old','RAKUTEN_JP',
-       '123456-20260810-0000000103','platform-product-page',
-       'org-portal','store-rakuten-pagination','ACTIVE',1,1);
-    INSERT INTO platform_order_evidence_records (
-      id, platform_order_identity_id, platform_product_identity_id,
-      marketplace_code, seller_organization_id, seller_store_id,
-      evidence_type, status, created_at, updated_at
-    ) VALUES
-      ('platform-evidence-page-new','platform-order-page-new',
-       'platform-product-page','RAKUTEN_JP','org-portal',
-       'store-rakuten-pagination','ORDER_FACT','VERIFIED',1,1),
-      ('platform-evidence-page-tie','platform-order-page-tie',
-       'platform-product-page','RAKUTEN_JP','org-portal',
-       'store-rakuten-pagination','ORDER_FACT','VERIFIED',1,1),
-      ('platform-evidence-page-old','platform-order-page-old',
-       'platform-product-page','RAKUTEN_JP','org-portal',
-       'store-rakuten-pagination','ORDER_FACT','VERIFIED',1,1);
-    INSERT INTO platform_formal_orders (
-      id, order_evidence_record_id, platform_order_identity_id,
-      platform_product_identity_id, marketplace_code,
-      seller_organization_id, seller_store_id, product_name_snapshot,
-      status, confirmed_at, created_at
-    ) VALUES
-      ('platform-formal-page-new','platform-evidence-page-new',
-       'platform-order-page-new','platform-product-page','RAKUTEN_JP',
-       'org-portal','store-rakuten-pagination','分页产品',
-       'CONFIRMED',${FIRST_CONFIRMED_AT + 1000},${FIRST_CONFIRMED_AT + 1000}),
-      ('platform-formal-page-tie','platform-evidence-page-tie',
-       'platform-order-page-tie','platform-product-page','RAKUTEN_JP',
-       'org-portal','store-rakuten-pagination','分页产品',
-       'CONFIRMED',${FIRST_CONFIRMED_AT},${FIRST_CONFIRMED_AT}),
-      ('platform-formal-page-old','platform-evidence-page-old',
-       'platform-order-page-old','platform-product-page','RAKUTEN_JP',
-       'org-portal','store-rakuten-pagination','分页产品',
-       'CONFIRMED',${FIRST_CONFIRMED_AT - 1000},${FIRST_CONFIRMED_AT - 1000});
-  `);
 }
 
 async function request(
@@ -882,7 +696,7 @@ async function seedChatScreenshotProjection(
       failure_code, created_at, updated_at, completed_at
     ) VALUES (
       '${uploadIntentId}', 'STAFF', 'staff-confirm',
-      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE',
+      'ORDER_COMMUNICATION_SCREENSHOT', 'SELLER_VISIBLE',
       'ISSUED', 1, '${'a'.repeat(64)}', 1, 9999999999999,
       NULL, 7000, 7000, NULL
     );
@@ -895,7 +709,7 @@ async function seedChatScreenshotProjection(
       verified_at, deleted_at
     ) VALUES (
       '${fileObjectId}', '${uploadIntentId}', 1,
-      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE',
+      'ORDER_COMMUNICATION_SCREENSHOT', 'SELLER_VISIBLE',
       'files/v1/chat/projection-screenshot-000000000000000000000000000000',
       'chat.png', 'png', 'image/png', 11, 'RESERVED',
       '${'b'.repeat(64)}', 9999999999999, NULL, NULL, NULL,
@@ -920,11 +734,11 @@ async function seedChatScreenshotProjection(
       linked_by_actor_type, linked_by_actor_id, created_at,
       authorization_mode, expires_at, revoked_at
     ) VALUES (
-      ?, ?, 'ORDER_EVIDENCE_SUBMISSION', 'evidence-portal-1',
-      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE',
+      ?, ?, 'ORDER', ?,
+      'ORDER_COMMUNICATION_SCREENSHOT', 'SELLER_VISIBLE',
       'STAFF', 'staff-confirm', 7002, 'EXPLICIT_AUDIENCES', NULL, NULL
     )
-  `).bind(fileEntityLinkId, fileObjectId).run();
+  `).bind(fileEntityLinkId, fileObjectId, requiredOrders().storeOne).run();
 
   if (grantState !== 'missing') {
     await db.prepare(`
@@ -950,17 +764,6 @@ async function seedChatScreenshotProjection(
       `).bind(grantId).run();
     }
   }
-
-  await db.prepare(`
-    INSERT INTO order_evidence_internal_files (
-      id, order_evidence_submission_id, slot,
-      file_object_id, file_entity_link_id,
-      created_by_staff_id, created_at
-    ) VALUES (
-      'projection-chat-attachment', 'evidence-portal-1', 1,
-      ?, ?, 'staff-confirm', 7004
-    )
-  `).bind(fileObjectId, fileEntityLinkId).run();
 }
 
 function command(idempotencyKey: string, now: number) {
@@ -1013,13 +816,13 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       next_member_number
     ) VALUES
       (
-        'org-portal', 'JP', 'ido-mango-portal-c2',
+        'org-portal', 'AMAZON_JP', 'ido-mango-portal-c2',
         'seller-channel-ido-mango', 'seller-channel-ido-mango', 9301,
         'Portal 卖家组织', 'ACTIVE', 1,
         1000, 1000, 1000, NULL, 6
       ),
       (
-        'org-other', 'JP', 'ido-mango-portal-other',
+        'org-other', 'AMAZON_JP', 'ido-mango-portal-other',
         'seller-channel-ido-mango', 'seller-channel-ido-mango', 9302,
         '其他卖家组织', 'ACTIVE', 1,
         1000, 1000, 1000, NULL, 2
@@ -1055,29 +858,16 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       display_name, normalized_name, status, version,
       created_at, updated_at, disabled_at
     ) VALUES
-      ('store-portal-1', 'org-portal', 'JP',
+      ('store-portal-1', 'org-portal', 'AMAZON_JP',
        'Portal Alpha 店铺', 'portal alpha 店铺',
        'ACTIVE', 1, 1000, 1000, NULL),
-      ('store-portal-2', 'org-portal', 'JP',
+      ('store-portal-2', 'org-portal', 'AMAZON_JP',
        'Portal Beta 店铺', 'portal beta 店铺',
        'ACTIVE', 1, 1000, 1000, NULL),
-      ('store-other', 'org-other', 'JP',
+      ('store-other', 'org-other', 'AMAZON_JP',
        'Other 店铺', 'other 店铺',
        'ACTIVE', 1, 1000, 1000, NULL);
 
-    INSERT INTO seller_member_store_scopes (
-      member_id, store_id, organization_id, status,
-      assigned_by_staff_id, assigned_at, revoked_at,
-      created_at, updated_at
-    ) VALUES
-      ('member-ops', 'store-portal-1', 'org-portal', 'ACTIVE',
-       'staff-confirm', 1000, NULL, 1000, 1000),
-      ('member-finance', 'store-portal-1', 'org-portal', 'ACTIVE',
-       'staff-confirm', 1000, NULL, 1000, 1000),
-      ('member-viewer', 'store-portal-1', 'org-portal', 'ACTIVE',
-       'staff-confirm', 1000, NULL, 1000, 1000),
-      ('member-forced', 'store-portal-1', 'org-portal', 'ACTIVE',
-       'staff-confirm', 1000, NULL, 1000, 1000);
 
     INSERT INTO customer_login_accounts (
       id, identity_subject_id, account_type,
@@ -1107,30 +897,21 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
        'buyer-c2', 'buyer-c2', 'ACTIVE', 1, 0,
        1, 1000, 1000, 1000, NULL);
 
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-portal-c2', 'K', 'Portal C2 buyers',
-      'ACTIVE', 1, 1, 1000, 1000, NULL
-    );
-
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code,
       buyer_channel_id, buyer_customer_no, buyer_sequence,
-      first_valid_order_business_date, display_name,
-      access_status, identity_review_status, version,
+      display_name, access_status, identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
-      ('buyer-portal-1', 'subject-buyer-1', 'JP',
-       'buyer-channel-portal-c2', NULL, NULL, NULL, 'Portal buyer 1',
-       'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL),
-      ('buyer-portal-2', 'subject-buyer-2', 'JP',
-       'buyer-channel-portal-c2', NULL, NULL, NULL, 'Portal buyer 2',
-       'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL),
-      ('buyer-other', 'subject-buyer-other', 'JP',
-       'buyer-channel-portal-c2', NULL, NULL, NULL, 'Other buyer',
-       'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL);
+      ('buyer-portal-1', 'subject-buyer-1', 'AMAZON_JP',
+       'buyer-channel-wechat-b', '20260801B0001', 1,
+       'Portal buyer 1', 'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL),
+      ('buyer-portal-2', 'subject-buyer-2', 'AMAZON_JP',
+       'buyer-channel-wechat-b', '20260801B0002', 2,
+       'Portal buyer 2', 'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL),
+      ('buyer-other', 'subject-buyer-other', 'AMAZON_JP',
+       'buyer-channel-wechat-c', '20260801C0001', 1,
+       'Other buyer', 'ACTIVE', 'CLEAR', 1, 1000, 1000, 1000, NULL);
 
     INSERT INTO products (
       id, organization_id, store_id, marketplace_code,
@@ -1138,13 +919,13 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       current_version_no, version,
       created_at, updated_at, disabled_at
     ) VALUES
-      ('product-portal-1', 'org-portal', 'store-portal-1', 'JP',
+      ('product-portal-1', 'org-portal', 'store-portal-1', 'AMAZON_JP',
        'B0PORT0001', 'B0PORT0001', 'ACTIVE', 1, 1,
        1000, 1000, NULL),
-      ('product-portal-2', 'org-portal', 'store-portal-2', 'JP',
+      ('product-portal-2', 'org-portal', 'store-portal-2', 'AMAZON_JP',
        'B0PORT0002', 'B0PORT0002', 'ACTIVE', 1, 1,
        1000, 1000, NULL),
-      ('product-other', 'org-other', 'store-other', 'JP',
+      ('product-other', 'org-other', 'store-other', 'AMAZON_JP',
        'B0PORT0003', 'B0PORT0003', 'ACTIVE', 1, 1,
        1000, 1000, NULL);
 
@@ -1180,17 +961,17 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       reviewed_at, published_at, withdrawn_at, closed_at,
       held_reservation_count, approved_reservation_count
     ) VALUES
-      ('demand-portal-1', 'org-portal', 'store-portal-1', 'JP',
+      ('demand-portal-1', 'org-portal', 'store-portal-1', 'AMAZON_JP',
        'product-portal-1', 1, 'member-owner', 'IMAGE',
        10, NULL, 'seller note secret', 1000, 5000, 20000,
        'PUBLISHED', NULL, NULL, 'staff-confirm', NULL,
        2, 1000, 2000, 2000, 2000, NULL, NULL, 0, 1),
-      ('demand-portal-2', 'org-portal', 'store-portal-2', 'JP',
+      ('demand-portal-2', 'org-portal', 'store-portal-2', 'AMAZON_JP',
        'product-portal-2', 1, 'member-owner', 'TEXT',
        10, NULL, 'seller note secret two', 1000, 5000, 20000,
        'PUBLISHED', NULL, NULL, 'staff-confirm', NULL,
        2, 1000, 2000, 2000, 2000, NULL, NULL, 0, 1),
-      ('demand-other', 'org-other', 'store-other', 'JP',
+      ('demand-other', 'org-other', 'store-other', 'AMAZON_JP',
        'product-other', 1, 'member-other-owner', 'VIDEO',
        10, NULL, 'other seller secret', 1000, 5000, 20000,
        'PUBLISHED', NULL, NULL, 'staff-confirm', NULL,
@@ -1213,17 +994,17 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       buyer_self_pay_accepted_demand_version
     ) VALUES
       ('reservation-portal-1', 'demand-portal-1', 'buyer-portal-1',
-       'org-portal', 'store-portal-1', 'product-portal-1', 1, 'JP',
+       'org-portal', 'store-portal-1', 'product-portal-1', 1, 'AMAZON_JP',
        'APPROVED', '{}', 5000, 20000, 2, 3000, 4000,
        'staff-confirm', NULL, 4000, NULL, NULL, 0,
        0, 1980, 0, 1980, 3000, 2),
       ('reservation-portal-2', 'demand-portal-2', 'buyer-portal-2',
-       'org-portal', 'store-portal-2', 'product-portal-2', 1, 'JP',
+       'org-portal', 'store-portal-2', 'product-portal-2', 1, 'AMAZON_JP',
        'APPROVED', '{}', 5000, 20000, 2, 3000, 4000,
        'staff-confirm', NULL, 4000, NULL, NULL, 0,
        0, 1980, 0, 1980, 3000, 2),
       ('reservation-other', 'demand-other', 'buyer-other',
-       'org-other', 'store-other', 'product-other', 1, 'JP',
+       'org-other', 'store-other', 'product-other', 1, 'AMAZON_JP',
        'APPROVED', '{}', 5000, 20000, 2, 3000, 4000,
        'staff-confirm', NULL, 4000, NULL, NULL, 0,
        0, 1980, 0, 1980, 3000, 2);
@@ -1268,15 +1049,15 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       withdrawn_at, consumed_at, created_at
     ) VALUES
       ('evidence-portal-1', 'reservation-portal-1',
-       'buyer-portal-1', 'JP', 'PENDING_VERIFICATION', 1, 1,
+       'buyer-portal-1', 'AMAZON_JP', 'PENDING_VERIFICATION', 1, 1,
        NULL, 'internal review secret one', 5000, 5000,
        NULL, NULL, NULL, NULL, 5000),
       ('evidence-portal-2', 'reservation-portal-2',
-       'buyer-portal-2', 'JP', 'PENDING_VERIFICATION', 1, 1,
+       'buyer-portal-2', 'AMAZON_JP', 'PENDING_VERIFICATION', 1, 1,
        NULL, 'internal review secret two', 5000, 5000,
        NULL, NULL, NULL, NULL, 5000),
       ('evidence-portal-other', 'reservation-other',
-       'buyer-other', 'JP', 'PENDING_VERIFICATION', 1, 1,
+       'buyer-other', 'AMAZON_JP', 'PENDING_VERIFICATION', 1, 1,
        NULL, 'other internal review secret', 5000, 5000,
        NULL, NULL, NULL, NULL, 5000);
 
@@ -1292,35 +1073,35 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       buyer_self_pay_bps_snapshot, buyer_self_pay_jpy,
       buyer_refundable_principal_jpy, price_mismatch,
       price_difference_jpy, submitted_before_deadline,
-      evidence_file_object_id, created_at
+      created_at
     ) VALUES
       ('evidence-portal-1-v1', 'evidence-portal-1',
-       'reservation-portal-1', 'buyer-portal-1', 'JP', 1,
+       'reservation-portal-1', 'buyer-portal-1', 'AMAZON_JP', 1,
        '111-1234567-1234567', '111-1234567-1234567',
        '2026-08-01',
        8880, 'buyer-portal-1', 'buyer note secret one',
        '${instructionOne.instructionId}',
        '${instructionOne.instructionVersionId}',
        ${instructionOne.deadlineAt}, 1980, 0, 0, 8880, 1, 6900, 1,
-       '${instructionOne.evidenceFileObjectId}', 5000),
+       5000),
       ('evidence-portal-2-v1', 'evidence-portal-2',
-       'reservation-portal-2', 'buyer-portal-2', 'JP', 1,
+       'reservation-portal-2', 'buyer-portal-2', 'AMAZON_JP', 1,
        '222-1234567-1234567', '222-1234567-1234567',
        '2026-08-02',
        5000, 'buyer-portal-2', 'buyer note secret two',
        '${instructionTwo.instructionId}',
        '${instructionTwo.instructionVersionId}',
        ${instructionTwo.deadlineAt}, 1980, 0, 0, 5000, 1, 3020, 1,
-       '${instructionTwo.evidenceFileObjectId}', 5000),
+       5000),
       ('evidence-portal-other-v1', 'evidence-portal-other',
-       'reservation-other', 'buyer-other', 'JP', 1,
+       'reservation-other', 'buyer-other', 'AMAZON_JP', 1,
        '333-1234567-1234567', '333-1234567-1234567',
        '2026-08-03',
        7000, 'buyer-other', 'other buyer note secret',
        '${instructionOther.instructionId}',
        '${instructionOther.instructionVersionId}',
        ${instructionOther.deadlineAt}, 1980, 0, 0, 7000, 1, 5020, 1,
-       '${instructionOther.evidenceFileObjectId}', 5000);
+       5000);
 
     UPDATE order_evidence_submissions
     SET status='VERIFIED', version=2,
@@ -1332,36 +1113,17 @@ async function seedFixture(db: SqliteDatabase): Promise<void> {
       'evidence-portal-other'
     );
 
-    INSERT INTO buyer_daily_exchange_rates (
-      id, business_date, version_no, status, cny_per_jpy_e8,
-      submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at,
-      rejected_by_staff_id, rejected_at, rejection_reason
-    ) VALUES (
-      'buyer-rate-portal-v1', '${BUSINESS_DATE}', 1,
-      'SUBMITTED', 5500000,
-      'staff-confirm', 1000, 1,
-      NULL, NULL, NULL, NULL, NULL
-    );
-    UPDATE buyer_daily_exchange_rates
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-confirm', confirmed_at=2000
-    WHERE id='buyer-rate-portal-v1';
-
-    INSERT INTO buyer_daily_exchange_rates (
-      id, business_date, version_no, status, cny_per_jpy_e8,
-      submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at,
-      rejected_by_staff_id, rejected_at, rejection_reason
+    INSERT INTO buyer_daily_currency_rate_versions (
+      id, business_date, source_currency_code, quote_currency_code,
+      version_no, rate_value, rate_scale, rounding_rule,
+      effective_from, created_by_staff_id, created_at
     ) VALUES
-      ('buyer-rate-portal-v2', '2026-08-02', 1, 'SUBMITTED', 5500000,
-       'staff-confirm', 1000, 1, NULL, NULL, NULL, NULL, NULL),
-      ('buyer-rate-portal-v3', '2026-08-03', 1, 'SUBMITTED', 5500000,
-       'staff-confirm', 1000, 1, NULL, NULL, NULL, NULL, NULL);
-    UPDATE buyer_daily_exchange_rates
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-confirm', confirmed_at=2000
-    WHERE id IN ('buyer-rate-portal-v2', 'buyer-rate-portal-v3');
+      ('buyer-rate-portal-v1', '${BUSINESS_DATE}', 'JPY', 'CNY',
+       1, 5500000, 100000000, 'HALF_UP', 2000, 'staff-confirm', 2000),
+      ('buyer-rate-portal-v2', '2026-08-02', 'JPY', 'CNY',
+       1, 5500000, 100000000, 'HALF_UP', 2000, 'staff-confirm', 2000),
+      ('buyer-rate-portal-v3', '2026-08-03', 'JPY', 'CNY',
+       1, 5500000, 100000000, 'HALF_UP', 2000, 'staff-confirm', 2000);
   `);
 
   await bindPhase3GEvidenceFixture(db, {
@@ -1429,19 +1191,12 @@ function seedPrincipalRate(
   db.exec(`
     INSERT INTO seller_principal_rate_policy_versions (
       id, scope_type, seller_organization_id, source_currency_code,
-      quote_currency_code, version_no, status, markup_rate_value, rate_scale,
-      effective_from, submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at, rejected_by_staff_id, rejected_at,
-      rejection_reason
+      quote_currency_code, version_no, markup_rate_value, rate_scale,
+      effective_from, created_by_staff_id, created_at
     ) VALUES (
       '${id}', 'SELLER_ORGANIZATION', '${organizationId}', 'JPY', 'CNY', 1,
-      'SUBMITTED', ${markupRateE8}, 100000000, 3000,
-      'staff-confirm', 1000, 1, NULL, NULL, NULL, NULL, NULL
+      ${markupRateE8}, 100000000, 2000, 'staff-confirm', 2000
     );
-    UPDATE seller_principal_rate_policy_versions
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-confirm', confirmed_at=2000
-    WHERE id='${id}';
   `);
 }
 
@@ -1453,25 +1208,127 @@ function seedServiceFee(
   feeCnyFen: number,
 ): void {
   db.exec(`
-    INSERT INTO seller_service_fee_versions (
-      id, organization_id, review_type, version_no,
-      status, fee_cny_fen, effective_from,
-      submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at,
-      rejected_by_staff_id, rejected_at, rejection_reason
+    INSERT INTO seller_service_fee_rule_versions (
+      id, seller_organization_id, marketplace_code, review_type, version_no,
+      fee_amount_minor, fee_currency_code, fee_currency_exponent,
+      effective_from, created_by_staff_id, created_at
     ) VALUES (
-      '${id}', '${organizationId}', '${reviewType}', 1,
-      'SUBMITTED', ${feeCnyFen}, 3000,
-      'staff-confirm', 1000, 1,
-      NULL, NULL, NULL, NULL, NULL
+      '${id}', '${organizationId}', 'AMAZON_JP', '${reviewType}', 1,
+      ${feeCnyFen}, 'CNY', 2, 2000, 'staff-confirm', 2000
     );
-    UPDATE seller_service_fee_versions
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-confirm', confirmed_at=2000
-    WHERE id='${id}';
   `);
 }
 
 async function json<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
+}
+
+describe('seller order screenshot', () => {
+  it('exposes the seller screenshot copy and authorizes the seller read intent', async () => {
+    const app = testApp();
+    registerFileHttpRoutes(app);
+    const orderId = orders!.storeOne;
+    // 模拟审批分发的卖家副本：SELLER_VISIBLE 克隆对象 + ORDER 链接 + 卖家授权
+    seedSellerScreenshotCopy(database!, orderId);
+
+    const detail = await request(
+      app,
+      `/api/seller-portal/formal-orders/${orderId}`,
+      { headers: { Cookie: await cookie('owner') } },
+    );
+    expect(detail.status).toBe(200);
+    const payload = await json<{
+      data: { formal_order: { order_screenshot: {
+        file_object_id: string;
+        file_version: number;
+      } | null } };
+    }>(detail);
+    const screenshot = payload.data.formal_order.order_screenshot;
+    expect(screenshot).not.toBeNull();
+    if (screenshot === null) throw new Error('order_screenshot missing');
+    expect(screenshot).toMatchObject({ file_object_id: expect.any(String) });
+
+    const issued = await request(
+      app,
+      `/api/seller-portal/files/${screenshot.file_object_id}/read-intents`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: await cookie('owner'),
+          'Idempotency-Key': 'seller-shot:issue',
+        },
+        body: JSON.stringify({ expected_file_version: screenshot.file_version }),
+      },
+    );
+    expect(issued.status).toBe(200);
+
+    const concealed = await request(
+      app,
+      `/api/seller-portal/files/${screenshot.file_object_id}/read-intents`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: await cookie('other-owner'),
+          'Idempotency-Key': 'seller-shot:cross-org',
+        },
+        body: JSON.stringify({ expected_file_version: screenshot.file_version }),
+      },
+    );
+    // 卖家域客户遮蔽：跨组织 FORBIDDEN 一律呈现 NOT_FOUND（不泄露存在性）
+    expect(concealed.status).toBe(404);
+  });
+});
+
+function seedSellerScreenshotCopy(db: SqliteDatabase, orderId: string): void {
+  db.exec(`
+    INSERT INTO file_upload_intents (
+      id, owner_actor_type, owner_actor_id, purpose, visibility, status,
+      requested_file_count, manifest_hash, version, expires_at, failure_code,
+      created_at, updated_at, completed_at
+    ) VALUES (
+      'seller-shot-intent', 'STAFF', 'staff-confirm', 'ORDER_EVIDENCE',
+      'SELLER_VISIBLE', 'ISSUED', 1,
+      '${'c'.repeat(64)}', 1, 9000000, NULL, 1000, 1000, NULL
+    );
+    INSERT INTO file_objects (
+      id, upload_intent_id, slot_no, purpose, visibility, object_key,
+      client_file_name, extension, declared_mime, expected_byte_size, status,
+      upload_token_hash, upload_expires_at, uploaded_byte_size, detected_mime,
+      uploaded_sha256, failure_code, version, created_at, updated_at,
+      uploaded_at, verified_at, deleted_at
+    ) VALUES (
+      'seller-shot-object', 'seller-shot-intent', 1, 'ORDER_EVIDENCE',
+      'SELLER_VISIBLE', 'files/v1/2026/08/${'seller-shot'.padEnd(30, 'x')}',
+      'order.png', 'png', 'image/png', 100, 'RESERVED',
+      '${'d'.repeat(64)}', 9000000, NULL, NULL,
+      NULL, NULL, 1, 1000, 1000, NULL, NULL, NULL
+    );
+    UPDATE file_upload_intents
+      SET status='VERIFIED', completed_at=1001, updated_at=1001
+      WHERE id='seller-shot-intent';
+    UPDATE file_objects
+      SET status='VERIFIED', uploaded_byte_size=100, detected_mime='image/png',
+        uploaded_sha256='${'e'.repeat(64)}', uploaded_at=1001, verified_at=1001,
+        updated_at=1001
+      WHERE id='seller-shot-object';
+    INSERT INTO file_entity_links (
+      id, file_object_id, entity_type, entity_id, purpose, visibility,
+      linked_by_actor_type, linked_by_actor_id, created_at,
+      authorization_mode, expires_at, revoked_at
+    ) VALUES (
+      'seller-shot-link', 'seller-shot-object', 'ORDER', '${orderId}',
+      'ORDER_EVIDENCE', 'SELLER_VISIBLE', 'STAFF', 'staff-confirm', 1000,
+      'EXPLICIT_AUDIENCES', NULL, NULL
+    );
+    INSERT INTO file_entity_audience_grants (
+      id, file_entity_link_id, subject_type, seller_organization_id,
+      granted_by_actor_type, granted_by_actor_id, created_at, expires_at,
+      revoked_at
+    ) VALUES (
+      'seller-shot-grant-seller', 'seller-shot-link', 'SELLER_ORGANIZATION',
+      'org-portal', 'STAFF', 'staff-confirm', 1000, NULL, NULL
+    );
+  `);
 }

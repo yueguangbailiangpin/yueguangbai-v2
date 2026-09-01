@@ -123,7 +123,7 @@ describe('scheduled operational signal evaluation', () => {
   it('requires three distinct healthy-window scans before sustained backlog opens', async () => {
     database = createMigratedTestDatabase();
     database.exec(
-      "INSERT INTO scheduled_job_states(job_name,last_backlog_count,updated_at) VALUES('outbox_delivery',7,1000)",
+      "INSERT INTO scheduled_job_states(job_name,last_backlog_count,updated_at) VALUES('reservation_expiry',7,1000)",
     );
     const sink = new MemoryOperationalAlertSink();
     await evaluatePersistedScheduledJobSignals(database, {
@@ -147,7 +147,7 @@ describe('scheduled operational signal evaluation', () => {
     expect(sink.notifications).toEqual([
       expect.objectContaining({
         signal_type: 'backlog_sustained',
-        job_name: 'outbox_delivery',
+        job_name: 'reservation_expiry',
         summary_code: 'JOB_BACKLOG_SUSTAINED',
         count_value: 3,
       }),
@@ -378,7 +378,7 @@ describe('scheduled operational signal evaluation', () => {
     await expect(
       ingestScheduledOperationalSignal(database, {
         ...workerObservation(503, 3_000),
-        job_name: 'outbox_delivery',
+        job_name: 'reservation_expiry',
       }),
     ).rejects.toThrow('invalid_scheduled_operational_signal_scope');
     const columns = await database

@@ -63,7 +63,10 @@ for (const evidence of [
   'returns the complete Staff-safe review queue DTO at runtime',
   'rejects a tampered local D1 %s current screenshot association',
   'returns one safe screenshot for a valid local D1 association',
-  "['zero', 'multiple', 'mismatch']",
+  // D-056 §4.2: the multiple case is enforced by UNIQUE(version_id) at the
+  // database layer; the divergent-pointer mismatch case is structurally gone.
+  "['zero']",
+  "rejects a second payment screenshot at the database layer",
   'seedDetailInvariantFixture',
 ]) assertContains(tests, evidence, 'Staff Order Evidence runtime tests');
 report('wave13-price-mismatch', {

@@ -2,6 +2,7 @@ import { apiFailure, apiSuccess, type SqlDatabase, type SqlStatement } from '@yg
 import {
   hashCustomerPassword,
   hashOneTimeToken,
+  canManageSellerMembers,
   normalizeWechatId,
   validateCustomerPassword,
   verifyCustomerPassword,
@@ -112,7 +113,7 @@ async function listInvitations(context: Context<AppEnv>) {
       wechat_id: String(row.invited_wechat_display),
       display_name: String(row.invited_display_name),
       role: row.invited_role,
-      store_ids: parseStores(row.store_scope_json),
+      store_ids: [],
       status: row.status,
       version: Number(row.version),
       issued_at: Number(row.issued_at),
@@ -124,27 +125,19 @@ async function listInvitations(context: Context<AppEnv>) {
 }
 async function issueInvitation(context: Context<AppEnv>) {
   const actor = await ownerActor(context);
-  const body = await exact(context, ['wechat_id', 'display_name', 'role', 'store_ids']);
+  // D-056 §4.4: members see the whole organization, so invitations no longer
+  // carry a store scope.
+  const body = await exact(context, ['wechat_id', 'display_name', 'role']);
   if (
     typeof body['wechat_id'] !== 'string' ||
     typeof body['display_name'] !== 'string' ||
-    typeof body['role'] !== 'string' ||
-    !Array.isArray(body['store_ids']) ||
-    body['store_ids'].some((v) => typeof v !== 'string')
+    typeof body['role'] !== 'string'
   )
     validation();
   const role = body['role'];
   if (!['OPERATIONS', 'FINANCE', 'VIEWER'].includes(role)) validation();
   const wechat = normalizeWechatId(body['wechat_id']),
-    display = text(body['display_name'], 100),
-    stores = [...new Set((body['store_ids'] as string[]).map(clean))].sort();
-  if (stores.length < 1 || stores.length > 100) validation();
-  const count = await context.env.DB.prepare(
-    `SELECT COUNT(*) AS count FROM seller_stores WHERE organization_id=? AND status='ACTIVE' AND id IN (${stores.map(() => '?').join(',')})`,
-  )
-    .bind(actor.sellerOrganizationId, ...stores)
-    .first<{ count: number }>();
-  if (Number(count?.count ?? 0) !== stores.length) validation();
+    display = text(body['display_name'], 100);
   const membership = await context.env.DB.prepare(
     `SELECT member.id FROM wechat_identity_claims claim JOIN seller_organization_members member ON member.identity_subject_id=claim.identity_subject_id WHERE claim.normalized_wechat=? AND claim.status IN('ACTIVE','RESERVED') AND member.status='ACTIVE' LIMIT 1`,
   )
@@ -174,7 +167,7 @@ async function issueInvitation(context: Context<AppEnv>) {
       wechat.display,
       display,
       role,
-      JSON.stringify(stores),
+      JSON.stringify([]),
       actor.memberId,
       now,
       expires,
@@ -193,7 +186,7 @@ async function issueInvitation(context: Context<AppEnv>) {
         wechat_id: wechat.display,
         display_name: display,
         role,
-        store_ids: stores,
+        store_ids: [],
         status: 'ACTIVE',
         version: 1,
         expires_at: expires,
@@ -367,17 +360,6 @@ async function completeInvitation(context: Context<AppEnv>) {
     context.env.DB.prepare(
       `INSERT OR IGNORE INTO customer_account_personas(account_id,identity_subject_id,persona_type,buyer_customer_id,seller_member_id,created_at) VALUES(?,?,'SELLER_MEMBER',NULL,?,?)`,
     ).bind(accountId, subjectId, memberId, now),
-    ...parseStores(invitation.row.store_scope_json).map((store) =>
-      context.env.DB.prepare(
-        `INSERT INTO seller_member_portal_store_grants(member_id,organization_id,store_id,granted_by_member_id,created_at,revoked_at) VALUES(?,?,?,?,?,NULL)`,
-      ).bind(
-        memberId,
-        invitation.row.organization_id,
-        store,
-        invitation.row.issued_by_member_id,
-        now,
-      ),
-    ),
     context.env.DB.prepare(
       `UPDATE seller_member_invitations SET status='CONSUMED',version=version+1,consumed_at=?,consumed_member_id=?,consumed_account_id=?,updated_at=? WHERE id=? AND status='ACTIVE' AND expires_at>?`,
     ).bind(now, memberId, accountId, now, invitation.row.id, now),
@@ -413,7 +395,7 @@ async function completeInvitation(context: Context<AppEnv>) {
 
 async function ownerActor(context: Context<AppEnv>) {
   const actor = await resolveSellerPortalActor(context);
-  if (actor.role !== 'OWNER') throw new MemberError('FORBIDDEN', 403);
+  if (!canManageSellerMembers(actor.role)) throw new MemberError('FORBIDDEN', 403);
   return actor;
 }
 async function invitationByToken(database: SqlDatabase, token: string, now: number) {
@@ -483,14 +465,6 @@ function randomToken() {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '');
-}
-function parseStores(value: string) {
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) && parsed.every((v) => typeof v === 'string') ? parsed : [];
-  } catch {
-    return [];
-  }
 }
 async function exact(context: Context<AppEnv>, keys: string[]) {
   let value: unknown;

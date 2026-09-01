@@ -109,16 +109,16 @@ describe('staging current reservable import plan', () => {
     expect(first.tencentDocsWrites).toBe(0);
   });
 
-  it('emits idempotent SQL with Amazon runtime facts and Rakuten identities only', async () => {
+  it('emits idempotent SQL with Amazon runtime facts only', async () => {
     const plan = await createStagingImportPlan(manifest, { now: 1_755_734_400_000 });
     const output = await emitStagingD1Sql(plan, {
       actorStaffId: 'staff-owner-001', now: 1_755_734_400_000, batchId: 'staging-batch-fixture',
     });
     expect(output.amazonStandardProductCount).toBe(2);
-    expect(output.rakutenIdentityCount).toBe(1);
+    expect(output.rakutenIdentityCount).toBe(0);
     expect(output.reservationTaskCount).toBe(2);
-    expect(output.sql).toContain('INSERT OR IGNORE INTO platform_product_identities');
-    expect(output.sql).toContain("'R-1'");
+    expect(output.sql).not.toContain('platform_product_identities');
+    expect(output.sql).not.toContain("'R-1'");
     expect(output.sql).not.toContain("'RAKUTEN_JP', 'ACTIVE', 'CURRENT'");
     expect(output.sql).toContain('INSERT OR IGNORE INTO demand_batches');
     expect(output.sql).toContain("'PUBLISHED'");

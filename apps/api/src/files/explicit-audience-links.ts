@@ -11,10 +11,6 @@ import type {
 } from '@ygb/contracts';
 import { filePurposeEntityType } from '@ygb/domain';
 import { createAuditEventStatement } from '../foundation/audit';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
 import type { FileAuthorizationService } from './authorization';
 import { createFileEventStatement } from './file-events';
 import { FileStorageError } from './file-error';
@@ -30,6 +26,20 @@ interface ExplicitLinkSourceRow {
   owner_actor_type: string;
   owner_actor_id: string;
   intent_status: string;
+}
+
+/**
+ * Verified file-object facts needed to build link statements. Callers that
+ * create the file object in the same batch (clones) supply these from memory;
+ * everyone else loads them via createExplicitAudienceFileLinkStatements.
+ */
+export interface ExplicitLinkSourceFacts {
+  upload_intent_id: string;
+  purpose: FilePurpose;
+  visibility: FileVisibility;
+  version: number;
+  owner_actor_type: string;
+  owner_actor_id: string;
 }
 
 interface ExplicitLinkRow {
@@ -81,7 +91,6 @@ export async function createExplicitAudienceFileLinkStatements(
   },
 ): Promise<PreparedExplicitAudienceFileLink> {
   const fileObjectId = cleanFileIdentifier(input.fileObjectId, 120);
-  const entityId = cleanFileIdentifier(input.entityId, 200);
   const now = command.now ?? Date.now();
   const linkExpiresAt = input.expiresAt ?? null;
   validateTiming(now, linkExpiresAt);
@@ -92,6 +101,51 @@ export async function createExplicitAudienceFileLinkStatements(
   }
 
   const source = await requireExplicitLinkSource(database, fileObjectId);
+  return buildExplicitAudienceFileLinkStatements(
+    database,
+    authorization,
+    {
+      upload_intent_id: source.upload_intent_id,
+      purpose: source.purpose,
+      visibility: source.visibility,
+      version: source.version,
+      owner_actor_type: source.owner_actor_type,
+      owner_actor_id: source.owner_actor_id,
+    },
+    input,
+    command,
+  );
+}
+
+export async function buildExplicitAudienceFileLinkStatements(
+  database: SqlDatabase,
+  authorization: FileAuthorizationService,
+  source: ExplicitLinkSourceFacts,
+  input: {
+    fileObjectId: string;
+    expectedFileVersion: number;
+    entityType: FileEntityType;
+    entityId: string;
+    expiresAt?: number | null;
+    grants: readonly ExplicitFileAudienceGrantInput[];
+  },
+  command: {
+    actor: FileActor;
+    idempotencyKey: string;
+    requestId?: string | null;
+    now?: number;
+  },
+): Promise<PreparedExplicitAudienceFileLink> {
+  const fileObjectId = cleanFileIdentifier(input.fileObjectId, 120);
+  const entityId = cleanFileIdentifier(input.entityId, 200);
+  const now = command.now ?? Date.now();
+  const linkExpiresAt = input.expiresAt ?? null;
+  validateTiming(now, linkExpiresAt);
+  if (!Number.isSafeInteger(input.expectedFileVersion)
+    || input.expectedFileVersion < 1
+    || input.grants.length < 1) {
+    throw new FileStorageError('VALIDATION_ERROR', 400);
+  }
   if (source.version !== input.expectedFileVersion) {
     throw new FileStorageError('VERSION_CONFLICT', 409);
   }
@@ -121,27 +175,6 @@ export async function createExplicitAudienceFileLinkStatements(
     authorizationMode: 'EXPLICIT_AUDIENCES',
     expiresAt: linkExpiresAt,
     grants: Object.freeze(grants.map((grant) => grant.result)),
-  });
-  const outbox = await prepareOutboxEvent({
-    id: crypto.randomUUID(),
-    dedupKey: `explicit-file-link-created:${linkId}`,
-    eventType: 'EXPLICIT_FILE_AUDIENCES_CREATED',
-    aggregateType: 'FILE_ENTITY_LINK',
-    aggregateId: linkId,
-    payload: {
-      file_entity_link_id: linkId,
-      file_object_id: fileObjectId,
-      entity_type: input.entityType,
-      entity_id: entityId,
-      authorization_mode: 'EXPLICIT_AUDIENCES',
-      grant_subjects: grants.map((grant) => ({
-        subject_type: grant.result.subjectType,
-        subject_authority_id: grant.result.subjectAuthorityId,
-        expires_at: grant.result.expiresAt,
-      })),
-      expires_at: linkExpiresAt,
-    },
-    createdAt: now,
   });
 
   const statements: SqlStatement[] = [
@@ -287,7 +320,6 @@ export async function createExplicitAudienceFileLinkStatements(
       },
       createdAt: now,
     }),
-    ...createOutboxStatements(database, outbox),
     assertExplicitLinkCreatedStatement(
       database,
       result,

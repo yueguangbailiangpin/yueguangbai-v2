@@ -8,10 +8,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   batchWithAssignmentRetry,
   prepareDirectWorkItem,
 } from '../staff-assignment';
@@ -41,7 +37,7 @@ export interface OrderInstructionReconciliationResult {
 export async function reconcileApprovedReservations(
   database: SqlDatabase,
   input: {
-    marketplaceCode: 'JP';
+    marketplaceCode: 'AMAZON_JP';
     afterReservationId?: string | null;
     limit?: number;
   },
@@ -121,7 +117,7 @@ export async function reconcileApprovedReservations(
     ).all<{
       reservation_id: string;
       buyer_customer_id: string;
-      marketplace_code: 'JP';
+      marketplace_code: 'AMAZON_JP';
       demand_batch_id: string;
       reservation_version: number;
       organization_id: string;
@@ -327,15 +323,6 @@ export async function reconcileApprovedReservations(
       next_reservation_id: rows.results.at(-1)?.reservation_id ?? null,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `order-instruction-reconciliation:${acquired.claim.idempotencyKey}`,
-      eventType: 'ORDER_INSTRUCTION_RECONCILIATION_COMPLETED',
-      aggregateType: 'MARKETPLACE',
-      aggregateId: input.marketplaceCode,
-      payload: response,
-      createdAt: now,
-    });
     await database.batch([
       createAuditEventStatement(database, {
         id: crypto.randomUUID(),
@@ -352,7 +339,6 @@ export async function reconcileApprovedReservations(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: {
           marketplace_code: input.marketplaceCode,

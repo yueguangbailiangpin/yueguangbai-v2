@@ -59,13 +59,12 @@ export function classifyBuyerTasks(sources: BuyerTaskSources, reviewTypeLabel: (
     })),
   ];
 
-  const evidenceReservationIds = new Set(sources.eligibleEvidence.map((item) => item.reservation_id));
   const action: BuyerTask[] = [
     ...sources.eligibleEvidence.filter((item) => item.allowed_actions.includes('SUBMIT')).map((item) => ({
-      id: `evidence-submit-${item.reservation_id}`,
-      title: '提交订单资料',
+      id: `instruction-${item.reservation_id}`,
+      title: '查看下单步骤',
       detail: `${item.product_name} · ${reviewTypeLabel(item.review_type)}`,
-      href: `/buyer/order-materials/new?reservation_id=${encodeURIComponent(item.reservation_id)}`,
+      href: `/buyer/reservations/${encodeURIComponent(item.reservation_id)}/instruction`,
       kind: 'action' as const,
     })),
     ...sources.eligibleReviews.filter((item) => item.allowed_actions.includes('SUBMIT')).map((item) => ({
@@ -73,13 +72,6 @@ export function classifyBuyerTasks(sources: BuyerTaskSources, reviewTypeLabel: (
       title: '提交评论资料',
       detail: `${item.order.product_name} · ${reviewTypeLabel(item.order.review_type)}`,
       href: `/buyer/reviews/new?formal_order_id=${encodeURIComponent(item.order.formal_order_id)}`,
-      kind: 'action' as const,
-    })),
-    ...sources.reservations.filter((item) => item.status === 'APPROVED' && !evidenceReservationIds.has(item.reservation_id)).map((item) => ({
-      id: `instruction-${item.reservation_id}`,
-      title: '查看下单指引',
-      detail: item.demand.product_name,
-      href: `/buyer/reservations/${encodeURIComponent(item.reservation_id)}/instruction`,
       kind: 'action' as const,
     })),
   ];

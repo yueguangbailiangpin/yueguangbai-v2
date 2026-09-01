@@ -16,11 +16,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
-  assertWechatAvailable,
   cleanRequiredText,
   createIdentityClaimStatements,
   CustomerMasterDataError,
@@ -30,9 +25,17 @@ import {
   type CustomerMasterActor,
 } from './master-data-shared';
 import {
-  legacyMarketplaceProjection,
+  advanceBuyerChannelSequenceStatement,
+  insertBuyerNumberAllocationEventStatement,
+  planBuyerNumberAllocation,
+} from './buyer-number-allocation';
+import {
   resolveMarketplace,
 } from '../marketplaces/registry';
+import {
+  batchWithFixedAssignmentRetry,
+  prepareInitialBuyerAssignment,
+} from '../staff-assignment';
 
 export interface CreateBuyerInput {
   marketplaceCode: MarketplaceCode;
@@ -46,7 +49,7 @@ export interface CreateBuyerResult {
   identity_subject_id: string;
   wechat_claim_id: string;
   access_status: 'DISABLED';
-  buyer_customer_no: null;
+  buyer_customer_no: string;
   replayed: boolean;
 }
 
@@ -110,46 +113,59 @@ export async function createBuyerCustomer(
 
   try {
     await assertActiveBuyerChannel(database, buyerChannelId);
-    await assertWechatAvailable(database, wechat.normalized);
+    // One WeChat identity can only ever own one buyer profile. When the
+    // identity subject already exists (e.g. a Seller member), reuse it instead
+    // of creating a second subject — the staff creation only adds the buyer
+    // profile, never a duplicate identity.
+    const existingClaim = await database.prepare(`
+      SELECT claim.id AS claim_id, claim.identity_subject_id AS subject_id,
+        EXISTS (
+          SELECT 1 FROM buyer_customers buyer
+          WHERE buyer.identity_subject_id=claim.identity_subject_id
+        ) AS has_buyer
+      FROM wechat_identity_claims claim
+      WHERE claim.normalized_wechat=? AND claim.status='ACTIVE'
+      LIMIT 1
+    `).bind(wechat.normalized).first<{
+      claim_id: string;
+      subject_id: string;
+      has_buyer: number;
+    }>();
+    if (existingClaim && Number(existingClaim.has_buyer) === 1) {
+      throw new CustomerMasterDataError('WECHAT_ID_CONFLICT', 409);
+    }
+    await assertNoReservedWechat(database, wechat.normalized);
+    const numberPlan = await planBuyerNumberAllocation(database, {
+      channelId: buyerChannelId,
+      now,
+    });
 
     const buyerId = crypto.randomUUID();
-    const subjectId = crypto.randomUUID();
-    const claimId = crypto.randomUUID();
+    const subjectId = existingClaim?.subject_id ?? crypto.randomUUID();
+    const claimId = existingClaim?.claim_id ?? crypto.randomUUID();
     const response: CreateBuyerResult = {
       buyer_customer_id: buyerId,
       identity_subject_id: subjectId,
       wechat_claim_id: claimId,
       access_status: 'DISABLED',
-      buyer_customer_no: null,
+      buyer_customer_no: numberPlan.buyerNumber,
       replayed: false,
     };
 
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `buyer-created:${buyerId}`,
-      eventType: 'BUYER_CUSTOMER_CREATED',
-      aggregateType: 'BUYER_CUSTOMER',
-      aggregateId: buyerId,
-      payload: {
-        buyer_customer_id: buyerId,
-        marketplace_code: input.marketplaceCode,
-        buyer_channel_id: buyerChannelId,
-        access_status: 'DISABLED',
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
-      ...createIdentityClaimStatements(database, {
-        subjectId,
-        subjectType: 'BUYER_CUSTOMER',
-        claimId,
-        displayWechat: wechat.display,
-        normalizedWechat: wechat.normalized,
-        actor: command.actor,
-        idempotencyKey: acquired.claim.idempotencyKey,
-        now,
-      }),
+      ...(existingClaim
+        ? []
+        : createIdentityClaimStatements(database, {
+          subjectId,
+          subjectType: 'BUYER_CUSTOMER',
+          claimId,
+          displayWechat: wechat.display,
+          normalizedWechat: wechat.normalized,
+          actor: command.actor,
+          idempotencyKey: acquired.claim.idempotencyKey,
+          now,
+        })),
       database.prepare(`
         INSERT INTO buyer_customers (
           id,
@@ -158,7 +174,6 @@ export async function createBuyerCustomer(
           buyer_channel_id,
           buyer_customer_no,
           buyer_sequence,
-          first_valid_order_business_date,
           display_name,
           access_status,
           identity_review_status,
@@ -168,19 +183,30 @@ export async function createBuyerCustomer(
           activated_at,
           disabled_at
         ) VALUES (
-          ?, ?, ?, ?, NULL, NULL, NULL, ?,
+          ?, ?, ?, ?, ?, ?, ?,
           'DISABLED', 'CLEAR', 1, ?, ?, NULL, ?
         )
       `).bind(
         buyerId,
         subjectId,
-        legacyMarketplaceProjection(),
+        'AMAZON_JP',
         buyerChannelId,
+        numberPlan.buyerNumber,
+        numberPlan.sequence,
         displayName,
         now,
         now,
         now,
       ),
+      advanceBuyerChannelSequenceStatement(database, numberPlan, now),
+      insertBuyerNumberAllocationEventStatement(database, {
+        buyerCustomerId: buyerId,
+        plan: numberPlan,
+        allocationSource: 'STAFF_CREATION',
+        actorStaffId: command.actor.staffId,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        now,
+      }),
       database.prepare(`
         UPDATE buyer_marketplace_assignments
         SET marketplace_code=?
@@ -203,12 +229,12 @@ export async function createBuyerCustomer(
           buyer_customer_id: buyerId,
           marketplace_code: input.marketplaceCode,
           buyer_channel_id: buyerChannelId,
+          buyer_customer_no: numberPlan.buyerNumber,
           access_status: 'DISABLED',
           identity_review_status: 'CLEAR',
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,
@@ -229,6 +255,7 @@ export async function createBuyerCustomer(
         subjectId,
         claimId,
         marketplace.code,
+        numberPlan.buyerNumber,
       ),
       assertIdempotencyCompletionStatement(
         database,
@@ -236,7 +263,20 @@ export async function createBuyerCustomer(
       ),
     ];
 
-    await database.batch(statements);
+    await batchWithFixedAssignmentRetry(
+      database,
+      () => prepareInitialBuyerAssignment(database, {
+        buyerCustomerId: buyerId,
+        marketplaceCode: marketplace.code,
+        actorType: 'STAFF',
+        actorId: command.actor.staffId,
+        requestId: command.requestId ?? null,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        reason: 'buyer customer created',
+        now,
+      }),
+      statements,
+    );
     return response;
   } catch (error) {
     const normalized = normalizeFoundationError(error);
@@ -247,6 +287,19 @@ export async function createBuyerCustomer(
       now,
     );
     throw normalized;
+  }
+}
+
+async function assertNoReservedWechat(
+  database: SqlDatabase,
+  normalizedWechat: string,
+): Promise<void> {
+  const reserved = await database.prepare(`
+    SELECT 1 AS present FROM wechat_identity_claims
+    WHERE normalized_wechat=? AND status='RESERVED' LIMIT 1
+  `).bind(normalizedWechat).first<{ present: number }>();
+  if (reserved) {
+    throw new CustomerMasterDataError('WECHAT_ID_CONFLICT', 409);
   }
 }
 
@@ -278,6 +331,7 @@ function assertBuyerCreatedStatement(
   subjectId: string,
   claimId: string,
   marketplaceCode: string,
+  buyerCustomerNo: string,
 ): SqlStatement {
   return database.prepare(`
     INSERT INTO transaction_assertions (assertion_value)
@@ -288,7 +342,7 @@ function assertBuyerCreatedStatement(
         WHERE id=?
           AND identity_subject_id=?
           AND access_status='DISABLED'
-          AND buyer_customer_no IS NULL
+          AND buyer_customer_no=?
       )
       AND EXISTS (
         SELECT 1
@@ -317,6 +371,7 @@ function assertBuyerCreatedStatement(
   `).bind(
     buyerId,
     subjectId,
+    buyerCustomerNo,
     buyerId,
     marketplaceCode,
     claimId,

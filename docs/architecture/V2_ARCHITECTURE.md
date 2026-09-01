@@ -41,7 +41,6 @@ apps/
 packages/
   contracts/    API DTO、错误码、事件合同
   domain/       纯领域函数、状态机、金额、身份规范化
-  ui/           通用 UI
   testkit/      D1/R2/Access 匿名测试工具
 migrations/     V2 D1 Migration 历史
 docs/

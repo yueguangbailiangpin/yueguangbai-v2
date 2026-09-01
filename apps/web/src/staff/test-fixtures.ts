@@ -35,7 +35,6 @@ export function staffTestSession(
 ): StaffSession {
   const roles = {
     owner: { code: 'owner', display_name: '总管理员' },
-    acquisition: { code: 'acquisition', display_name: '获客' },
     pre_sales: { code: 'pre_sales', display_name: '售前' },
     seller_ops: { code: 'seller_ops', display_name: '卖家对接' },
     buyer_refund: { code: 'buyer_refund', display_name: '买家返款' },
@@ -84,6 +83,13 @@ export const staffTestWorkItem: StaffWorkItem = {
   updated_at: 1_787_000_000_000,
   completed_at: null,
   cancelled_at: null,
+  sla_due_at: 1_787_000_000_000 + 48 * 60 * 60 * 1000,
+  is_overdue: false,
+  overdue_since: null,
+  next_action: 'REVIEW_ORDER_EVIDENCE',
+  responsible_role: 'pre_sales',
+  responsible_staff_name: '售前员工',
+  priority: 'NORMAL',
 };
 
 export const sellerSettlementWorkItem: StaffWorkItem = {
@@ -99,6 +105,8 @@ export const settlementSummary = {
   outstanding_service_fee_cny_fen: '12000',
   total_outstanding_cny_fen: '92000',
   unallocated_credit_cny_fen: '3000',
+  settlement_account_name: null,
+  settlement_account_identifier: null,
 } satisfies SettlementSummary;
 
 export const settlementPayables = [

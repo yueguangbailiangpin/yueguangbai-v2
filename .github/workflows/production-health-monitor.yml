@@ -1,12 +1,13 @@
+# 定时探测已暂停：原 app.yueguangbai.net/ready 部署已清理且端点不存在。
+# 仅保留 workflow_dispatch 与既有诊断逻辑；只有 Stage 8 正式部署并确认
+# production /ready URL 后，才允许重新引入每小时 schedule。不得创建假 URL 或部署。
 name: 生产健康监控
 
 on:
-  schedule:
-    - cron: '17 * * * *'
   workflow_dispatch:
     inputs:
       simulation:
-        description: 验收模式
+        description: 仅手动诊断；Stage 8 正式部署并确认 production readiness URL 后方可恢复每小时定时探测
         required: true
         default: probe
         type: choice
@@ -38,5 +39,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           YGB_HEALTH_SIMULATION: ${{ inputs.simulation || 'probe' }}
+          # 旧地址仅保留给手动诊断；不得替换为未经 Stage 8 确认的地址。
           YGB_PRODUCTION_HEALTH_URL: https://app.yueguangbai.net/ready
         run: node scripts/production-health-monitor.mjs

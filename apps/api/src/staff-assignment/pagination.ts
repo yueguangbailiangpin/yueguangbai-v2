@@ -1,4 +1,5 @@
 import type { StaffWorkItemStatus, StaffWorkItemType } from '@ygb/contracts';
+import { decodeBase64UrlJson, encodeBase64UrlJson } from '../foundation/cursor-codec';
 import { StaffAssignmentError } from './errors';
 
 export interface StaffWorkItemCursor {
@@ -9,17 +10,14 @@ export interface StaffWorkItemCursor {
 }
 
 export function encodeStaffWorkItemCursor(cursor: StaffWorkItemCursor): string {
-  const bytes = new TextEncoder().encode(JSON.stringify({
+  return encodeBase64UrlJson({
     v: 1,
     kind: 'staff-work-item',
     at: cursor.createdAt,
     id: cursor.id,
     status: cursor.status,
     work_type: cursor.workType,
-  }));
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '');
+  });
 }
 
 export function decodeStaffWorkItemCursor(
@@ -29,10 +27,7 @@ export function decodeStaffWorkItemCursor(
   if (value === undefined) return null;
   if (value.length < 1 || value.length > 1000) validation();
   try {
-    const base64 = value.replaceAll('-', '+').replaceAll('_', '/')
-      .padEnd(Math.ceil(value.length / 4) * 4, '=');
-    const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
-    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+    const parsed = decodeBase64UrlJson(value);
     if (!isPayload(parsed)
       || parsed.status !== filters.status
       || parsed.work_type !== filters.workType) validation();

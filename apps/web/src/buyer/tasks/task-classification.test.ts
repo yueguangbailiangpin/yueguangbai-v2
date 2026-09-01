@@ -28,20 +28,34 @@ describe('canonical Buyer task classification', () => {
     const tasks = classifyBuyerTasks(sources, label);
 
     expect(tasks.urgent.map((item) => item.title)).toEqual(['修改订单资料', '修改评论资料']);
-    expect(tasks.action.map((item) => item.title)).toEqual(['提交订单资料', '提交评论资料', '查看下单指引']);
-    expect(tasks.actionableCount).toBe(5);
+    expect(tasks.action.map((item) => item.title)).toEqual(['查看下单步骤', '提交评论资料']);
+    expect(tasks.actionableCount).toBe(4);
     expect(tasks.system.map((item) => item.title)).toEqual(['预约审核中', '订单资料审核中', '评论审核中', '返款处理中']);
   });
 
-  it('does not fabricate an instruction task when the current evidence source owns that reservation', () => {
+  it('does not expose an instruction task before an ACTIVE instruction makes evidence eligible', () => {
     const sources = {
       reservations: [{ reservation_id: 'r-1', status: 'APPROVED', demand: { product_name: '产品' } }],
-      eligibleEvidence: [{ reservation_id: 'r-1', product_name: '产品', review_type: 'IMAGE', allowed_actions: [] }],
+      eligibleEvidence: [],
       evidence: [], eligibleReviews: [], reviews: [], refunds: [],
     } satisfies BuyerTaskSources;
     const tasks = classifyBuyerTasks(sources, label);
 
     expect(tasks.action).toEqual([]);
     expect(tasks.actionableCount).toBe(0);
+  });
+
+  it('routes an ACTIVE instruction task through the instruction page before evidence submission', () => {
+    const sources = {
+      reservations: [{ reservation_id: 'r-1', status: 'APPROVED', demand: { product_name: '产品' } }],
+      eligibleEvidence: [{ reservation_id: 'r-1', product_name: '产品', review_type: 'IMAGE', allowed_actions: ['SUBMIT'] }],
+      evidence: [], eligibleReviews: [], reviews: [], refunds: [],
+    } satisfies BuyerTaskSources;
+    const tasks = classifyBuyerTasks(sources, label);
+
+    expect(tasks.action).toEqual([expect.objectContaining({
+      title: '查看下单步骤',
+      href: '/buyer/reservations/r-1/instruction',
+    })]);
   });
 });

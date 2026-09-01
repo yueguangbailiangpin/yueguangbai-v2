@@ -4,7 +4,6 @@ import {
   isApiErrorCode,
   isScheduledOperationJobName,
   parseScheduledOperationCommandResultDto,
-  parseScheduledOperationDeadLetterReplayCommand,
   parseScheduledOperationHealthDto,
   parseScheduledOperationManualRunCommand,
   parseScheduledOperationalAlertAckCommandDto,
@@ -16,13 +15,12 @@ import type { Context, Hono } from 'hono';
 import type { AppEnv } from '../app';
 import { requirePermission } from '../staff-assignment/permission-policy';
 import {
-  replayScheduledDeadLetter,
   runScheduledOperationManually,
   ScheduledOperationCommandError,
 } from './commands';
 import { SCHEDULED_JOB_NAMES } from './runner';
 import { acknowledgeScheduledOperationalAlert, readScheduledOperationalAlerts } from './alerts';
-import { driveArchiveRuntime } from '../cold-image-archive/runtime';
+import { archiveRuntime } from '../cold-image-archive/runtime';
 
 const BODY_LIMIT = 4096;
 
@@ -30,7 +28,6 @@ export function registerScheduledOperationRoutes(app: Hono<AppEnv>): void {
   app.get('/api/staff/operations/health', withErrors(health));
   app.post('/api/staff/operations/alerts/ack', withErrors(acknowledgeAlert));
   app.post('/api/staff/operations/jobs/:job/retry', withErrors(runManually));
-  app.post('/api/staff/operations/dead-letters/:id/replay', withErrors(replayDeadLetter));
 }
 
 async function health(context: Context<AppEnv>): Promise<Response> {
@@ -51,17 +48,15 @@ async function health(context: Context<AppEnv>): Promise<Response> {
     lease_expires_at: number | null;
   }>();
   const states = new Map(rows.results.map((row) => [row.job_name, row]));
-  const drive = driveArchiveRuntime(context.env);
+  const archive = archiveRuntime(context.env);
   const driveEnabled =
-    drive.enabled &&
-    drive.copyEnabled &&
-    Boolean(drive.adapter) &&
+    archive.selectorEnabled &&
+    Boolean(archive.client) &&
     Boolean(context.env.FILE_OBJECT_STORAGE);
   const jobs = SCHEDULED_JOB_NAMES.map((jobName) => {
     const row = states.get(jobName);
     const hardDisabled =
-      (jobName === 'drive_archive' && !driveEnabled) ||
-      (jobName === 'outbox_delivery' && context.env.OUTBOX_DELIVERY_ENABLED !== 'true');
+      (jobName === 'drive_archive' && !driveEnabled);
     return parseScheduledOperationHealthDto({
       job_name: jobName,
       enabled: hardDisabled ? false : row?.enabled !== 0,
@@ -124,22 +119,6 @@ async function runManually(context: Context<AppEnv>): Promise<Response> {
   );
 }
 
-async function replayDeadLetter(context: Context<AppEnv>): Promise<Response> {
-  const actor = requireRunActor(context);
-  const command = parseReplayBody(await readBoundedJson(context.req.raw, BODY_LIMIT));
-  const result = await replayScheduledDeadLetter(
-    context.env.DB,
-    runtime(context),
-    { deadLetterId: context.req.param('id') ?? '', command },
-    { actor, idempotencyKey: requireIdempotencyKey(context), requestId: context.get('requestId') },
-  );
-  return context.json(
-    apiSuccess(
-      { command: parseScheduledOperationCommandResultDto(result) },
-      context.get('requestId'),
-    ),
-  );
-}
 
 function requireRunActor(context: Context<AppEnv>) {
   const actor = context.get('staffAuthorization');
@@ -161,13 +140,6 @@ function parseManualBody(value: unknown) {
     throw new ScheduledOperationCommandError('VALIDATION_ERROR', 400);
   }
 }
-function parseReplayBody(value: unknown) {
-  try {
-    return parseScheduledOperationDeadLetterReplayCommand(value);
-  } catch {
-    throw new ScheduledOperationCommandError('VALIDATION_ERROR', 400);
-  }
-}
 function parseAlertAckBody(value: unknown) {
   try {
     return parseScheduledOperationalAlertAckCommandDto(value);
@@ -176,18 +148,19 @@ function parseAlertAckBody(value: unknown) {
   }
 }
 function runtime(context: Context<AppEnv>) {
-  const drive = driveArchiveRuntime(context.env);
+  const archive = archiveRuntime(context.env);
   return {
     enabled: context.env.SCHEDULED_OPERATIONS_ENABLED === 'true',
     disabledJobs: disabledJobs(context.env.SCHEDULED_OPERATIONS_DISABLED_JOBS),
     storage: context.env.FILE_OBJECT_STORAGE ?? null,
-    outboxDeliveryEnabled: context.env.OUTBOX_DELIVERY_ENABLED === 'true',
-    outboxAdapter: context.env.OUTBOX_DELIVERY_ADAPTER ?? null,
-    driveAdapter: drive.adapter,
-    driveArchiveEnabled: drive.enabled,
-    driveArchiveCopyEnabled: drive.copyEnabled,
-    driveArchiveProxyReadEnabled: drive.proxyReadEnabled,
-    driveArchiveR2DeleteEnabled: drive.r2DeleteEnabled,
+    archive: {
+      client: archive.client,
+      queue: archive.queue,
+      selectorEnabled: archive.selectorEnabled,
+      driveUploadEnabled: archive.driveUploadEnabled,
+      hotDeleteEnabled: archive.hotDeleteEnabled,
+      restoreWorkerEnabled: archive.restoreWorkerEnabled,
+    },
   };
 }
 function disabledJobs(value: string | undefined): ScheduledOperationJobName[] {

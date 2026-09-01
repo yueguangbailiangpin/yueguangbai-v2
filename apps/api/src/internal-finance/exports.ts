@@ -18,7 +18,6 @@ import {
 } from '@ygb/domain';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { createAuditEventStatement } from '../foundation/audit';
-import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
 import { assertFinancialExportDateBasis } from './filters';
 import {
   iterateFinanceExceptions,
@@ -74,23 +73,6 @@ export async function generateAuditedFinancialCsv(
   const filterHash = await hashCanonicalJson(input.filters);
   const exportId = crypto.randomUUID();
   const auditId = crypto.randomUUID();
-  const outbox = await prepareOutboxEvent({
-    id: crypto.randomUUID(),
-    dedupKey: `financial-export:${exportId}`,
-    eventType: 'FINANCIAL_EXPORT_GENERATED',
-    aggregateType: 'FINANCIAL_EXPORT',
-    aggregateId: exportId,
-    payload: {
-      export_id: exportId,
-      export_type: input.exportType,
-      staff_id: actor.staffId,
-      filter_hash: filterHash,
-      row_count: data.rows.length,
-      output_sha256: outputSha256,
-      generated_at: now,
-    },
-    createdAt: now,
-  });
 
   const statements = [
     database.prepare(`
@@ -145,7 +127,6 @@ export async function generateAuditedFinancialCsv(
         SELECT 1 FROM audit_events WHERE id=?
       ) THEN 1 ELSE 0 END
     `).bind(auditId),
-    ...createOutboxStatements(database, outbox),
   ];
   try {
     await database.batch(statements);

@@ -23,8 +23,10 @@ import {
 interface DemandRow {
   demand_batch_id: string;
   demand_version: number;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   product_name: string;
+  main_image_file_object_id: string | null;
+  main_image_file_version: number | null;
   reference_order_amount_jpy: number;
   buyer_self_pay_bps: number;
   buyer_visible_notes: string | null;
@@ -36,6 +38,9 @@ interface DemandRow {
   reservation_deadline: number;
   order_deadline: number;
   submitted_at: number;
+  reservation_eligibility:
+    | 'ELIGIBLE'
+    | 'INELIGIBLE_ACTIVE_STORE_RESERVATION';
 }
 
 interface ReservationRow {
@@ -57,7 +62,7 @@ interface ReservationRow {
   expired_at: number | null;
   demand_batch_id: string;
   demand_version: number;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   product_name: string;
   reference_order_amount_jpy: number;
   buyer_self_pay_bps: number;
@@ -74,6 +79,8 @@ const PUBLIC_DEMAND_SELECT = `
     demand.version AS demand_version,
     demand.marketplace_code,
     version.product_name,
+    main_image_object.id AS main_image_file_object_id,
+    main_image_object.version AS main_image_file_version,
     version.ordering_guide_expected_amount_jpy AS reference_order_amount_jpy,
     demand.buyer_self_pay_bps_snapshot AS buyer_self_pay_bps,
     demand.buyer_visible_notes,
@@ -89,7 +96,16 @@ const PUBLIC_DEMAND_SELECT = `
     demand.open_at,
     demand.reservation_deadline,
     demand.order_deadline,
-    demand.submitted_at
+    demand.submitted_at,
+    CASE WHEN EXISTS (
+      SELECT 1
+      FROM product_reservations active_store_reservation
+      WHERE active_store_reservation.buyer_customer_id=?
+        AND active_store_reservation.store_id=demand.store_id
+        AND active_store_reservation.status IN ('PENDING_REVIEW', 'APPROVED')
+    ) THEN 'INELIGIBLE_ACTIVE_STORE_RESERVATION'
+      ELSE 'ELIGIBLE'
+    END AS reservation_eligibility
   FROM demand_batches demand
   JOIN products product
     ON product.id=demand.product_id
@@ -98,7 +114,25 @@ const PUBLIC_DEMAND_SELECT = `
     AND product.marketplace_code=demand.marketplace_code
   JOIN product_versions version
     ON version.product_id=demand.product_id
-    AND version.version_no=demand.product_version_no
+      AND version.version_no=demand.product_version_no
+  LEFT JOIN product_version_main_images main_image
+    ON main_image.product_version_id=version.id
+  LEFT JOIN file_entity_links main_image_link
+    ON main_image_link.id=main_image.file_entity_link_id
+    AND main_image_link.entity_type='PRODUCT_VERSION'
+    AND main_image_link.entity_id=version.id
+    AND main_image_link.purpose='PRODUCT_IMAGE'
+    AND main_image_link.authorization_mode='EXPLICIT_AUDIENCES'
+    AND main_image_link.revoked_at IS NULL
+  LEFT JOIN file_objects main_image_object
+    ON main_image_object.id=main_image_link.file_object_id
+    AND main_image_object.status='VERIFIED'
+    AND EXISTS (
+      SELECT 1
+      FROM file_upload_intents main_image_intent
+      WHERE main_image_intent.id=main_image_object.upload_intent_id
+        AND main_image_intent.status='VERIFIED'
+    )
   JOIN seller_stores store
     ON store.id=demand.store_id
     AND store.organization_id=demand.organization_id
@@ -124,13 +158,6 @@ const PUBLIC_DEMAND_WHERE = `
     FROM product_reservations existing
     WHERE existing.demand_batch_id=demand.id
       AND existing.buyer_customer_id=?
-  )
-  AND NOT EXISTS (
-    SELECT 1
-    FROM product_reservations active
-    WHERE active.buyer_customer_id=?
-      AND active.product_id=demand.product_id
-      AND active.status IN ('PENDING_REVIEW', 'APPROVED')
   )
 `;
 
@@ -208,11 +235,11 @@ export async function listBuyerPortalDemands(
     `
     : '';
   const bindings: unknown[] = [
+    buyer.buyerCustomerId,
     buyer.marketplaceCode,
     options.now,
     options.now,
     options.now,
-    buyer.buyerCustomerId,
     buyer.buyerCustomerId,
   ];
   if (options.cursor) {
@@ -271,11 +298,11 @@ export async function getBuyerPortalDemand(
       AND demand.id=?
     LIMIT 1
   `).bind(
+    buyer.buyerCustomerId,
     buyer.marketplaceCode,
     now,
     now,
     now,
-    buyer.buyerCustomerId,
     buyer.buyerCustomerId,
     demandId,
   ).first<DemandRow>();
@@ -415,6 +442,15 @@ function toDemandDto(row: DemandRow): BuyerPortalDemandDto {
     ),
     marketplace_code: row.marketplace_code,
     product_name: row.product_name,
+    main_image: row.main_image_file_object_id === null
+      || row.main_image_file_version === null
+      ? null
+      : {
+          file_object_id: row.main_image_file_object_id,
+          file_version: Number(row.main_image_file_version),
+          purpose: 'PRODUCT_IMAGE',
+          visibility: 'SELLER_VISIBLE',
+        },
     buyer_visible_notes: row.buyer_visible_notes,
     store_display_name: row.store_display_name,
     task_type: row.task_type,
@@ -426,6 +462,11 @@ function toDemandDto(row: DemandRow): BuyerPortalDemandDto {
     open_at: Number(row.open_at),
     reservation_deadline: Number(row.reservation_deadline),
     order_deadline: Number(row.order_deadline),
+    reservation_eligibility: row.reservation_eligibility,
+    reservation_ineligibility_reason:
+      row.reservation_eligibility === 'ELIGIBLE'
+        ? null
+        : 'ACTIVE_STORE_RESERVATION',
   };
 }
 

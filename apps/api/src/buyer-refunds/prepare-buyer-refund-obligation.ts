@@ -6,7 +6,6 @@ import type {
 } from '@ygb/contracts';
 import { createAuditEventStatement } from '../foundation/audit';
 import { requireFormalOrderAction, FormalOrderPolicyError } from '../formal-order-policy';
-import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
 import { prepareSellerPayableCreation } from '../seller-settlements/payable-statements';
 import { prepareAdvancePrincipalSettlementStatements } from './advance-principal-settlement';
 import { insertBuyerRefundEventStatement } from './buyer-refund-events';
@@ -126,15 +125,6 @@ export async function prepareBuyerRefundObligationStatements(
     version: 1 as const,
     replayed: false,
   };
-  const outbox = await prepareOutboxEvent({
-    id: crypto.randomUUID(),
-    dedupKey: `buyer-refund-obligation:${input.sourceReviewEventId}`,
-    eventType: 'BUYER_REFUND_OBLIGATION_CREATED',
-    aggregateType: 'BUYER_REFUND_OBLIGATION',
-    aggregateId: obligationId,
-    payload: response,
-    createdAt: input.now,
-  });
   return {
     obligationId,
     eventId,
@@ -192,7 +182,6 @@ export async function prepareBuyerRefundObligationStatements(
         },
         createdAt: input.now,
       }),
-      ...createOutboxStatements(database, outbox),
       database
         .prepare(
           `INSERT INTO transaction_assertions(assertion_value) SELECT CASE WHEN

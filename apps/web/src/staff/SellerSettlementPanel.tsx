@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { SettlementBatchesSection } from './SettlementBatchesSection';
 import { useMemo } from 'react';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 import type { StaffSession } from '../auth/staff/staff-auth-api';
 import { useFileUpload } from '../buyer/shared/useFileUpload';
+import { FileDropZone } from '../ui/FileDropZone';
 import { Alert, Button, Card, FormField, Select, TextInput } from '../ui/primitives';
 import { staffApi } from './api/client';
 import type { StaffWorkItem } from './contracts/runtime';
@@ -90,7 +92,7 @@ export function SellerSettlementPanel({ item }: { item: StaffWorkItem }): React.
 
   return (
     <>
-      <section className="staff-detail">
+      <section className="sp-workpanel-aside">
         <div className="pane-heading">
           <div>
             <p className="eyebrow">业务事实与证据</p>
@@ -102,6 +104,19 @@ export function SellerSettlementPanel({ item }: { item: StaffWorkItem }): React.
           <Fact label="组织" value={organizationId} />
           <Fact label="店铺" value={item.store_id ?? '当前工作项未绑定店铺'} />
           <Fact label="Marketplace" value="以业务详情返回数据为准；韩国站不可用" />
+          {summary.data === undefined ? null
+            : summary.data.settlement_account_name === null
+              || summary.data.settlement_account_identifier === null ? (
+              <Fact
+                label="卖家收款账户"
+                value="未填写——可请卖家在设置页补充后带出（卖家结算无承诺期限）"
+              />
+            ) : (
+              <Fact
+                label="卖家收款账户"
+                value={`${summary.data.settlement_account_name}（支付宝 ${summary.data.settlement_account_identifier}）`}
+              />
+            )}
         </Card>
         {summary.isError ? (
           <StaffPanelError
@@ -260,12 +275,16 @@ export function SellerSettlementPanel({ item }: { item: StaffWorkItem }): React.
           <Card className="sensitive-action">
             <h3>记录卖家付款</h3>
             <Alert tone="info">付款入账后再明确分配到本金或服务费；两类应结事实不会合并。</Alert>
-            <input
+            <FileDropZone
+              id="seller-settlement-proof"
               aria-label="卖家结算付款凭证"
-              type="file"
               accept="image/jpeg,image/png,image/webp"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
+              maximumFiles={1}
+              maximumBytes={20 * 1024 * 1024}
+              buttonLabel="选择卖家结算付款凭证"
+              emptyLabel="尚未选择付款凭证"
+              onFilesChange={(files) => {
+                const file = files[0];
                 if (file) void uploader.start('staffSellerSettlementProof', [file]);
               }}
             />
@@ -334,6 +353,9 @@ export function SellerSettlementPanel({ item }: { item: StaffWorkItem }): React.
           </p>
         </Card>
       </aside>
+      {organizationId !== null ? (
+        <SettlementBatchesSection organizationId={organizationId} />
+      ) : null}
     </>
   );
 }

@@ -18,7 +18,7 @@ afterEach(() => {
 describe('marketplace and multi-currency application foundation', () => {
   it('resolves the JP alias and keeps Korea disabled and unavailable', async () => {
     database = createMigratedTestDatabase();
-    await expect(resolveMarketplace(database, 'JP', {
+    await expect(resolveMarketplace(database, 'AMAZON_JP', {
       requireActive: true, requireAdapter: true,
     })).resolves.toMatchObject({
       code: 'AMAZON_JP', transaction_currency_code: 'JPY',
@@ -38,14 +38,14 @@ describe('marketplace and multi-currency application foundation', () => {
     seedOrganization(database);
     const jp = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-global',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '日本店',
     }, command('seller-store-jp'));
-    expect(jp.marketplace_code).toBe('JP');
+    expect(jp.marketplace_code).toBe('AMAZON_JP');
     // Regression: seller_stores.marketplace_code used to be hardcoded to the
     // JP legacy projection, so an AMAZON_US store was silently stored as
-    // 'JP' (and its product applications entered the JP conflict check).
-    // The business tables are JP-only (marketplaces(code) admits one 'JP'
+    // 'AMAZON_JP' (and its product applications entered the JP conflict check).
+    // The business tables are JP-only (marketplaces(code) admits one 'AMAZON_JP'
     // row), so non-JP store creation is rejected loudly for now.
     await expect(createSellerStore(database, {
       sellerOrganizationId: 'seller-org-global',
@@ -219,7 +219,7 @@ function seedOrganization(result: SqliteDatabase): void {
       version, created_at, updated_at, activated_at, disabled_at,
       next_member_number
     ) VALUES (
-      'seller-org-global','JP','ido-mango-900001',
+      'seller-org-global','AMAZON_JP','ido-mango-900001',
       'seller-channel-ido-mango','seller-channel-ido-mango',900001,
       '全局测试卖家','ACTIVE',1,1000,1000,1000,NULL,2
     );
@@ -228,20 +228,16 @@ function seedOrganization(result: SqliteDatabase): void {
 
 function seedBuyer(result: SqliteDatabase): void {
   result.exec(`
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES ('buyer-channel-test','B','测试渠道','ACTIVE',1,1,1,1,NULL);
     INSERT INTO customer_identity_subjects (id, subject_type, created_at)
     VALUES ('buyer-subject-fact-free','BUYER_CUSTOMER',1);
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code, buyer_channel_id,
-      buyer_customer_no, buyer_sequence, first_valid_order_business_date,
+      buyer_customer_no, buyer_sequence,
       display_name, access_status, identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES (
-      'buyer-fact-free','buyer-subject-fact-free','JP','buyer-channel-test',
-      NULL,NULL,NULL,'测试买家','ACTIVE','CLEAR',1,1,1,1,NULL
+      'buyer-fact-free','buyer-subject-fact-free','AMAZON_JP','buyer-channel-wechat-b',
+      '20260101B0001',1,'测试买家','ACTIVE','CLEAR',1,1,1,1,NULL
     );
   `);
 }
@@ -254,7 +250,7 @@ function seedReservationFact(result: SqliteDatabase): void {
       version, created_at, updated_at, activated_at, disabled_at,
       next_member_number
     ) VALUES (
-      'seller-org-reservation','JP','ido-mango-900002',
+      'seller-org-reservation','AMAZON_JP','ido-mango-900002',
       'seller-channel-ido-mango','seller-channel-ido-mango',900002,
       '预约事实卖家','ACTIVE',1,1,1,1,NULL,2
     );
@@ -273,7 +269,7 @@ function seedReservationFact(result: SqliteDatabase): void {
       id, organization_id, marketplace_code, display_name,
       normalized_name, status, version, created_at, updated_at, disabled_at
     ) VALUES (
-      'store-reservation','seller-org-reservation','JP','预约店','预约店',
+      'store-reservation','seller-org-reservation','AMAZON_JP','预约店','预约店',
       'ACTIVE',1,1,1,NULL
     );
     INSERT INTO products (
@@ -281,7 +277,7 @@ function seedReservationFact(result: SqliteDatabase): void {
       asin_normalized, status, current_version_no, version,
       created_at, updated_at, disabled_at
     ) VALUES (
-      'product-reservation','seller-org-reservation','store-reservation','JP',
+      'product-reservation','seller-org-reservation','store-reservation','AMAZON_JP',
       'B0FACT0001','B0FACT0001','ACTIVE',1,1,1,1,NULL
     );
     INSERT INTO product_versions (
@@ -306,7 +302,7 @@ function seedReservationFact(result: SqliteDatabase): void {
       buyer_self_pay_bps_snapshot, buyer_self_pay_source,
       buyer_self_pay_override_reason
     ) VALUES (
-      'demand-reservation','seller-org-reservation','store-reservation','JP',
+      'demand-reservation','seller-org-reservation','store-reservation','AMAZON_JP',
       'product-reservation',1,'seller-reservation-owner','TEXT',1,NULL,NULL,
       1,10000,20000,'PUBLISHED',NULL,NULL,'zz-phase3h-test-owner',NULL,2,
       1,1,1,1,NULL,NULL,1,0,1000,'PRODUCT_DEFAULT',NULL
@@ -324,7 +320,7 @@ function seedReservationFact(result: SqliteDatabase): void {
     ) VALUES (
       'reservation-fact','demand-reservation','buyer-fact-free',
       'seller-org-reservation','store-reservation','product-reservation',1,
-      'JP','PENDING_REVIEW','{}',5000,20000,1,1,1,NULL,NULL,NULL,NULL,NULL,0,
+      'AMAZON_JP','PENDING_REVIEW','{}',5000,20000,1,1,1,NULL,NULL,NULL,NULL,NULL,0,
       1000,1000,100,900,1,2
     );
   `);

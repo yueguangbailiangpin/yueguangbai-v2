@@ -11,6 +11,7 @@ import type { AppEnv } from '../app';
 import type { Context, Hono } from 'hono';
 import { requestIdFromContext } from '../http-auth/errors';
 import { decideReservation } from '../reservations/decide-reservation';
+import { createReservationParticipationException } from '../reservations/create-participation-exception';
 import { reopenReservation } from '../reservations/reopen-reservation';
 import type { ReservationStaffActor } from '../reservations/reservation-shared';
 import {
@@ -36,6 +37,7 @@ interface ProductApplicationContextRow {
   product_url: string | null;
   buyer_visible_notes: string | null;
   seller_notes: string | null;
+  ordering_guide_expected_amount_jpy: number | null;
   status: string;
   version: number;
   submitted_at: number;
@@ -43,6 +45,10 @@ interface ProductApplicationContextRow {
 
 interface ReservationContextRow {
   reservation_id: string;
+  buyer_customer_id: string;
+  buyer_customer_no: string | null;
+  buyer_display_name: string;
+  buyer_display_wechat: string | null;
   organization_id: string;
   store_id: string;
   store_display_name: string;
@@ -80,6 +86,35 @@ export function registerStaffWorkflowClosureRoutes(app: Hono<any>): void {
     '/api/staff/reservations/:id/reopen',
     withErrors(reopenReservationHttp),
   );
+  app.post(
+    '/api/staff/reservations/participation-exceptions',
+    withErrors(createParticipationExceptionHttp),
+  );
+}
+
+async function createParticipationExceptionHttp(
+  context: Context<any>,
+): Promise<Response> {
+  const session = requireAuthorization(context);
+  const body = record(await readBoundedJson(context.req.raw, BODY_LIMIT));
+  rejectUnknown(body, [
+    'buyer_customer_id', 'demand_batch_id', 'reason', 'valid_until',
+  ]);
+  const result = await createReservationParticipationException(
+    context.env.DB,
+    {
+      buyerCustomerId: requiredString(body['buyer_customer_id']),
+      demandBatchId: requiredString(body['demand_batch_id']),
+      reason: requiredString(body['reason'], 1000),
+      validUntil: positiveInteger(body['valid_until']),
+    },
+    {
+      actor: reservationActor(session),
+      idempotencyKey: idempotencyKey(context),
+      requestId: requestIdFromContext(context),
+    },
+  );
+  return success(context, { participation_exception: result });
 }
 
 async function readProductApplicationReviewContext(
@@ -100,6 +135,7 @@ async function readProductApplicationReviewContext(
       application.product_url,
       application.buyer_visible_notes,
       application.seller_notes,
+      application.ordering_guide_expected_amount_jpy,
       application.status,
       application.version,
       application.submitted_at
@@ -124,6 +160,28 @@ async function readProductApplicationReviewContext(
     row.organization_id,
   );
 
+  const images = await context.env.DB.prepare(`
+    SELECT
+      link.file_object_id,
+      object.version AS file_version,
+      object.client_file_name
+    FROM file_entity_links link
+    JOIN file_objects object
+      ON object.id=link.file_object_id
+    WHERE link.entity_type='PRODUCT_APPLICATION'
+      AND link.entity_id=?
+      AND link.purpose='PRODUCT_APPLICATION_IMAGE'
+      AND link.revoked_at IS NULL
+      AND object.status='VERIFIED'
+    ORDER BY link.created_at, link.file_object_id
+  `).bind(applicationId).all() as unknown as {
+    results: Array<{
+      file_object_id: string;
+      file_version: number;
+      client_file_name: string;
+    }>;
+  };
+
   return success(context, {
     review_context: {
       application_id: row.application_id,
@@ -139,9 +197,18 @@ async function readProductApplicationReviewContext(
       product_url: row.product_url,
       buyer_visible_notes: row.buyer_visible_notes,
       seller_notes: row.seller_notes,
+      ordering_guide_expected_amount_jpy:
+        row.ordering_guide_expected_amount_jpy === null
+          ? null
+          : String(row.ordering_guide_expected_amount_jpy),
       status: row.status,
       version: Number(row.version),
       submitted_at: Number(row.submitted_at),
+      images: images.results.map((image) => ({
+        file_object_id: image.file_object_id,
+        file_version: Number(image.file_version),
+        client_file_name: image.client_file_name,
+      })),
     },
   });
 }
@@ -154,6 +221,10 @@ async function readReservationReviewContext(
   const row = await context.env.DB.prepare(`
     SELECT
       reservation.id AS reservation_id,
+      buyer.id AS buyer_customer_id,
+      buyer.buyer_customer_no,
+      buyer.display_name AS buyer_display_name,
+      buyer_wechat.display_wechat AS buyer_display_wechat,
       reservation.organization_id,
       reservation.store_id,
       store.display_name AS store_display_name,
@@ -173,6 +244,12 @@ async function readReservationReviewContext(
       demand.reservation_deadline,
       demand.order_deadline
     FROM product_reservations reservation
+    JOIN buyer_customers buyer
+      ON buyer.id=reservation.buyer_customer_id
+      AND buyer.marketplace_code=reservation.marketplace_code
+    LEFT JOIN wechat_identity_claims buyer_wechat
+      ON buyer_wechat.identity_subject_id=buyer.identity_subject_id
+      AND buyer_wechat.status='ACTIVE'
     JOIN demand_batches demand ON demand.id=reservation.demand_batch_id
     JOIN product_versions version
       ON version.product_id=reservation.product_id
@@ -201,6 +278,12 @@ async function readReservationReviewContext(
     review_context: {
       reservation_id: row.reservation_id,
       organization_id: row.organization_id,
+      buyer: {
+        id: row.buyer_customer_id,
+        customer_no: row.buyer_customer_no,
+        name: row.buyer_display_name,
+        wechat: row.buyer_display_wechat,
+      },
       store: {
         id: row.store_id,
         display_name: row.store_display_name,

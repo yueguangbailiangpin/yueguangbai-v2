@@ -1,7 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { approvedApiPath } from '../config/runtime-config';
 import { FrontendApiError } from '../api/errors';
-import { demoFileBytes } from '../review/demo-api';
 import { isReviewRuntime } from '../review/runtime';
 import {
   withIdentity401Invalidation,
@@ -47,6 +46,7 @@ export function consumeIdentityFileReadIntent(input: {
       throw new FrontendApiError('INVALID_PATH', 0, null, 'CONTRACT');
     }
     if (isReviewRuntime()) {
+      const { demoFileBytes } = await import('../review/demo-api');
       const bytes = demoFileBytes();
       input.onProgress(Object.freeze({
         loadedBytes: bytes.byteLength,
@@ -128,7 +128,20 @@ export function validateFileReadHeaders(response: Response): Readonly<{
   const cacheControl = response.headers.get('Cache-Control') ?? '';
   const cacheDirectives = cacheControl.toLocaleLowerCase('en-US')
     .split(',').map((part) => part.trim());
-  if (!cacheDirectives.includes('no-store')
+  // The server pins single-use-token reads to a short PRIVATE browser cache;
+  // anything that would allow a shared cache to retain the bytes is a
+  // contract violation.
+  const maxAgeDirective = cacheDirectives.find((part) => part.startsWith('max-age='));
+  const maxAge = maxAgeDirective === undefined
+    ? null
+    : Number(maxAgeDirective.slice('max-age='.length));
+  if (!cacheDirectives.includes('private')
+    || cacheDirectives.includes('public')
+    || cacheDirectives.includes('s-maxage')
+    || maxAge === null
+    || !Number.isSafeInteger(maxAge)
+    || maxAge < 0
+    || maxAge > 300
     || response.headers.get('X-Content-Type-Options')
       ?.trim().toLocaleLowerCase('en-US') !== 'nosniff') {
     throw new FrontendApiError(

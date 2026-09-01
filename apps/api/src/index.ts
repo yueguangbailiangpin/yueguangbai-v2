@@ -9,10 +9,12 @@ import { registerBuyerSelfRegistrationRoutes } from './buyer-self-registration';
 import { registerStaffBuyerRefundRoutes } from './buyer-refunds/staff-routes';
 import { registerFileHttpRoutes } from './files';
 import { registerCustomerAuthRoutes } from './http-auth';
-import { registerPublicCustomerSecurityRoutes, registerStaffCustomerSecurityRoutes } from './customer-security';
+import {
+  registerPublicCustomerSecurityRoutes,
+  registerStaffCustomerSecurityRoutes,
+} from './customer-security';
 import { registerBuyerInvitationDutyGuard } from './customer-onboarding/buyer-invitation-guard';
 import { registerNewBuyerRegistrationInvitationRoute } from './customer-onboarding/buyer-registration-route';
-import { registerExistingCustomerLeadGuard } from './customer-onboarding/lead-guard';
 import { registerLegacyPasswordResetOwnerGuard } from './customer-onboarding/legacy-password-reset-guard';
 import { registerCustomerOnboardingRoutes } from './customer-onboarding/routes';
 import { registerScopedCustomerPasswordResetRoutes } from './customer-onboarding/password-reset-routes';
@@ -20,15 +22,24 @@ import { registerIdentityResolutionRoutes } from './customer-onboarding/identity
 import { registerCustomerLoginIdentifierChangeRoutes } from './customer-onboarding/login-identifier-change-routes';
 import { registerStaffFinanceRoutes } from './internal-finance';
 import { staffSessionMiddleware } from './middleware/staff-auth';
-import { exactOneOrderEvidenceScreenshotGuard, registerStaffOrderEvidenceRoutes } from './order-evidence';
+import {
+  exactOneOrderEvidenceScreenshotGuard,
+  registerStaffOrderEvidenceRoutes,
+} from './order-evidence';
 import { registerStaffReviewRoutes } from './reviews';
 import { registerSellerFormalOrderRoutes } from './seller-formal-orders';
-import { registerSellerOrderChatScreenshotRoutes } from './seller-order-chat-screenshots';
 import { registerSellerReviewRoutes } from './seller-reviews';
 import { registerSellerPortalRoutes } from './seller-portal';
 import { registerSellerMemberRoutes } from './seller-portal/member-routes';
+import { registerOrderCommunicationScreenshotRoutes } from './order-communication-screenshots';
 import { registerSellerRegistrationRoutes } from './seller-registration/routes';
-import { registerSellerSettlementRoutes, registerStaffSellerSettlementProofRoutes, registerStaffSellerSettlementRoutes } from './seller-settlements';
+import {
+  registerSellerBatchRoutes,
+  registerStaffBatchRoutes,
+  registerSellerSettlementRoutes,
+  registerStaffSellerSettlementProofRoutes,
+  registerStaffSellerSettlementRoutes,
+} from './seller-settlements';
 import { registerStaffAssignmentRoutes } from './staff-assignment';
 import { registerCloudflareStaffAuthRoutes } from './staff-auth/access-routes';
 import { registerStaffCatalogWorkflowRoutes } from './staff/catalog-routes';
@@ -36,21 +47,21 @@ import { registerStaffWorkflowClosureRoutes } from './staff/workflow-closure-rou
 import { registerMarketplaceFoundationRoutes } from './marketplaces/routes';
 import { registerScheduledOperationRoutes } from './scheduled-operations';
 import { registerColdImageArchiveRoutes } from './cold-image-archive';
-import { registerAcquisitionRoutes } from './acquisition';
-import { registerAcquisitionPrivacyRoutes } from './acquisition/privacy-routes';
-import { registerAcquisitionChannelStatsRoutes } from './acquisition/channel-stats-routes';
-import { registerAcquisitionHandoffRoutes } from './acquisition/handoff-routes';
-import { registerAcquisitionMachineRoutes } from './acquisition/machine-routes';
-import { registerAcquisitionMachineCredentialRoutes } from './acquisition/machine-credential-routes';
-import { registerAcquisitionReportingOperationRoutes } from './acquisition/reporting-operations-routes';
 import { registerAdminBusinessDashboardRoutes } from './admin-business-dashboard';
-import { registerAdminAcquisitionDailyRoutes } from './admin-business-dashboard/acquisition-daily-routes';
 import { registerStaffAccessManagementRoutes } from './staff/access-management';
 import { registerSellerPrincipalRatePolicyRoutes } from './pricing/routes';
+import { registerSellerServiceFeeRoutes } from './pricing/seller-service-fee-routes';
+import { registerStaffRateCenterRoutes } from './pricing/rate-center-routes';
 import { registerOperationalReadinessRoutes } from './operational-readiness/routes';
 import { registerOperationalAlertAttestationRoutes } from './operational-readiness/alert-attestation';
 import { registerOperatingIntegrityRoutes } from './operating-integrity/routes';
-import { registerAdvancePrincipalLookupRoute } from './operating-integrity/advance-principal-lookup-route';
+import { registerStaffOrderDetailRoutes } from './staff-order-detail/routes';
+import {
+  registerBuyerServiceChannelRoutes,
+  registerStaffServiceChannelRoutes,
+} from './company-service-channels/routes';
+import { registerCreateBuyerCustomerRoutes } from './customers/create-buyer-route';
+import { registerStaffSearchRoutes } from './staff-search/routes';
 import { registerProductionRecoveryAttestationRoutes } from './production-readiness/recovery-attestation-routes';
 import { registerFormalOrderPolicyGuards } from './formal-order-policy-routes';
 
@@ -59,15 +70,17 @@ const app = createApp();
 registerOperationalReadinessRoutes(app);
 registerCustomerAuthRoutes(app);
 registerPublicCustomerSecurityRoutes(app);
-registerAcquisitionMachineRoutes(app);
 registerCloudflareStaffAuthRoutes(app);
 registerSellerMemberRoutes(app);
 
 app.use('/api/staff/*', staffSessionMiddleware());
+registerOrderCommunicationScreenshotRoutes(app);
 registerFormalOrderPolicyGuards(app);
 registerSellerRegistrationRoutes(app);
 registerStaffAssignmentRoutes(app);
 registerSellerPrincipalRatePolicyRoutes(app);
+registerSellerServiceFeeRoutes(app);
+registerStaffRateCenterRoutes(app);
 registerBuyerInvitationDutyGuard(app);
 registerLegacyPasswordResetOwnerGuard(app);
 registerStaffCustomerSecurityRoutes(app);
@@ -76,25 +89,21 @@ registerCustomerOnboardingRoutes(app);
 registerScopedCustomerPasswordResetRoutes(app);
 registerIdentityResolutionRoutes(app);
 registerCustomerLoginIdentifierChangeRoutes(app);
-registerExistingCustomerLeadGuard(app);
 registerOperatingIntegrityRoutes(app);
-registerAdvancePrincipalLookupRoute(app);
+registerStaffOrderDetailRoutes(app);
+registerStaffServiceChannelRoutes(app);
+registerCreateBuyerCustomerRoutes(app);
+registerStaffSearchRoutes(app);
 registerProductionRecoveryAttestationRoutes(app);
 registerOperationalAlertAttestationRoutes(app);
-registerAcquisitionPrivacyRoutes(app);
-registerAcquisitionReportingOperationRoutes(app);
-registerAcquisitionMachineCredentialRoutes(app);
-registerAcquisitionRoutes(app);
-registerAcquisitionChannelStatsRoutes(app);
-registerAcquisitionHandoffRoutes(app);
 registerAdminBusinessDashboardRoutes(app);
-registerAdminAcquisitionDailyRoutes(app);
 registerStaffAccessManagementRoutes(app);
 registerStaffCatalogWorkflowRoutes(app);
 registerStaffWorkflowClosureRoutes(app);
 registerMarketplaceFoundationRoutes(app);
 registerStaffReviewRoutes(app);
 registerStaffSellerSettlementRoutes(app);
+registerStaffBatchRoutes(app);
 registerStaffSellerSettlementProofRoutes(app);
 registerStaffFinanceRoutes(app);
 registerStaffOrderEvidenceRoutes(app);
@@ -105,6 +114,7 @@ registerFileHttpRoutes(app);
 
 registerBuyerSelfRegistrationRoutes(app);
 registerBuyerPortalRoutes(app);
+registerBuyerServiceChannelRoutes(app);
 app.use('/api/buyer-portal/order-evidence', exactOneOrderEvidenceScreenshotGuard());
 app.use('/api/buyer-portal/order-evidence/:id/resubmit', exactOneOrderEvidenceScreenshotGuard());
 registerBuyerOrderEvidencePortalRoutes(app);
@@ -114,8 +124,8 @@ registerBuyerRefundStatusRoutes(app);
 registerBuyerReviewRoutes(app);
 registerSellerPortalRoutes(app);
 registerSellerFormalOrderRoutes(app);
-registerSellerOrderChatScreenshotRoutes(app);
 registerSellerReviewRoutes(app);
 registerSellerSettlementRoutes(app);
+registerSellerBatchRoutes(app);
 
 export default app;

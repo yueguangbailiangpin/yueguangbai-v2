@@ -67,13 +67,11 @@ const MARKET: Record<string, string> = {
 };
 
 export function OperatingIntegrityCenter({
-  anomalies,
+  openWorkItems,
+  financeExceptions,
 }: {
-  anomalies: {
-    identity_conflicts: number;
-    attribution_anomalies: number;
-    finance_conflicts: number;
-  };
+  openWorkItems: number;
+  financeExceptions: number;
 }) {
   const client = useQueryClient();
   const [selected, setSelected] = useState<CaseItem | null>(null);
@@ -124,41 +122,35 @@ export function OperatingIntegrityCenter({
     },
   });
   return (
-    <section aria-labelledby="operating-integrity-title">
-      <div className="dashboard-section-heading">
-        <div>
-          <h2 id="operating-integrity-title">异常待处理</h2>
-          <p>这里只放会阻断业务或污染经营数据的异常，不做复杂任务派工。</p>
-        </div>
-      </div>
+    <section aria-label="运行完整性">
       <div className="dashboard-metric-grid">
         <IssueMetric
-          label="身份冲突"
-          value={anomalies.identity_conflicts}
-          tone={anomalies.identity_conflicts > 0 ? 'danger' : 'success'}
+          label="待处理工作项"
+          value={openWorkItems}
+          tone={openWorkItems > 0 ? 'danger' : 'success'}
         />
         <IssueMetric
-          label="新系统归因异常"
-          value={anomalies.attribution_anomalies}
-          tone={anomalies.attribution_anomalies > 0 ? 'danger' : 'success'}
+          label="账目对不上"
+          value={financeExceptions}
+          tone={financeExceptions > 0 ? 'danger' : 'success'}
         />
         <IssueMetric
-          label="财务冲突"
-          value={anomalies.finance_conflicts}
-          tone={anomalies.finance_conflicts > 0 ? 'danger' : 'success'}
+          label="客户身份对不上"
+          value={cases.data?.length ?? 0}
+          tone={(cases.data?.length ?? 0) > 0 ? 'danger' : 'success'}
         />
       </div>
       {cases.isError ? (
-        <Alert tone="danger">身份冲突列表暂时无法加载。</Alert>
+        <Alert tone="danger">待处理列表暂时无法加载。</Alert>
       ) : cases.isPending ? (
-        <p role="status">正在加载身份冲突</p>
+        <p role="status">正在加载待处理事项</p>
       ) : cases.data.length === 0 ? (
         <EmptyState
-          title="没有待处理身份冲突"
-          description="出现历史身份无法唯一确认时会显示在这里。"
+          title="没有需要处理的身份问题"
+          description="出现身份无法唯一确认时会显示在这里。"
         />
       ) : (
-        <DataTable caption="待处理客户身份冲突">
+        <DataTable caption="需要对上号的客户身份">
           <thead>
             <tr>
               <th>客户</th>
@@ -237,7 +229,7 @@ function ResolutionCard({
   return (
     <Card className="dashboard-drill-down">
       <h3>人工核对身份 · {item.identity_masked}</h3>
-      <Alert tone="warning">这里只建立历史身份映射，不修改历史订单、不补获客渠道。</Alert>
+      <Alert tone="warning">这里只把历史资料和客户对上号，不改历史订单、不补渠道。</Alert>
       <form onSubmit={searchSubmit}>
         <FormField label="搜索历史客户" htmlFor={`identity-query-${item.id}`}>
           <TextInput id={`identity-query-${item.id}`} name="query" minLength={2} required />
@@ -361,7 +353,7 @@ function WechatChangeCard() {
   return (
     <Card className="dashboard-drill-down">
       <h3>更换客户登录微信</h3>
-      <p>只更换登录身份，不新建客户、不迁移订单、不改变渠道来源。仅总管理员可执行。</p>
+      <p>只把登录微信换成新的，不新建客户、不迁移订单、不改变渠道来源。仅总管理员可执行。</p>
       <Alert tone="warning">
         操作前须通过现有业务资料人工确认客户身份，成功后所有旧会话立即失效。
       </Alert>
@@ -475,10 +467,10 @@ function reasonLabel(value: string) {
   return (
     (
       {
-        AMBIGUOUS_HISTORY: '历史数据匹配多个客户',
-        IDENTITY_CONFLICT: '身份关系冲突',
-        LEGACY_MISSING_IDENTITY: '历史身份资料缺失',
-        STAFF_REPORTED: '员工提交核对',
+        AMBIGUOUS_HISTORY: '历史资料对应多个客户',
+        IDENTITY_CONFLICT: '同一微信对应多个身份',
+        LEGACY_MISSING_IDENTITY: '历史资料缺少身份信息',
+        STAFF_REPORTED: '员工提交人工核对',
       } as Record<string, string>
     )[value] ?? value
   );

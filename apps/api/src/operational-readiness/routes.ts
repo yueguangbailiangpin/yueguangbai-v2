@@ -8,14 +8,12 @@ import { operationalAlertAttestationReady } from './alert-attestation';
 import type { AppBindings } from '../app';
 import { exactCloudflareAccessTeamOrigin, parseExactGitCommitSha } from '@ygb/domain';
 
-const TARGET_SCHEMA = 70;
+const TARGET_SCHEMA = 41;
 const MAX_JOB_STALENESS_MS = 6 * 60 * 60 * 1000;
-const MAX_ACQUISITION_STALENESS_MS = 24 * 60 * 60 * 1000;
 const MAX_JOB_BACKLOG = 1000;
 const REQUIRED_JOBS = [
   'reservation_expiry',
   'instruction_expiry',
-  'outbox_delivery',
   'file_orphan_cleanup',
 ] as const;
 const REQUIRED_SCHEDULER_JOBS = [
@@ -88,23 +86,6 @@ async function evaluateReadiness(
     );
   };
   const schedulerHealthy = schedulerEnabled && REQUIRED_SCHEDULER_JOBS.every(jobHealthy);
-  const outboxDeliveryEnabled = bindings['OUTBOX_DELIVERY_ENABLED'] === 'true';
-  const outboxDeliveryHealthy =
-    outboxDeliveryEnabled && schedulerEnabled && jobHealthy('outbox_delivery');
-  const maintenance = await database
-    .prepare(
-      `SELECT last_succeeded_at,last_failed_at FROM acquisition_maintenance_state WHERE singleton_id=1`,
-    )
-    .first<{ last_succeeded_at: number | null; last_failed_at: number | null }>();
-  const maintenanceSucceeded =
-      maintenance?.last_succeeded_at == null ? null : Number(maintenance.last_succeeded_at),
-    maintenanceFailed =
-      maintenance?.last_failed_at == null ? null : Number(maintenance.last_failed_at);
-  const acquisitionHealthy =
-    bindings['ACQUISITION_MAINTENANCE_ENABLED'] === 'true' &&
-    maintenanceSucceeded !== null &&
-    now - maintenanceSucceeded <= MAX_ACQUISITION_STALENESS_MS &&
-    (maintenanceFailed === null || maintenanceSucceeded >= maintenanceFailed);
   const operationalAlertsHealthy = await operationalAlertsReady(database, bindings, now);
   const objectStorageHealthy = await storageReady(database, storage);
   const runningRelease = parseExactGitCommitSha(bindings.APP_RELEASE_SHA);
@@ -128,10 +109,6 @@ async function evaluateReadiness(
     const checks = {
       schema: status(schema),
       scheduler: status(schedulerHealthy),
-      outbox_delivery: outboxDeliveryEnabled
-        ? status(outboxDeliveryHealthy)
-        : ('not_required' as const),
-      acquisition_maintenance: status(acquisitionHealthy),
       operational_alerts: status(operationalAlertsHealthy),
       object_storage: status(objectStorageHealthy),
       recovery: status(recoveryHealthy),
@@ -148,22 +125,12 @@ async function evaluateReadiness(
       bindings['SCHEDULED_OPERATIONS_ENABLED'] === 'false'
         ? ('not_required' as const)
         : ('failed' as const);
-    const outbox_delivery =
-      bindings['OUTBOX_DELIVERY_ENABLED'] === 'false'
-        ? ('not_required' as const)
-        : ('failed' as const);
-    const acquisition_maintenance =
-      bindings['ACQUISITION_MAINTENANCE_ENABLED'] === 'false'
-        ? ('not_required' as const)
-        : ('failed' as const);
     const operational_alerts = operationalAlertsHealthy
       ? ('not_required' as const)
       : ('failed' as const);
     const checks = {
       schema: status(schema),
       scheduler,
-      outbox_delivery,
-      acquisition_maintenance,
       operational_alerts,
       object_storage: status(objectStorageHealthy),
       recovery: 'not_required' as const,
@@ -174,9 +141,7 @@ async function evaluateReadiness(
       ready:
         checks.schema === 'ok' &&
         checks.scheduler === 'not_required' &&
-        checks.outbox_delivery === 'not_required' &&
-        checks.acquisition_maintenance === 'not_required' &&
-        checks.operational_alerts === 'not_required' &&
+          checks.operational_alerts === 'not_required' &&
         checks.object_storage === 'ok' &&
         checks.recovery === 'not_required' &&
         checks.staff_access === 'ok' &&
@@ -188,10 +153,6 @@ async function evaluateReadiness(
     const checks = {
       schema: status(schema),
       scheduler: status(schedulerHealthy),
-      outbox_delivery: outboxDeliveryEnabled
-        ? status(outboxDeliveryHealthy)
-        : ('not_required' as const),
-      acquisition_maintenance: status(acquisitionHealthy),
       operational_alerts: status(operationalAlertsHealthy),
       object_storage: status(objectStorageHealthy),
       recovery: status(recoveryHealthy),
@@ -215,8 +176,6 @@ function failedReadiness() {
     checks: {
       schema: 'failed',
       scheduler: 'failed',
-      outbox_delivery: 'failed',
-      acquisition_maintenance: 'failed',
       operational_alerts: 'failed',
       object_storage: 'failed',
       recovery: 'failed',

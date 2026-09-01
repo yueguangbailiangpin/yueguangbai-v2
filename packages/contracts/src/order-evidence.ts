@@ -20,7 +20,7 @@ export const ORDER_EVIDENCE_EVENT_TYPES = [
 export type OrderEvidenceEventType =
   typeof ORDER_EVIDENCE_EVENT_TYPES[number];
 
-export type OrderEvidenceMarketplace = 'JP';
+export type OrderEvidenceMarketplace = 'AMAZON_JP';
 
 export interface OrderEvidenceCommandResult {
   submission_id: string;

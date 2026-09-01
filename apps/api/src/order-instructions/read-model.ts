@@ -17,8 +17,10 @@ import {
   requireInstructionPermission,
 } from './shared';
 import {
+  parseOrderedKeywords,
   requireInstructionContext,
   requireInstructionContextForReservation,
+  type InstructionContextRow,
 } from './records';
 import { expireInstructionIfDue } from './expiry';
 
@@ -26,6 +28,7 @@ interface CurrentVersionRow {
   instruction_version_id: string;
   version_no: number;
   product_name: string;
+  search_keywords_json: string;
   reference_order_amount_jpy: number;
   buyer_self_pay_bps: number;
   estimated_self_pay_jpy: number;
@@ -42,15 +45,6 @@ interface CurrentVersionRow {
   published_at: number;
 }
 
-interface KeywordImageRow {
-  image_id: string;
-  keyword_position: number;
-  file_entity_link_id: string;
-  file_object_id: string;
-  image_mime: 'image/png';
-  width: number;
-  height: number;
-}
 
 export async function getBuyerOrderInstruction(
   database: SqlDatabase,
@@ -60,16 +54,11 @@ export async function getBuyerOrderInstruction(
 ): Promise<BuyerOrderInstructionDto> {
   validateBuyerActor(actor);
   const now = validateTimestamp(options.now ?? Date.now());
-  let source = await requireInstructionContextForReservation(
+  const source = await requireInstructionContextForReservation(
     database,
     reservationId,
     actor.buyerCustomerId,
   );
-  source = await expireInstructionIfDue(database, source.instruction_id, {
-    actorType: 'SYSTEM',
-    actorId: `buyer-read:${actor.buyerCustomerId}`,
-    now,
-  });
   if (source.instruction_status !== 'ACTIVE') {
     throw new OrderInstructionError(
       source.instruction_status === 'EXPIRED'
@@ -78,25 +67,18 @@ export async function getBuyerOrderInstruction(
       source.instruction_status === 'EXPIRED' ? 410 : 409,
     );
   }
-  const canRead = instructionCanReadImages({
-    status: source.instruction_status,
-    evidenceStatus: source.evidence_status,
-    resubmissionDeadlineAt: source.resubmission_deadline_at,
-    formalOrderId: source.formal_order_id,
-    now,
-  });
-  if (!canRead) {
-    throw new OrderInstructionError('FILE_ACCESS_DENIED', 403);
-  }
+  const state = buyerInstructionState(source, now);
   const version = await requireCurrentVersion(database, source.instruction_id,
     source.current_version_no);
-  const keywordImages = await listKeywordImages(
-    database,
-    version.instruction_version_id,
-  );
   return Object.freeze({
     status: source.instruction_status,
+    instruction_version: state.instruction_version,
+    current_version_no: state.current_version_no,
+    evidence_status: state.evidence_status,
+    can_submit_evidence: state.can_submit_evidence,
+    can_read_images: state.can_read_images,
     product_name: version.product_name,
+    search_keywords: parseOrderedKeywords(version.search_keywords_json),
     reference_order_amount_jpy:
       fixedIntegerString(parseJpyInteger(String(version.reference_order_amount_jpy))),
     buyer_self_pay_bps: Number(version.buyer_self_pay_bps),
@@ -123,16 +105,6 @@ export async function getBuyerOrderInstruction(
         `/api/buyer-portal/reservations/${encodeURIComponent(reservationId)}`
         + '/order-instruction/images/main/read-intent',
     }),
-    keyword_images: Object.freeze(keywordImages.map((image) => Object.freeze({
-      image_id: image.image_id,
-      position: Number(image.keyword_position),
-      mime: image.image_mime,
-      width: Number(image.width),
-      height: Number(image.height),
-      read_intent_path:
-        `/api/buyer-portal/reservations/${encodeURIComponent(reservationId)}`
-        + `/order-instruction/images/${Number(image.keyword_position)}/read-intent`,
-    }))),
   });
 }
 
@@ -144,16 +116,18 @@ export async function getBuyerOrderInstructionState(
 ): Promise<BuyerOrderInstructionStateDto> {
   validateBuyerActor(actor);
   const now = validateTimestamp(options.now ?? Date.now());
-  let source = await requireInstructionContextForReservation(
+  const source = await requireInstructionContextForReservation(
     database,
     reservationId,
     actor.buyerCustomerId,
   );
-  source = await expireInstructionIfDue(database, source.instruction_id, {
-    actorType: 'SYSTEM',
-    actorId: `buyer-state:${actor.buyerCustomerId}`,
-    now,
-  });
+  return Object.freeze(buyerInstructionState(source, now));
+}
+
+function buyerInstructionState(
+  source: InstructionContextRow,
+  now: number,
+): BuyerOrderInstructionStateDto {
   const canReadImages = instructionCanReadImages({
     status: source.instruction_status,
     evidenceStatus: source.evidence_status,
@@ -171,7 +145,7 @@ export async function getBuyerOrderInstructionState(
         && source.resubmission_deadline_at !== null
         && now < source.resubmission_deadline_at)
     );
-  return Object.freeze({
+  return {
     status: source.instruction_status,
     instruction_version: source.instruction_version,
     current_version_no: source.current_version_no,
@@ -182,7 +156,7 @@ export async function getBuyerOrderInstructionState(
     can_submit_evidence: canSubmitEvidence,
     can_read_images: canReadImages,
     content_updated: source.current_version_no > 1,
-  });
+  };
 }
 
 export async function getStaffOrderInstruction(
@@ -298,6 +272,7 @@ async function requireCurrentVersion(
       version.id AS instruction_version_id,
       version.version_no,
       product_version.product_name,
+      product_version.search_keywords_json,
       version.reference_order_amount_jpy,
       version.buyer_self_pay_bps,
       version.estimated_self_pay_jpy,
@@ -329,16 +304,3 @@ async function requireCurrentVersion(
   return row;
 }
 
-async function listKeywordImages(
-  database: SqlDatabase,
-  instructionVersionId: string,
-): Promise<readonly KeywordImageRow[]> {
-  const rows = await database.prepare(`
-    SELECT id AS image_id, keyword_position, file_entity_link_id,
-           file_object_id, image_mime, width, height
-    FROM order_instruction_keyword_images
-    WHERE order_instruction_version_id=?
-    ORDER BY keyword_position
-  `).bind(instructionVersionId).all<KeywordImageRow>();
-  return rows.results;
-}

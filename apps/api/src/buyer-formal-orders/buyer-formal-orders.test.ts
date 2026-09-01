@@ -18,11 +18,13 @@ import {
 
 const BUYER: BuyerPortalContext = {
   buyerCustomerId: 'buyer-1',
-  marketplaceCode: 'JP',
+  marketplaceCode: 'AMAZON_JP',
   accessStatus: 'ACTIVE',
   identityReviewStatus: 'CLEAR',
   customerNumber: '20260801E1',
   displayName: '买家一',
+  refundAccountName: null,
+  refundAccountIdentifier: null,
   sessionExpiresAt: 99_999,
 };
 
@@ -38,11 +40,11 @@ const NO_FILTERS: BuyerFormalOrderFilters = {
 describe('Phase 4B3 buyer formal order read model', () => {
   it('scopes list queries to the session buyer and uses stable keyset paging', async () => {
     const database = fakeDatabase({
-      all: [
+      allPages: [[
         row('formal-3', 3000, 'B0FORM0003'),
         row('formal-2', 2000, 'B0FORM0002'),
         row('formal-1', 1000, 'B0FORM0001'),
-      ],
+      ], [row('formal-1', 1000, 'B0FORM0001')]],
     });
 
     const page = await listBuyerFormalOrders(database, BUYER, {
@@ -58,6 +60,14 @@ describe('Phase 4B3 buyer formal order read model', () => {
       confirmedAt: 2000,
       id: 'formal-2',
     });
+    const secondPage = await listBuyerFormalOrders(database, BUYER, {
+      limit: 2,
+      cursor: decodeBuyerFormalOrderCursor(page.next_cursor!),
+      filters: NO_FILTERS,
+    });
+    expect(secondPage.items.map((item) => item.formal_order_id))
+      .toEqual(['formal-1']);
+    expect(secondPage.next_cursor).toBeNull();
     expect(database.calls[0]?.sql).toContain(
       'formal_order.buyer_customer_id=?',
     );
@@ -87,7 +97,7 @@ describe('Phase 4B3 buyer formal order read model', () => {
   it('applies all supported filters and reads buyer money only from snapshots', async () => {
     const database = fakeDatabase({ all: [row('formal-1', 1000)] });
     const filters: BuyerFormalOrderFilters = {
-      marketplace: 'JP',
+      marketplace: 'AMAZON_JP',
       productName: '产品一',
       reviewType: 'IMAGE',
       confirmedBusinessDate: '2026-08-01',
@@ -125,7 +135,7 @@ describe('Phase 4B3 buyer formal order read model', () => {
     expect(call.sql).not.toContain('buyer_daily_exchange_rates');
     expect(call.bindings).toEqual([
       'buyer-1',
-      'JP',
+      'AMAZON_JP',
       '%产品一%',
       'IMAGE',
       '2026-08-01',
@@ -171,7 +181,7 @@ describe('Phase 4B3 buyer formal order read model', () => {
     expect(database.calls).toHaveLength(0);
   });
 
-  it('keeps routes read-only and leaves the schema compatible through 0026', () => {
+  it('keeps routes read-only and leaves the schema compatible through 0029', () => {
     const root = path.resolve(import.meta.dirname, '../../../..');
     const routeSource = readFileSync(
       path.join(
@@ -189,11 +199,9 @@ describe('Phase 4B3 buyer formal order read model', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(70);
+    expect(migrations).toHaveLength(41);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations[42]).toBe('0043_seller_principal_rate_integrity_hardening.sql');
-    expect(migrations.at(-1)).toBe('0070_buyer_refund_reminders.sql');
+    expect(migrations.at(-1)).toBe('0041_owner_alias_yueguangbai_ygbceping.sql');
   });
 });
 
@@ -205,7 +213,7 @@ function row(
   return {
     formal_order_id: id,
     buyer_customer_no: '20260801E1',
-    marketplace_code: 'JP' as const,
+    marketplace_code: 'AMAZON_JP' as const,
     amazon_order_number_normalized: '123-1234567-1234567',
     asin_normalized: asin,
     product_name_snapshot: '正式订单产品一',
@@ -231,11 +239,13 @@ function row(
 
 function fakeDatabase(result: {
   all?: unknown[];
+  allPages?: unknown[][];
   first?: unknown | null;
 }): SqlDatabase & {
   calls: Array<{ sql: string; bindings: unknown[] }>;
 } {
   const calls: Array<{ sql: string; bindings: unknown[] }> = [];
+  const allPages = [...(result.allPages ?? [])];
   return {
     calls,
     prepare(sql: string): SqlStatement {
@@ -247,7 +257,11 @@ function fakeDatabase(result: {
           return statement;
         },
         async all<T>() {
-          return { results: (result.all ?? []) as T[] };
+          return {
+            results: (allPages.length > 0
+              ? allPages.shift()
+              : result.all ?? []) as T[],
+          };
         },
         async first<T>() {
           return (result.first ?? null) as T | null;

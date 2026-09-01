@@ -16,7 +16,8 @@ export type FileStorageErrorCode =
   | 'FILE_NOT_VERIFIED'
   | 'FILE_STORAGE_CONFLICT'
   | 'FILE_COMPENSATION_REQUIRED'
-  | 'FILE_READ_INTENT_NOT_FOUND';
+  | 'FILE_READ_INTENT_NOT_FOUND'
+  | 'FILE_ARCHIVED';
 
 export class FileStorageError extends Error {
   constructor(

@@ -11,43 +11,43 @@ import {
   settlementPaymentsSchema,
   settlementSummarySchema,
   staffBuyerRefundSchema,
+  staffBuyerRefundListSchema,
+  staffSearchSchema,
   staffOrderEvidenceSchema,
+  staffOrderEvidencePreflightSchema,
   staffReviewSchema,
   staffReviewValueSchema,
   staffWorkItemsSchema,
-  acquisitionAssignmentSchema,
-  acquisitionChannelSchema,
-  acquisitionConsultationEventSchema,
-  acquisitionConsultationSchema,
-  acquisitionFunnelSchema,
-  acquisitionLeadSchema,
+  
+  
+  
+  
   adminDashboardSummarySchema,
+  demandCloseMutationSchema,
   demandReviewContextSchema,
   demandReviewMutationSchema,
   demandScheduleConfirmationSchema,
   demandSchedulePreviewSchema,
+  mainImageMutationSchema,
   productVersionMutationSchema,
   staffProductDetailSchema,
   staffProductPageSchema,
   staffReservationSchedulePageSchema,
   staffAccessOverviewSchema,
   staffAccessMutationSchema,
+  staffFormalOrderDetailSchema,
+  staffOrderListPageSchema,
+  staffWorkbenchSummaryEnvelopeSchema,
   staffSellerPrincipalRatePoliciesResponseSchema,
   staffSellerPrincipalRatePolicyMutationSchema,
+  internalFinanceOrderDetailSchema,
+  staffRateCenterSchema,
+  staffRateCenterBaseMutationSchema,
+  staffSellerServiceFeesSchema,
+  staffSellerServiceFeeMutationSchema,
+  reservationReopenSchema,
+  staffAssignmentsSchema,
 } from '../contracts/runtime';
-
-const acquisitionChannelResultSchema = z
-  .object({ channel: acquisitionChannelSchema, replayed: z.boolean() })
-  .strict();
-const acquisitionAssignmentResultSchema = z
-  .object({ assignment: acquisitionAssignmentSchema, replayed: z.boolean() })
-  .strict();
-const acquisitionConsultationResultSchema = z
-  .object({ consultation: acquisitionConsultationSchema, replayed: z.boolean() })
-  .strict();
-const acquisitionLeadResultSchema = z
-  .object({ lead: acquisitionLeadSchema, replayed: z.boolean() })
-  .strict();
 
 const orderMutationSchema = z.union([
   z
@@ -55,7 +55,7 @@ const orderMutationSchema = z.union([
       submission_id: z.string(),
       reservation_id: z.string(),
       buyer_customer_id: z.string(),
-      marketplace: z.literal('JP'),
+      marketplace: z.literal('AMAZON_JP'),
       status: z.literal('CHANGES_REQUESTED'),
       version: z.number().int(),
       current_evidence_version_no: z.number().int(),
@@ -152,20 +152,14 @@ function write<T extends z.ZodType>(
 }
 
 export const staffApi = Object.freeze({
+  assignments: (client: QueryClient, signal?: AbortSignal) =>
+    read(client, '/api/staff/me/assignments', staffAssignmentsSchema, signal),
   accessManagement: (client: QueryClient, signal?: AbortSignal) =>
     read(client, '/api/staff/access-management', staffAccessOverviewSchema, signal),
   changeStaffAccessStatus: (client: QueryClient, staffId: string, body: unknown, key: string) =>
     write(
       client,
       `/api/staff/access-management/employees/${encodeURIComponent(staffId)}/status`,
-      body,
-      staffAccessMutationSchema,
-      key,
-    ),
-  changeStaffRole: (client: QueryClient, staffId: string, body: unknown, key: string) =>
-    write(
-      client,
-      `/api/staff/access-management/employees/${encodeURIComponent(staffId)}/role`,
       body,
       staffAccessMutationSchema,
       key,
@@ -194,6 +188,26 @@ export const staffApi = Object.freeze({
       body,
       productVersionMutationSchema,
       key,
+    ),
+  linkMainImage: (client: QueryClient, versionId: string, body: unknown, key: string) =>
+    write(
+      client,
+      `/api/staff/catalog/product-versions/${encodeURIComponent(versionId)}/main-image`,
+      body,
+      mainImageMutationSchema,
+      key,
+    ),
+  reopenReservation: (
+    client: QueryClient,
+    reservationId: string,
+    body: { expected_version: number; reason: string },
+  ) =>
+    write(
+      client,
+      `/api/staff/reservations/${encodeURIComponent(reservationId)}/reopen`,
+      body,
+      reservationReopenSchema,
+      crypto.randomUUID(),
     ),
   reservationSchedule: (
     client: QueryClient,
@@ -241,12 +255,20 @@ export const staffApi = Object.freeze({
       demandReviewMutationSchema,
       key,
     ),
+  closeDemand: (client: QueryClient, id: string, body: unknown, key: string) =>
+    write(
+      client,
+      `/api/staff/demand-batches/${encodeURIComponent(id)}/close`,
+      body,
+      demandCloseMutationSchema,
+      key,
+    ),
   workItems: (
     client: QueryClient,
-    query: { status: string; workType: string | null; cursor: string | null },
+    query: { status: string; workType: string | null; cursor: string | null; limit?: number },
     signal?: AbortSignal,
   ) => {
-    const parameters = new URLSearchParams({ status: query.status, limit: '25' });
+    const parameters = new URLSearchParams({ status: query.status, limit: String(query.limit ?? 25) });
     if (query.workType) parameters.set('work_type', query.workType);
     if (query.cursor) parameters.set('cursor', query.cursor);
     return read(client, `/api/staff/me/work-items?${parameters}`, staffWorkItemsSchema, signal);
@@ -256,10 +278,14 @@ export const staffApi = Object.freeze({
     sourceCurrencyCode: string,
     sellerOrganizationId: string | null,
     signal?: AbortSignal,
+    asOf?: number,
   ) => {
     const parameters = new URLSearchParams({ source_currency_code: sourceCurrencyCode });
     if (sellerOrganizationId !== null) {
       parameters.set('seller_organization_id', sellerOrganizationId);
+    }
+    if (asOf !== undefined) {
+      parameters.set('as_of', String(asOf));
     }
     return read(
       client,
@@ -271,28 +297,92 @@ export const staffApi = Object.freeze({
       requestId: response.requestId,
     }));
   },
-  submitSellerPrincipalRatePolicy: (client: QueryClient, body: unknown, key: string) =>
+  saveSellerPrincipalRatePolicy: (client: QueryClient, body: unknown, key: string) =>
     write(
       client,
-      '/api/staff/seller-principal-rate-policies/submit',
+      '/api/staff/seller-principal-rate-policies/save',
       body,
       staffSellerPrincipalRatePolicyMutationSchema,
       key,
     ),
-  confirmSellerPrincipalRatePolicy: (client: QueryClient, id: string, body: unknown, key: string) =>
+  sellerServiceFees: (
+    client: QueryClient,
+    sellerOrganizationId: string,
+    signal?: AbortSignal,
+    asOf?: number,
+  ) => {
+    const parameters = new URLSearchParams({
+      seller_organization_id: sellerOrganizationId,
+    });
+    if (asOf !== undefined) {
+      parameters.set('as_of', String(asOf));
+    }
+    return read(
+      client,
+      `/api/staff/seller-service-fees?${parameters}`,
+      staffSellerServiceFeesSchema,
+      signal,
+    );
+  },
+  saveSellerServiceFee: (client: QueryClient, body: unknown, key: string) =>
     write(
       client,
-      `/api/staff/seller-principal-rate-policies/${encodeURIComponent(id)}/confirm`,
+      '/api/staff/seller-service-fees',
       body,
-      staffSellerPrincipalRatePolicyMutationSchema,
+      staffSellerServiceFeeMutationSchema,
       key,
     ),
-  rejectSellerPrincipalRatePolicy: (client: QueryClient, id: string, body: unknown, key: string) =>
+  rateCenter: (
+    client: QueryClient,
+    businessDate: string,
+    sellerOrganizationId: string | null,
+    signal?: AbortSignal,
+    asOf?: number,
+  ) => {
+    const parameters = new URLSearchParams({ business_date: businessDate });
+    if (sellerOrganizationId !== null)
+      parameters.set('seller_organization_id', sellerOrganizationId);
+    if (asOf !== undefined) parameters.set('as_of', String(asOf));
+    return read(client, `/api/staff/rate-center?${parameters}`, staffRateCenterSchema, signal);
+  },
+  financeOrderDetail: (client: QueryClient, formalOrderId: string, signal?: AbortSignal) =>
+    read(
+      client,
+      `/api/staff/finance/orders/${encodeURIComponent(formalOrderId)}`,
+      internalFinanceOrderDetailSchema,
+      signal,
+    ).then((response) => ({
+      data: response.data.order,
+      requestId: response.requestId,
+    })),
+  formalOrderDetail: (client: QueryClient, formalOrderId: string, signal?: AbortSignal) =>
+    read(
+      client,
+      `/api/staff/formal-orders/${encodeURIComponent(formalOrderId)}`,
+      staffFormalOrderDetailSchema,
+      signal,
+    ),
+  // Stage 7.5 batch 1: keyset cursor list (filters travel in the query string).
+  formalOrderList: (client: QueryClient, query: string, signal?: AbortSignal) =>
+    read(
+      client,
+      `/api/staff/formal-orders${query}`,
+      staffOrderListPageSchema,
+      signal,
+    ),
+  workbenchSummary: (client: QueryClient, signal?: AbortSignal) =>
+    read(
+      client,
+      '/api/staff/me/work-items/summary',
+      staffWorkbenchSummaryEnvelopeSchema,
+      signal,
+    ),
+  saveOrderDayBaseRate: (client: QueryClient, body: unknown, key: string) =>
     write(
       client,
-      `/api/staff/seller-principal-rate-policies/${encodeURIComponent(id)}/reject`,
+      '/api/staff/rate-center/base-rates',
       body,
-      staffSellerPrincipalRatePolicyMutationSchema,
+      staffRateCenterBaseMutationSchema,
       key,
     ),
   orderEvidence: (client: QueryClient, id: string, signal?: AbortSignal) =>
@@ -300,6 +390,13 @@ export const staffApi = Object.freeze({
       client,
       `/api/staff/order-evidence/${encodeURIComponent(id)}`,
       staffOrderEvidenceSchema,
+      signal,
+    ),
+  orderEvidencePreflight: (client: QueryClient, id: string, signal?: AbortSignal) =>
+    read(
+      client,
+      `/api/staff/order-evidence/${encodeURIComponent(id)}/preflight`,
+      staffOrderEvidencePreflightSchema,
       signal,
     ),
   mutateOrderEvidence: (
@@ -331,6 +428,20 @@ export const staffApi = Object.freeze({
       body,
       reviewMutationSchema,
       key,
+    ),
+  search: (client: QueryClient, query: string, signal?: AbortSignal) =>
+    read(
+      client,
+      `/api/staff/search?q=${encodeURIComponent(query)}`,
+      staffSearchSchema,
+      signal,
+    ),
+  buyerRefunds: (client: QueryClient, cursor: string | null, signal?: AbortSignal) =>
+    read(
+      client,
+      `/api/staff/buyer-refunds${cursor === null ? '' : `?cursor=${encodeURIComponent(cursor)}`}`,
+      staffBuyerRefundListSchema,
+      signal,
     ),
   buyerRefund: (client: QueryClient, id: string, signal?: AbortSignal) =>
     read(
@@ -420,101 +531,6 @@ export const staffApi = Object.freeze({
       { expected_version: version },
       invitationViewSchema,
       key,
-    ),
-  acquisitionChannels: (client: QueryClient, signal?: AbortSignal) =>
-    read(
-      client,
-      '/api/staff/acquisition/channels',
-      z.object({ channels: z.array(acquisitionChannelSchema) }).strict(),
-      signal,
-    ),
-  createAcquisitionChannel: (client: QueryClient, body: unknown, key: string) =>
-    write(client, '/api/staff/acquisition/channels', body, acquisitionChannelResultSchema, key),
-  disableAcquisitionChannel: (client: QueryClient, id: string, body: unknown, key: string) =>
-    write(
-      client,
-      `/api/staff/acquisition/channels/${encodeURIComponent(id)}/disable`,
-      body,
-      acquisitionChannelResultSchema,
-      key,
-    ),
-  acquisitionAssignments: (client: QueryClient, signal?: AbortSignal) =>
-    read(
-      client,
-      '/api/staff/acquisition/channel-assignments',
-      z.object({ assignments: z.array(acquisitionAssignmentSchema) }).strict(),
-      signal,
-    ),
-  createAcquisitionAssignment: (client: QueryClient, body: unknown, key: string) =>
-    write(
-      client,
-      '/api/staff/acquisition/channel-assignments',
-      body,
-      acquisitionAssignmentResultSchema,
-      key,
-    ),
-  revokeAcquisitionAssignment: (client: QueryClient, id: string, body: unknown, key: string) =>
-    write(
-      client,
-      `/api/staff/acquisition/channel-assignments/${encodeURIComponent(id)}/revoke`,
-      body,
-      acquisitionAssignmentResultSchema,
-      key,
-    ),
-  acquisitionConsultations: (client: QueryClient, from: string, to: string, signal?: AbortSignal) =>
-    read(
-      client,
-      `/api/staff/acquisition/consultations?from_date=${encodeURIComponent(from)}&to_date=${encodeURIComponent(to)}`,
-      z.object({ consultations: z.array(acquisitionConsultationSchema) }).strict(),
-      signal,
-    ),
-  acquisitionConsultationHistory: (client: QueryClient, id: string, signal?: AbortSignal) =>
-    read(
-      client,
-      `/api/staff/acquisition/consultations/${encodeURIComponent(id)}/history`,
-      z.object({ history: z.array(acquisitionConsultationEventSchema) }).strict(),
-      signal,
-    ),
-  recordAcquisitionConsultation: (client: QueryClient, body: unknown, key: string) =>
-    write(
-      client,
-      '/api/staff/acquisition/consultations',
-      body,
-      acquisitionConsultationResultSchema,
-      key,
-    ),
-  acquisitionLeads: (
-    client: QueryClient,
-    leadType: 'BUYER' | 'SELLER' | null,
-    signal?: AbortSignal,
-  ) => {
-    const parameters = new URLSearchParams({ limit: '50' });
-    if (leadType) parameters.set('lead_type', leadType);
-    return read(
-      client,
-      `/api/staff/acquisition/leads?${parameters}`,
-      z
-        .object({ items: z.array(acquisitionLeadSchema), next_cursor: z.string().nullable() })
-        .strict(),
-      signal,
-    );
-  },
-  createAcquisitionLead: (client: QueryClient, body: unknown, key: string) =>
-    write(client, '/api/staff/acquisition/leads', body, acquisitionLeadResultSchema, key),
-  invalidateAcquisitionLead: (client: QueryClient, id: string, body: unknown, key: string) =>
-    write(
-      client,
-      `/api/staff/acquisition/leads/${encodeURIComponent(id)}/invalidate`,
-      body,
-      acquisitionLeadResultSchema,
-      key,
-    ),
-  acquisitionFunnel: (client: QueryClient, from: string, to: string, signal?: AbortSignal) =>
-    read(
-      client,
-      `/api/staff/acquisition/funnel?from_date=${encodeURIComponent(from)}&to_date=${encodeURIComponent(to)}`,
-      z.object({ funnel: acquisitionFunnelSchema }).strict(),
-      signal,
     ),
   adminDashboardSummary: (
     client: QueryClient,

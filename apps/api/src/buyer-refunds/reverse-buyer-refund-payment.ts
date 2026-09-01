@@ -12,10 +12,6 @@ import {
   markIdempotencyFailed,
   type IdempotencyClaim,
 } from '../foundation/idempotency';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
 import { insertBuyerRefundEventStatement } from './buyer-refund-events';
 import {
   requireBuyerRefundLedger,
@@ -161,15 +157,6 @@ export async function reverseBuyerRefundPayment(
       },
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `buyer-refund-reversal:${reversalEntryId}`,
-      eventType: 'BUYER_REFUND_PAYMENT_REVERSED',
-      aggregateType: 'BUYER_REFUND_OBLIGATION',
-      aggregateId: obligationId,
-      payload: response,
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -261,7 +248,6 @@ export async function reverseBuyerRefundPayment(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

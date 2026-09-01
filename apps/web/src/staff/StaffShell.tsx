@@ -1,42 +1,35 @@
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  BriefcaseBusiness,
-  ChartNoAxesCombined,
-  PackageSearch,
-  Settings,
-  Sparkles,
-  UserCog,
-  UserRound,
-  UsersRound,
-} from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
-import { useRef, useState, type ReactNode } from 'react';
 import { useCurrentStaffSession } from '../auth/staff/StaffSessionBoundary';
 import { StaffAuthController } from '../auth/staff/staff-auth-controller';
-import { Button, Dialog, IdentityShell, RequestIdDisplay } from '../ui/primitives';
+import { Breadcrumb } from '../ui/primitives';
+import { GlobalSearchDropdown } from './shared/GlobalSearchDropdown';
+import { MoonwhiteIcon } from './shared/MoonwhiteIcon';
+import {
+  formatMarketplaceScope,
+  getBreadcrumbForPath,
+  getPageTitleForPath,
+  getVisibleNavItems,
+  staffNavSectionLabel,
+  type StaffNavItem,
+} from './staff-navigation';
 
-const MARKET_LABELS: Record<string, string> = {
-  AMAZON_JP: '亚马逊日本站',
-  AMAZON_US: '亚马逊美国站',
-  COUPANG_KR: 'Coupang 韩国站',
-  RAKUTEN_JP: '乐天日本站',
-  TIKTOK_JP: 'TikTok 日本站',
-};
+/* ---- 账户操作（退出登录） ---- */
 
-function StaffAccountActions(): React.JSX.Element {
+function StaffAccountActions({ compact = false }: { compact?: boolean }): React.JSX.Element {
   const client = useQueryClient();
   const navigate = useNavigate();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [requestId, setRequestId] = useState<string | null>(null);
   const controller = useRef<StaffAuthController | null>(null);
   controller.current ??= new StaffAuthController(client);
+
   async function finishLogout(all: boolean): Promise<void> {
     setBusy(true);
     setMessage(null);
     const result = all ? await controller.current!.logoutAll() : await controller.current!.logout();
-    setRequestId(result.requestId);
     if (result.kind === 'LOGGED_OUT') navigate('/staff/login', { replace: true });
     else
       setMessage(
@@ -48,6 +41,7 @@ function StaffAccountActions(): React.JSX.Element {
       );
     setBusy(false);
   }
+
   const cancel = (): void => {
     if (!busy) {
       controller.current!.cancelLogoutAll();
@@ -55,202 +49,423 @@ function StaffAccountActions(): React.JSX.Element {
       setMessage(null);
     }
   };
+
   return (
-    <section className="staff-account-actions" aria-label="账户">
-      <Button
-        className="secondary"
+    <section aria-label="账户操作" className="sa-sidebar__actions">
+      <button
+        type="button"
+        className="sa-btn sa-btn--ghost sa-btn--small"
         disabled={busy}
-        onClick={() => {
-          void finishLogout(false);
-        }}
+        onClick={() => void finishLogout(false)}
       >
         退出登录
-      </Button>
-      <Button className="danger" disabled={busy} onClick={() => setConfirming(true)}>
-        退出所有设备
-      </Button>
+      </button>
+      {!compact ? (
+        <button
+          type="button"
+          className="sa-btn sa-btn--secondary sa-btn--small"
+          disabled={busy}
+          onClick={() => setConfirming(true)}
+        >
+          退出所有设备
+        </button>
+      ) : null}
       {message ? (
-        <p className="inline-error" role="alert">
+        <p role="alert" className="sp-inline-error">
           {message}
         </p>
       ) : null}
-      <RequestIdDisplay requestId={requestId} />
-      <Dialog
-        open={confirming}
-        title="退出所有设备"
-        description="这会使其他设备上的员工会话立即失效。"
-        busy={busy}
-        onClose={cancel}
-      >
-        <div className="entry-actions">
-          <Button className="secondary" disabled={busy} onClick={cancel}>
-            取消
-          </Button>
-          <Button
-            className="danger"
-            loading={busy}
-            loadingLabel="退出中…"
-            onClick={() => {
-              void finishLogout(true);
-            }}
+      {confirming ? (
+        <div className="sa-drawer-overlay" role="presentation" onClick={cancel}>
+          <div
+            className="sa-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="退出所有设备"
+            onClick={(event) => event.stopPropagation()}
           >
-            确认退出所有设备
-          </Button>
+            <h3>退出所有设备</h3>
+            <p className="sp-page-head__meta">这会使其他设备上的员工会话立即失效。</p>
+            <div className="sp-dialog-actions">
+              <button
+                type="button"
+                className="sa-btn sa-btn--secondary sa-btn--small"
+                disabled={busy}
+                onClick={cancel}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="sa-btn sa-btn--danger sa-btn--small"
+                disabled={busy}
+                onClick={() => void finishLogout(true)}
+              >
+                确认退出所有设备
+              </button>
+            </div>
+          </div>
         </div>
-      </Dialog>
+      ) : null}
     </section>
   );
 }
 
+function MoonBrandMark({ small = false }: { small?: boolean }): React.JSX.Element {
+  return (
+    <span
+      className={small ? 'sa-brand-mark sa-brand-mark--small' : 'sa-brand-mark'}
+      aria-hidden="true"
+    >
+      <span />
+    </span>
+  );
+}
+
+/* ---- 导航链接 ---- */
+
+function NavItemLink({
+  item,
+  onNavigate,
+}: {
+  item: StaffNavItem;
+  onNavigate?: (() => void) | undefined;
+}): React.JSX.Element {
+  return (
+    <NavLink
+      to={item.path!}
+      end={item.path === '/staff'}
+      className={({ isActive }) => (isActive ? 'sa-nav__link is-active' : 'sa-nav__link')}
+      onClick={onNavigate}
+    >
+      {({ isActive }) => (
+        <>
+          <span className="sa-nav__icon" aria-hidden="true">
+            <MoonwhiteIcon name={item.icon} size={24} filled={isActive} />
+          </span>
+          <span>{item.label}</span>
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+/* ---- 侧边导航内容（桌面侧栏 + 移动 Drawer 共用） ---- */
+
+function StaffNavigationContent({
+  onNavigate,
+}: {
+  onNavigate?: () => void;
+}): React.JSX.Element {
+  const session = useCurrentStaffSession();
+  const items = getVisibleNavItems(session);
+  const groups: Array<{ section: string | undefined; items: StaffNavItem[] }> = [];
+  for (const item of items) {
+    const last = groups.at(-1);
+    if (last && last.section === item.section) last.items.push(item);
+    else groups.push({ section: item.section, items: [item] });
+  }
+
+  return (
+    <nav className="sa-nav" aria-label="员工工作台主导航">
+      {groups.map((group, index) => (
+        <div key={group.section ?? `group-${index}`} className="sa-nav__group">
+          {index > 0 && group.section ? (
+            <p className="sa-nav__group-label">{staffNavSectionLabel(group.section)}</p>
+          ) : null}
+          {group.items.map((item) =>
+            item.children ? (
+              <div key={item.id} className="sa-nav__subgroup">
+                <p className="sa-nav__group-label">{item.label}</p>
+                {item.children
+                  .filter((child) => child.visible(session))
+                  .map((child) => (
+                    <NavLink
+                      key={child.id}
+                      to={child.path}
+                      end={child.path === '/staff'}
+                      className={({ isActive }) =>
+                        isActive
+                          ? 'sa-nav__link sa-nav__child is-active'
+                          : 'sa-nav__link sa-nav__child'
+                      }
+                      onClick={onNavigate}
+                    >
+                      {({ isActive }) => (
+                        <>
+                          {child.icon ? (
+                            <span className="sa-nav__icon" aria-hidden="true">
+                              <MoonwhiteIcon
+                                name={child.icon}
+                                size={24}
+                                filled={isActive}
+                              />
+                            </span>
+                          ) : null}
+                          <span>{child.label}</span>
+                        </>
+                      )}
+                    </NavLink>
+                  ))}
+              </div>
+            ) : (
+              <NavItemLink key={item.id} item={item} onNavigate={onNavigate} />
+            ),
+          )}
+        </div>
+      ))}
+    </nav>
+  );
+}
+
+function StaffCreateAction({ onNavigate }: { onNavigate?: () => void }): React.JSX.Element | null {
+  const session = useCurrentStaffSession();
+  if (session.role.code !== 'owner' && session.role.code !== 'pre_sales') return null;
+  return (
+    <NavLink className="sa-create-action" to="/staff/buyer-customers" onClick={onNavigate}>
+      <MoonwhiteIcon name="add" size={20} />
+      <span>新建买家</span>
+    </NavLink>
+  );
+}
+
+function StaffMobileBottomNav({ onMenu }: { onMenu: () => void }): React.JSX.Element {
+  const session = useCurrentStaffSession();
+  const customerPath =
+    session.role.code === 'seller_ops'
+      ? '/staff/seller-customers'
+      : session.role.code === 'buyer_refund'
+        ? '/staff/refunds'
+        : '/staff/buyer-customers';
+  const customerLabel = session.role.code === 'buyer_refund' ? '返款' : '客户';
+  return (
+    <nav className="sa-mobile-nav" aria-label="员工端手机快捷导航">
+      <NavLink to="/staff" end>
+        {({ isActive }) => (
+          <>
+            <MoonwhiteIcon name="dashboard" size={20} filled={isActive} />
+            <span>工作台</span>
+          </>
+        )}
+      </NavLink>
+      <NavLink to="/staff/orders">
+        {({ isActive }) => (
+          <>
+            <MoonwhiteIcon name="receipt_long" size={20} filled={isActive} />
+            <span>订单</span>
+          </>
+        )}
+      </NavLink>
+      <NavLink to={customerPath}>
+        {({ isActive }) => (
+          <>
+            <MoonwhiteIcon name={session.role.code === 'seller_ops' ? 'storefront' : 'groups'} size={20} filled={isActive} />
+            <span>{customerLabel}</span>
+          </>
+        )}
+      </NavLink>
+      <button type="button" aria-label="打开全部导航" onClick={onMenu}>
+        <MoonwhiteIcon name="more_horiz" size={20} />
+        <span>更多</span>
+      </button>
+    </nav>
+  );
+}
+
+/* ---- 移动端 Drawer ---- */
+
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function StaffMobileDrawer({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}): React.JSX.Element | null {
+  const session = useCurrentStaffSession();
+  const panelRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const focusable = (): HTMLElement[] =>
+      Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+    const frame = requestAnimationFrame(() => {
+      (focusable()[0] ?? panel)?.focus();
+    });
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const nodes = focusable();
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      if (!first || !last) {
+        event.preventDefault();
+        panel.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="sa-drawer-overlay" role="presentation" onClick={onClose}>
+      <aside
+        className="sa-drawer"
+        ref={panelRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label="员工导航菜单"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="sa-drawer__header">
+          <span className="sa-topbar__brand">
+            <MoonBrandMark small />
+            <strong>月光白</strong>
+          </span>
+          <button
+            type="button"
+            className="sa-btn sa-btn--ghost sa-btn--small"
+            aria-label="关闭导航菜单"
+            onClick={onClose}
+          >
+            <MoonwhiteIcon name="close" size={20} />
+          </button>
+        </div>
+        <StaffCreateAction onNavigate={onClose} />
+        <StaffNavigationContent onNavigate={onClose} />
+        <div className="sa-sidebar__footer">
+          <span className="sa-sidebar__scope">{formatMarketplaceScope(session)}</span>
+          <p className="sa-sidebar__meta">
+            {session.display_name} · {session.role.display_name}
+          </p>
+          <StaffAccountActions compact />
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+/* ---- 主 Shell（7F-1 视觉样板：模板 DOM 层级，64px 顶栏 + 240px 侧栏） ---- */
+
 export function StaffShell({ children }: { children?: ReactNode } = {}): React.JSX.Element {
   const session = useCurrentStaffSession();
   const location = useLocation();
-  const role = session.role.code;
-  const acquisition = location.pathname.startsWith('/staff/acquisition');
-  const buyerCustomers = location.pathname.startsWith('/staff/buyer-customers');
-  const sellerCustomers = location.pathname.startsWith('/staff/seller-customers');
-  const dashboard = location.pathname.startsWith('/staff/admin-business-dashboard');
-  const access = location.pathname.startsWith('/staff/access-management');
-  const pricing = location.pathname.startsWith('/staff/seller-principal-rate-policies');
-  const products =
-    location.pathname.startsWith('/staff/products') ||
-    /^\/staff\/demands\/[^/]+\/reservations$/u.test(location.pathname);
-  const workQueue =
-    !acquisition &&
-    !buyerCustomers &&
-    !sellerCustomers &&
-    !dashboard &&
-    !access &&
-    !pricing &&
-    !products;
-  const owner = role === 'owner';
-  const home = role === 'acquisition' ? '/staff/acquisition' : '/staff';
-  const mayProducts = owner || role === 'pre_sales' || role === 'seller_ops';
-  const title = access
-    ? '员工管理'
-    : pricing
-      ? '卖家本金汇率策略'
-      : dashboard
-        ? '经营看板'
-        : products
-          ? '产品库'
-          : acquisition
-            ? '客户开发'
-            : buyerCustomers
-              ? '买家客户'
-              : sellerCustomers
-                ? '卖家客户'
-                : '员工工作台';
-  const context = access
-    ? '邮箱、岗位、负责站点与状态'
-    : pricing
-      ? '默认加点、卖家覆盖与总管理员决策'
-      : dashboard
-        ? '经营与利润数据'
-        : products
-          ? '产品库、版本与预约排期'
-          : acquisition
-            ? '渠道、潜在线索与自动开发入口'
-            : buyerCustomers
-              ? '售前：接入买家并确认渠道'
-              : sellerCustomers
-                ? '卖家对接：接入卖家并确认渠道'
-                : '队列、业务事实与受控操作';
-  const scope =
-    session.data_scope.type === 'GLOBAL'
-      ? '全部站点'
-      : session.data_scope.marketplaceCodes
-          .map((code) => MARKET_LABELS[code] ?? '未命名站点')
-          .join(' · ') || '未配置站点';
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const breadcrumb = getBreadcrumbForPath(location.pathname, session);
+  const pageTitle = getPageTitleForPath(location.pathname, session);
+  const scope = formatMarketplaceScope(session);
+  const home = location.pathname === '/staff' || location.pathname === '/staff/';
+  const mayOpenSettings =
+    session.role.code === 'owner' && session.permissions.includes('STAFF_MANAGE');
+
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [location.pathname]);
+
   return (
-    <IdentityShell identity="staff" className="staff-business-shell">
-      <aside className="staff-sidebar">
-        <NavLink className="staff-sidebar-brand" to={home} aria-label="月光白员工首页">
-          月光白
+    <div className="staff-app sa-shell" data-identity="staff">
+      <header className="sa-topbar">
+        <button
+          type="button"
+          className="sa-btn sa-btn--ghost sa-btn--small sa-menu-btn"
+          aria-label="打开导航菜单"
+          aria-expanded={drawerOpen}
+          onClick={() => setDrawerOpen(true)}
+        >
+          <MoonwhiteIcon name="menu" size={20} />
+        </button>
+        <NavLink className="sa-topbar__brand" to="/staff" aria-label="月光白员工首页">
+          <MoonBrandMark />
+          <strong>月光白</strong>
         </NavLink>
-        <nav className="staff-primary-nav" aria-label="员工工作台导航">
-          {role !== 'acquisition' ? (
+        <div className="sa-topbar__search">
+          <GlobalSearchDropdown />
+        </div>
+        <div className="sa-topbar__actions">
+          {mayOpenSettings ? (
             <NavLink
-              to="/staff"
-              end
-              className={workQueue ? 'active' : ''}
-              {...(workQueue ? { 'aria-current': 'page' as const } : {})}
+              className="sa-topbar__icon-action"
+              to="/staff/service-channels"
+              aria-label="打开系统设置"
             >
-              <BriefcaseBusiness aria-hidden="true" />
-              <span>工作队列</span>
+              <MoonwhiteIcon name="settings" size={20} />
             </NavLink>
           ) : null}
-          {owner || role === 'acquisition' ? (
-            <NavLink to="/staff/acquisition">
-              <Sparkles aria-hidden="true" />
-              <span>客户开发</span>
-            </NavLink>
-          ) : null}
-          {owner || role === 'pre_sales' ? (
-            <NavLink to="/staff/buyer-customers">
-              <UsersRound aria-hidden="true" />
-              <span>买家客户</span>
-            </NavLink>
-          ) : null}
-          {owner || role === 'seller_ops' ? (
-            <NavLink to="/staff/seller-customers">
-              <UsersRound aria-hidden="true" />
-              <span>卖家客户</span>
-            </NavLink>
-          ) : null}
-          {mayProducts ? (
-            <NavLink to="/staff/products">
-              <PackageSearch aria-hidden="true" />
-              <span>产品库</span>
-            </NavLink>
-          ) : null}
-          {owner ? (
-            <NavLink to="/staff/admin-business-dashboard">
-              <ChartNoAxesCombined aria-hidden="true" />
-              <span>经营看板</span>
-            </NavLink>
-          ) : null}
-          {(owner || role === 'seller_ops') && session.permissions.includes('SELLER_MANAGE') ? (
-            <NavLink to="/staff/seller-principal-rate-policies">
-              <Settings aria-hidden="true" />
-              <span>本金汇率策略</span>
-            </NavLink>
-          ) : null}
-          {owner && session.permissions.includes('STAFF_MANAGE') ? (
-            <NavLink to="/staff/access-management">
-              <UserCog aria-hidden="true" />
-              <span>员工管理</span>
-            </NavLink>
-          ) : null}
-        </nav>
-        <div className="staff-sidebar-person">
-          <UserRound aria-hidden="true" />
-          <span>
-            <strong>{session.display_name}</strong>
-            <small>{session.role.display_name}</small>
+          <span
+            className="sa-sr-only"
+            aria-label={`当前会话信息：${session.display_name}（${session.role.display_name}）`}
+          >
+            <span className="sa-topbar__session-name">{session.display_name}</span>
+            {session.display_name === session.role.display_name ||
+            session.display_name.endsWith(session.role.display_name) ? null : (
+              <span className="sa-topbar__session-role">{session.role.display_name}</span>
+            )}
+            <span className="sa-topbar__session-role">{scope}</span>
+          </span>
+          <span
+            className="sa-topbar__avatar"
+            aria-label={`账户：${session.display_name}，${session.role.display_name}，${scope}`}
+          >
+            {session.display_name.slice(0, 1)}
           </span>
         </div>
-      </aside>
-      <div className="staff-work-area">
-        <header className="staff-context-bar">
-          <NavLink className="staff-mobile-brand" to={home}>
-            月光白
-          </NavLink>
-          <div>
-            <p>{context}</p>
-            <h1>{title}</h1>
+      </header>
+
+      <div className="sa-body">
+        <aside className="sa-sidebar" aria-label="员工端侧边栏">
+          <StaffCreateAction />
+          <StaffNavigationContent />
+          <div className="sa-sidebar__footer">
+            <span className="sa-sidebar__scope">{scope}</span>
+            <p className="sa-sidebar__meta">
+              {session.display_name} · {session.role.display_name}
+            </p>
+            <StaffAccountActions />
           </div>
-          <div className="staff-session-context">
-            <span>{session.display_name}</span>
-            <strong>{session.role.display_name}</strong>
-            <small>{scope}</small>
+        </aside>
+
+        <div className="sa-main">
+          <div className="sa-content sa-content--wide">
+            {!home ? (
+              <div className="sp-page-head">
+                <div>
+                  <h1 className="sp-page-head__title">{pageTitle}</h1>
+                  {breadcrumb.length > 1 ? <Breadcrumb items={breadcrumb} /> : null}
+                </div>
+              </div>
+            ) : null}
+            <main id="staff-main-content">{children ?? <Outlet />}</main>
           </div>
-        </header>
-        <div className="staff-main">{children ?? <Outlet />}</div>
-        <footer className="staff-account-footer">
-          <StaffAccountActions />
-        </footer>
+        </div>
       </div>
-    </IdentityShell>
+
+      <StaffMobileBottomNav onMenu={() => setDrawerOpen(true)} />
+      <StaffMobileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+    </div>
   );
 }

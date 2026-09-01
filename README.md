@@ -37,14 +37,14 @@
 
 - 当前仓库是本地 Release Candidate，不等于生产已验收
 - 真实 Cloudflare Access、生产 D1/R2、部署、恢复演练、真实数据导入和员工试用必须单独授权与验收
-- Staff MCP 源码和独立测试可保留，但不属于核心 Worker 运行时或核心发布模板
+- Staff MCP 的运行源码、传输与五张表已退役；发布侧仅保留禁止 `STAFF_MCP_*` 绑定/变量的防复活墓碑，相关 runbook/OpenSpec 仅作历史或未来单独激活边界，不属于核心 Worker 运行时或当前发布模板
 - Google Drive 冷归档写侧默认关闭；不得把它当在线图片权威源
-- Rakuten / TikTok Provider Adapter 尚未接入核心 Worker 运行入口
+- 当前核心 Worker / 发布组合不包含 Rakuten / TikTok Provider Adapter 或平台平行订单模型；相关历史 OpenSpec、迁移记录，以及历史导入和当前映射中的候选/隔离规则仍保留，不代表 Provider 已接入或可用
 - `/review` 只能使用 Demo 数据，真实 API 必须失败关闭
 
 ## 数据库与迁移
 
-- 当前 Schema：70（迁移链 `0001`–`0070`）；权威 schema / migration 状态请参见 `docs/CURRENT_SYSTEM_STATE.md`
+- 当前 Schema：37（迁移链 `0001`–`0037`）；0037 仅为未来多市场上线前的 Staff 订单列表性能准备，不开启市场；权威 schema / migration 状态请参见 `docs/CURRENT_SYSTEM_STATE.md`
 - 既有迁移历史不得为“整理代码”重写；后续数据库变化一律从新的前向 Migration 开始
 
 ## 开发入口

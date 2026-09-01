@@ -27,31 +27,20 @@ const CI_NODE_COMMANDS=new Set([
   'scripts/verify-migration-version-guards.mjs',
   'scripts/preflight-cloudflare-release.mjs',
   'scripts/verify-final-production-go-local-preparation.mjs',
-  'scripts/verify-customer-multipersona-security.mjs',
-  'scripts/verify-multi-marketplace-multicurrency.mjs',
-  'scripts/verify-rakuten-tiktok-jp-adapter-preparation.mjs',
-  'scripts/preflight-rakuten-tiktok-jp-adapters.mjs',
-  'scripts/verify-phase3i-review-metadata.mjs',
-  'scripts/verify-phase3j-seller-payables.mjs',
-  'scripts/verify-phase3k-seller-payments.mjs',
-  'scripts/verify-seller-finance-security.mjs',
-  'scripts/verify-wave11-dto-isolation.mjs',
-  'scripts/verify-phase3l-financial-reporting.mjs',
-  'scripts/verify-phase3m-financial-exports.mjs',
-  'scripts/verify-wave12-migrations.mjs',
-  'scripts/verify-wave12-financial-formulas.mjs',
-  'scripts/verify-wave12-financial-security.mjs',
-  'scripts/verify-wave12-dto-isolation.mjs',
-  'scripts/verify-wave13-migration.mjs',
-  'scripts/verify-wave13-staff-auth-routes.mjs',
-  'scripts/verify-wave13-secret-dto.mjs',
+  'scripts/verify-marketplace-registry.mjs',
+  'scripts/verify-buyer-portal-contract.mjs',
+  'scripts/verify-staff-auth-composition.mjs',
+  'scripts/verify-secret-dto-hygiene.mjs',
+  'scripts/verify-dto-isolation.mjs',
+  'scripts/verify-finance-security.mjs',
+  'scripts/verify-admin-dashboard-simplified.mjs',
   'scripts/verify-wave13-file-architecture.mjs',
   'scripts/verify-wave13-price-mismatch.mjs',
   'scripts/verify-wave13-buyer-refund-isolation.mjs',
   'scripts/verify-web-source-boundaries.mjs',
-  'scripts/verify-module1-buyer-security.mjs',
-  'scripts/verify-module1-migration-0028.mjs',
   'scripts/verify-web-static-build.mjs',
+  'scripts/verify-css-duplicates.mjs',
+  'scripts/verify-css-ownership.mjs',
 ]);
 const CI_NODE_TEST_COMMANDS=new Set([
   'scripts/verify-dependency-lifecycle.node-test.mjs',
@@ -144,9 +133,7 @@ function verifyCiWorkflow(workflow,analysis){
 function verifyHealthWorkflow(workflow,analysis){
   assertExactSet(Object.keys(workflow),HEALTH_ROOT_KEYS,'production-health-monitor.yml root keys');
   assert(workflow.name==='生产健康监控','production-health-monitor.yml name is not canonical');
-  assertExactSet(Object.keys(requireRecord(workflow.on,'production-health-monitor.yml.on')),['schedule','workflow_dispatch'],'production-health-monitor.yml triggers');
-  const schedule=requireSequence(workflow.on.schedule,'production-health-monitor.yml.on.schedule');
-  assert(schedule.length===1&&requireRecord(schedule[0],'production-health-monitor.yml schedule entry').cron==='17 * * * *','production-health-monitor.yml schedule must be hourly at minute 17');
+  assertExactSet(Object.keys(requireRecord(workflow.on,'production-health-monitor.yml.on')),['workflow_dispatch'],'production-health-monitor.yml triggers must remain manual-only until Stage 8 URL confirmation');
   assertExactWorkflowDispatch(workflow.on.workflow_dispatch);
   assertExactPermissions(workflow.permissions,{contents:'read',issues:'write'},'production-health-monitor.yml');
   assertExactConcurrency(workflow.concurrency,'production-health-monitor',false,'production-health-monitor.yml');
@@ -269,7 +256,7 @@ function assertExactWorkflowDispatch(value){
   assertExactSet(Object.keys(inputs),['simulation'],'production-health-monitor.yml workflow_dispatch input names');
   const simulation=requireRecord(inputs.simulation,'production-health-monitor.yml workflow_dispatch simulation');
   assertExactSet(Object.keys(simulation),['description','required','default','type','options'],'production-health-monitor.yml workflow_dispatch simulation keys');
-  assert(simulation.description==='验收模式'&&simulation.required===true&&simulation.default==='probe'&&simulation.type==='choice','production-health-monitor.yml workflow_dispatch simulation is not canonical');
+  assert(simulation.description==='仅手动诊断；Stage 8 正式部署并确认 production readiness URL 后方可恢复每小时定时探测'&&simulation.required===true&&simulation.default==='probe'&&simulation.type==='choice','production-health-monitor.yml workflow_dispatch simulation is not canonical');
   assert(Array.isArray(simulation.options)&&JSON.stringify(simulation.options)===JSON.stringify(['probe','failure','recovery']),'production-health-monitor.yml workflow_dispatch options are not canonical');
 }
 
@@ -376,8 +363,11 @@ function analyzeTsc(words,label){
   assert(words.length===4&&words[1]==='-p'&&['tsconfig.json','tsconfig.test.json'].includes(words[2])&&words[3]==='--noEmit',`${label} tsc command is not canonical`);
 }
 
+const APPROVED_VITEST_CONFIGS=new Set(['vitest.capacity.config.ts','vitest.import-capacity.config.ts','vitest.order-list-capacity.config.ts','vitest.settlement-export-capacity.config.ts']);
 function analyzeVitest(words,label){
-  assert(words.length>=2&&words[1]==='run'&&words.slice(2).every((value)=>typeof value==='string'&&!value.startsWith('-')&&!value.includes('$')),`${label} vitest command is not canonical`);
+  const positionalRun=words.length>=2&&words[1]==='run'&&words.slice(2).every((value)=>typeof value==='string'&&!value.startsWith('-')&&!value.includes('$'));
+  const configRun=words.length===4&&words[1]==='run'&&words[2]==='--config'&&APPROVED_VITEST_CONFIGS.has(words[3]);
+  assert(positionalRun||configRun,`${label} vitest command is not canonical`);
 }
 
 function analyzeNpm(words,analysis,label,mode){

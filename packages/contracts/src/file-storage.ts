@@ -3,11 +3,12 @@ export const FILE_PURPOSES = [
   'PRODUCT_IMAGE',
   'ORDER_INSTRUCTION_KEYWORD_IMAGE',
   'ORDER_EVIDENCE',
-  'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+  'ORDER_COMMUNICATION_SCREENSHOT',
   'REVIEW_EVIDENCE',
   'BUYER_REFUND_PROOF',
   'SELLER_SETTLEMENT_PROOF',
   'SUPPORT_ATTACHMENT',
+  'SERVICE_CHANNEL_QR',
 ] as const;
 
 export type FilePurpose = typeof FILE_PURPOSES[number];
@@ -88,6 +89,7 @@ export const FILE_ENTITY_TYPES = [
   'BUYER_REFUND',
   'SELLER_SETTLEMENT',
   'SUPPORT_CASE',
+  'SERVICE_CHANNEL',
 ] as const;
 
 export type FileEntityType = typeof FILE_ENTITY_TYPES[number];
@@ -327,6 +329,34 @@ export interface ObjectStorageAdapter {
   ): Promise<Uint8Array<ArrayBuffer>>;
   readObject(objectKey: string): Promise<Uint8Array<ArrayBuffer>>;
   deleteObject(objectKey: string): Promise<void>;
+  /**
+   * Streaming read variant: returns the stored object's metadata plus its
+   * body stream without buffering the payload in the Worker.  Optional so
+   * legacy adapters (and tests) keep the buffered readObject path; callers
+   * fall back to readObject when absent or when the binding exposes no
+   * body stream.
+   */
+  openObjectStream?(
+    objectKey: string,
+  ): Promise<ObjectStorageStream | null>;
+  /**
+   * Streaming write variant for large generated objects (cold-archive temp
+   * ZIPs): the body is stored without buffering it in Worker memory. The
+   * returned receipt's checksum is computed by storage where supported, or by
+   * re-reading the object; callers that need a verified hash must re-read via
+   * openObjectStream when checksumSha256 is empty.
+   */
+  putObjectStream?(input: {
+    objectKey: string;
+    contentType: SupportedFileMime | 'application/zip';
+    metadata: Readonly<Record<string, string>>;
+    body: ReadableStream<Uint8Array>;
+  }): Promise<Omit<ObjectStoragePutResult, 'checksumSha256'> & { checksumSha256: string }>;
+}
+
+export interface ObjectStorageStream {
+  head: ObjectStorageHead;
+  body: ReadableStream<Uint8Array>;
 }
 
 export function isFilePurpose(value: unknown): value is FilePurpose {

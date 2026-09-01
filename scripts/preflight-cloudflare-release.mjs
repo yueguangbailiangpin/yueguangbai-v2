@@ -10,13 +10,18 @@ const root = path.resolve(import.meta.dirname, '..');
 const rootReal = realpathSync.native(root);
 const environments = new Set(['staging', 'production']);
 const placeholderPattern = /REQUIRED|REPLACE|PLACEHOLDER|CHANGEME|TODO/iu;
-const disabledFlags = [
-  'OUTBOX_DELIVERY_ENABLED',
+export const archiveReleaseFlags = Object.freeze([
+  'ARCHIVE_SELECTOR_ENABLED',
+  'ARCHIVE_DRIVE_UPLOAD_ENABLED',
+  'ARCHIVE_HOT_DELETE_ENABLED',
+  'ARCHIVE_RESTORE_WORKER_ENABLED',
+]);
+export const retiredArchiveReleaseFlags = Object.freeze([
   'DRIVE_ARCHIVE_ENABLED',
   'DRIVE_ARCHIVE_COPY_ENABLED',
   'DRIVE_ARCHIVE_PROXY_READ_ENABLED',
   'DRIVE_ARCHIVE_R2_DELETE_ENABLED',
-];
+]);
 const requiredCompatibilityFlags = Object.freeze([
   'global_fetch_strictly_public',
 ]);
@@ -28,8 +33,6 @@ export const requiredManagedSecrets = Object.freeze({
     'CUSTOMER_SECURITY_TOKEN_SECRET',
   ]),
   capability_specific_before_separate_approval: Object.freeze([
-    'KEYWORD_GENERATOR_SHARED_SECRET',
-    'KEYWORD_HMAC_SECRET',
     'GOOGLE_DRIVE_CLIENT_SECRET',
     'GOOGLE_DRIVE_REFRESH_TOKEN',
   ]),
@@ -209,7 +212,7 @@ function validateFrozenDefaults(config, environment) {
     && !(typeof vars?.APP_RELEASE_SHA==='string'&&placeholderPattern.test(vars.APP_RELEASE_SHA))) {
     errors.push('vars.APP_RELEASE_SHA:must_be_exact_git_sha');
   }
-  validateAlertService(record.services, vars, environment, errors);
+  validateReleaseServices(record.services, vars, environment, errors);
   const alertModeExpected = environment === 'production' ? 'bound' : 'disabled';
   if (vars?.OPERATIONAL_ALERT_MODE !== alertModeExpected) {
     errors.push(`vars.OPERATIONAL_ALERT_MODE:must_be_${alertModeExpected}`);
@@ -220,7 +223,7 @@ function validateFrozenDefaults(config, environment) {
     errors.push('vars.OPERATIONAL_ALERT_ATTESTATION:forbidden_outside_production');
   }
   const scheduledExpected = environment === 'production' ? 'true' : 'false';
-  for (const flag of ['SCHEDULED_OPERATIONS_ENABLED', 'ACQUISITION_MAINTENANCE_ENABLED']) {
+  for (const flag of ['SCHEDULED_OPERATIONS_ENABLED']) {
     if (vars?.[flag] !== scheduledExpected) {
       errors.push(`vars.${flag}:must_be_${scheduledExpected}`);
     }
@@ -229,15 +232,18 @@ function validateFrozenDefaults(config, environment) {
     if (vars?.BUYER_SELF_REGISTRATION_ENABLED !== 'true') {
       errors.push('vars.BUYER_SELF_REGISTRATION_ENABLED:must_be_true');
     }
-    if (vars?.BUYER_SELF_REGISTRATION_CHANNEL_ID !== 'staging-buyer-channel') {
+    if (vars?.BUYER_SELF_REGISTRATION_CHANNEL_ID !== 'buyer-channel-b') {
       errors.push('vars.BUYER_SELF_REGISTRATION_CHANNEL_ID:invalid');
     }
     if (vars?.BUYER_SELF_REGISTRATION_HUMAN_VERIFICATION_REQUIRED !== 'false') {
       errors.push('vars.BUYER_SELF_REGISTRATION_HUMAN_VERIFICATION_REQUIRED:must_be_false');
     }
   }
-  for (const flag of disabledFlags) {
+  for (const flag of archiveReleaseFlags) {
     if (vars?.[flag] !== 'false') errors.push(`vars.${flag}:must_be_false`);
+  }
+  for (const flag of retiredArchiveReleaseFlags) {
+    if (Object.hasOwn(vars ?? {}, flag)) errors.push(`vars.${flag}:deprecated`);
   }
   for (const key of Object.keys(vars ?? {})) {
     if (retiredCoreRuntimeKey.test(key)) {
@@ -330,9 +336,18 @@ function exactHttpsOrigin(value) {
   } catch { return null; }
 }
 
-function validateAlertService(value, vars, environment, errors) {
+function validateReleaseServices(value, vars, environment, errors) {
+  const services = value === undefined ? [] : value;
+  if (!Array.isArray(services)) {
+    errors.push('services:invalid');
+    return;
+  }
+  const alertServices = services.filter((service) =>
+    asRecord(service)?.binding === 'OPERATIONAL_ALERT_SINK');
+  const knownCount = alertServices.length;
+  if (knownCount !== services.length) errors.push('services:unexpected_binding');
   if (environment === 'production') {
-    const service = exactOne(value);
+    const service = exactOne(alertServices);
     const props=asRecord(service?.props);
     if (!service||!allowedKeys(service,['binding','service','props'],['entrypoint'])||!props
       ||!exactKeys(props,['service_target','entrypoint','sink_identity','sink_deployment_version'])
@@ -360,9 +375,7 @@ function validateAlertService(value, vars, environment, errors) {
     if(vars?.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT!==fingerprint)errors.push('vars.OPERATIONAL_ALERT_SINK_CONFIG_FINGERPRINT:derived_mismatch');
     return;
   }
-  if (value !== undefined && (!Array.isArray(value) || value.length !== 0)) {
-    errors.push('services:forbidden_outside_production');
-  }
+  if (alertServices.length !== 0) errors.push('services:operational_alert_forbidden_outside_production');
 }
 
 export function operationalAlertFingerprint(descriptor){return createHash('sha256').update(canonicalJson(descriptor),'utf8').digest('hex');}

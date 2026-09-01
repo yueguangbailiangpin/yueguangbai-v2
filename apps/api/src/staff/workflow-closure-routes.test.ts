@@ -57,7 +57,7 @@ function createTestApp() {
 function buyerActor(buyerCustomerId: string): BuyerReservationActor {
   return {
     buyerCustomerId,
-    marketplaceCode: 'JP',
+    marketplaceCode: 'AMAZON_JP',
     accessStatus: 'ACTIVE',
     identityReviewStatus: 'CLEAR',
   };
@@ -95,13 +95,6 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
       1000, NULL, 'TEST_PRIMARY', 1000, 1000, 'PRIMARY'
     );
 
-    INSERT INTO staff_assignment_fallbacks (
-      marketplace_code, staff_id, version, configured_by_staff_id,
-      created_at, updated_at
-    ) VALUES (
-      'JP', 'zz-phase3h-test-owner', 1, 'zz-phase3h-test-owner',
-      1000, 1000
-    );
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,
@@ -110,7 +103,7 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
       version, created_at, updated_at,
       activated_at, disabled_at, next_member_number
     ) VALUES (
-      'seller-org-1', 'JP', 'ido-mango-9001',
+      'seller-org-1', 'AMAZON_JP', 'ido-mango-9001',
       'seller-channel-ido-mango',
       'seller-channel-ido-mango',
       9001, '预约卖家', 'ACTIVE',
@@ -135,26 +128,37 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
       1000, 1000, 1000, NULL
     );
 
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-b', 'B', '预约买家渠道',
-      'ACTIVE', 1, 1, 1000, 1000, NULL
-    );
-
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code,
       buyer_channel_id, buyer_customer_no,
-      buyer_sequence, first_valid_order_business_date,
+      buyer_sequence,
       display_name, access_status,
       identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES (
-      'buyer-1', 'buyer-subject-1', 'JP',
-      'buyer-channel-b', NULL, NULL, NULL,
+      'buyer-1', 'buyer-subject-1', 'AMAZON_JP',
+      'buyer-channel-wechat-b', '19700101B0001', 1,
       '买家一', 'ACTIVE', 'CLEAR', 1,
       1000, 1000, 1000, NULL
+    );
+    INSERT INTO buyer_staff_assignments (
+      id, buyer_customer_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason, version,
+      created_at, updated_at, revoked_at
+    )
+    SELECT 'buyer-pre-binding-'||id, id, 'BUYER_PRE_SALES_OWNER',
+      'staff-pre-sales', 'ACTIVE', 'AUTO_INITIAL',
+      'STAFF', 'zz-phase3h-test-owner', NULL, 1, 1000, 1000, NULL
+    FROM buyer_customers;
+
+    INSERT INTO wechat_identity_claims (
+      id, identity_subject_id, display_wechat, normalized_wechat,
+      status, version, acquired_at, reserved_at, released_at,
+      created_at, updated_at, identity_subject_type
+    ) VALUES (
+      'buyer-wechat-1', 'buyer-subject-1', 'buyer_wechat_001',
+      'buyer_wechat_001', 'ACTIVE', 1, 1000, NULL, NULL,
+      1000, 1000, 'BUYER_CUSTOMER'
     );
 
     INSERT INTO seller_stores (
@@ -162,7 +166,7 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
       display_name, normalized_name, status,
       version, created_at, updated_at, disabled_at
     ) VALUES (
-      'store-1', 'seller-org-1', 'JP',
+      'store-1', 'seller-org-1', 'AMAZON_JP',
       '预约店铺', '预约店铺', 'ACTIVE',
       1, 1000, 1000, NULL
     );
@@ -173,7 +177,7 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
       current_version_no, version,
       created_at, updated_at, disabled_at
     ) VALUES (
-      'product-1', 'seller-org-1', 'store-1', 'JP',
+      'product-1', 'seller-org-1', 'store-1', 'AMAZON_JP',
       'B0RESERVE1', 'B0RESERVE1', 'ACTIVE',
       1, 1, 1000, 1000, NULL
     );
@@ -214,7 +218,7 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
       buyer_self_pay_source,
       buyer_self_pay_override_reason
     ) VALUES (
-      'demand-1', 'seller-org-1', 'store-1', 'JP',
+      'demand-1', 'seller-org-1', 'store-1', 'AMAZON_JP',
       'product-1', 1, 'seller-owner', 'IMAGE',
       3, '公开说明', '内部说明',
       ${openAt}, ${reservationDeadline}, ${orderDeadline},
@@ -227,6 +231,39 @@ function seedWorkflowFixture(database: SqliteDatabase): void {
 }
 
 describe('staff workflow closure HTTP contract', () => {
+  it('returns assigned buyer identity facts with the creation-allocated customer number', async () => {
+    database = createMigratedTestDatabase();
+    seedWorkflowFixture(database);
+    const submitted = await submitReservation(database, {
+      demandBatchId: 'demand-1',
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'reservation:http:review-context:submit',
+      now: 5000,
+    });
+    const app = createTestApp();
+    const response = await app.request(
+      `http://local/api/staff/reservations/${submitted.reservation_id}/review-context`,
+      { headers: { 'X-Test-Permission': 'RESERVATION_DECIDE' } },
+      { DB: database },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        review_context: {
+          reservation_id: submitted.reservation_id,
+          buyer: {
+            id: 'buyer-1',
+            customer_no: '19700101B0001',
+            name: '买家一',
+            wechat: 'buyer_wechat_001',
+          },
+        },
+      },
+    });
+  });
+
   it('reopens a terminal reservation and recreates an OPEN decision work item', async () => {
     database = createMigratedTestDatabase();
     seedWorkflowFixture(database);

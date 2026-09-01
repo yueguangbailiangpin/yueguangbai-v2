@@ -3,10 +3,10 @@ import {
   apiSuccess,
   isBuyerSupportedMarketplaceCode,
 } from '@ygb/contracts';
-import { normalizeWechatId, parseIdempotencyKey } from '@ygb/domain';
+import { parseIdempotencyKey } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
 import type { AppEnv } from '../app';
-import { hashNormalizedWechat, requireAcquisitionSecret } from '../acquisition/privacy';
+import { requireWechatIdentitySecret } from './wechat-identity-crypto';
 import { issueBuyerInvitation } from '../customer-security/service';
 import { requestIdFromContext } from '../http-auth/errors';
 import { customerAuthOriginGuard } from '../middleware/origin-guard';
@@ -15,12 +15,6 @@ import { resolveStaffMarketplaceCodes } from '../staff-assignment/data-scope';
 
 const BODY_LIMIT=16*1024;
 
-interface LeadRow {
-  id:string;
-  marketplace_code:string;
-  identity_hash:string|null;
-  status:string;
-}
 
 export function registerNewBuyerRegistrationInvitationRoute(app:Hono<AppEnv>):void{
   app.post(
@@ -30,32 +24,20 @@ export function registerNewBuyerRegistrationInvitationRoute(app:Hono<AppEnv>):vo
       const requestId=requestIdFromContext(context);
       try{
         const actor=requireActor(context);
-        const body=await exactBody(context,['lead_id','wechat_id','marketplace_code']);
-        if(typeof body['lead_id']!=='string'||typeof body['wechat_id']!=='string'
+        const body=await exactBody(context,['buyer_customer_id','wechat_id','marketplace_code']);
+        if(typeof body['wechat_id']!=='string'
+          ||typeof body['buyer_customer_id']!=='string'
           ||!isBuyerSupportedMarketplaceCode(body['marketplace_code']))throw new Error('VALIDATION');
         const marketplaceCode=body['marketplace_code'];
         await requireMarket(context,actor,marketplaceCode);
-        const lead=await context.env.DB.prepare(`SELECT id,marketplace_code,identity_hash,status
-          FROM acquisition_leads WHERE id=? AND lead_type='BUYER' LIMIT 1`)
-          .bind(body['lead_id']).first<LeadRow>();
-        if(!lead||lead.status!=='ACTIVE'||lead.marketplace_code!==marketplaceCode)throw new Error('NOT_FOUND');
-        const normalized=normalizeWechatId(body['wechat_id']);
-        const secret=requireAcquisitionSecret(context.env.CUSTOMER_SECURITY_TOKEN_SECRET);
-        const identityHash=await hashNormalizedWechat(normalized.normalized,secret);
-        if(lead.identity_hash===null||lead.identity_hash!==identityHash)throw new Error('CONFLICT');
+        const secret=requireWechatIdentitySecret(context.env.CUSTOMER_SECURITY_TOKEN_SECRET);
         const key=idempotencyKey(context);
         const invitation=await issueBuyerInvitation(context.env.DB,{
+          buyerCustomerId:body['buyer_customer_id'],
           wechatId:body['wechat_id'],marketplaceCode,
         },{
           actor,idempotencyKey:key,requestId,tokenSecret:secret,
         });
-        await context.env.DB.prepare(`INSERT OR IGNORE INTO customer_buyer_invitation_lead_links(
-          invitation_id,acquisition_lead_id,created_at
-        ) VALUES(?,?,?)`).bind(invitation.invitation_id,lead.id,Date.now()).run();
-        const mapping=await context.env.DB.prepare(`SELECT acquisition_lead_id
-          FROM customer_buyer_invitation_lead_links WHERE invitation_id=?`)
-          .bind(invitation.invitation_id).first<{acquisition_lead_id:string}>();
-        if(!mapping||mapping.acquisition_lead_id!==lead.id)throw new Error('CONFLICT');
         context.header('Cache-Control','no-store');
         return context.json(apiSuccess({invitation:{
           ...invitation,

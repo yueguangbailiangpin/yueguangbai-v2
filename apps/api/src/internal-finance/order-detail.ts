@@ -2,6 +2,7 @@ import type {
   FinanceExceptionAction,
   FinanceStatus,
   InternalFinanceOrderDetailDto,
+  InternalFinanceRateDetailDto,
   InternalOrderFinancePositionDto,
 } from '@ygb/contracts';
 import {
@@ -11,6 +12,7 @@ import {
 
 export function buildFinanceOrderDetail(
   position: InternalOrderFinancePositionDto,
+  rateDetail: InternalFinanceRateDetailDto | null = null,
 ): InternalFinanceOrderDetailDto {
   const sellerAllocated = signedIntegerString(
     databaseIntegerToBigInt(position.attributed_cash_net_cny_fen)
@@ -29,6 +31,7 @@ export function buildFinanceOrderDetail(
       seller_expected_principal_cny_fen:
         position.seller_expected_principal_cny_fen,
       service_fee_cny_fen: position.service_fee_snapshot_cny_fen,
+      rate_detail: rateDetail === null ? null : Object.freeze(rateDetail),
     }),
     seller_payables: Object.freeze({
       principal_due_cny_fen: position.seller_principal_due_cny_fen,

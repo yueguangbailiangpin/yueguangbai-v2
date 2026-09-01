@@ -156,7 +156,7 @@ function overlayKind(sql: string): OverlayKind | null {
     return 'REFUND_DETAIL';
   if (
     sql.includes('FROM buyer_refund_ledger_balances ledger') &&
-    sql.includes('ORDER BY ledger.created_at')
+    sql.includes("ORDER BY (ledger.status='PAID')")
   )
     return 'REFUND_LIST';
   if (sql.includes("entry_type='PAYMENT'")) return 'REFUND_PAYMENTS';
@@ -206,7 +206,7 @@ function orderDetailRow() {
     reservation_id: 'runtime-reservation',
     buyer_customer_id: 'runtime-buyer',
     buyer_customer_no: 'P202608020001',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     status: 'PENDING_VERIFICATION',
     aggregate_version: 1,
     current_version_no: 1,
@@ -244,9 +244,11 @@ function orderDetailRow() {
     associated_file_object_id: 'runtime-screenshot',
     eligible_screenshot_association_count: 1,
     duplicate_signal_count: 0,
-    work_item_id: 'runtime-work-item',
-    assigned_staff_id: 'zz-phase3h-test-owner',
-    fixed_assignment_id: 'runtime-assignment',
+    work_item_json: JSON.stringify({
+      work_item_id: 'runtime-work-item',
+      assigned_staff_id: 'zz-phase3h-test-owner',
+      fixed_assignment_id: 'runtime-assignment',
+    }),
   };
 }
 
@@ -256,7 +258,7 @@ function orderListRow() {
     reservation_id: 'runtime-reservation',
     buyer_customer_id: 'runtime-buyer',
     buyer_customer_no: 'P202608020001',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     status: 'PENDING_VERIFICATION',
     version: 1,
     current_version_no: 1,
@@ -296,10 +298,11 @@ function refundDetailRow() {
     version: 3,
     created_at: 10_000,
     updated_at: 12_000,
+    review_approved_at: 9_500,
     reminder_count: 2,
     last_reminded_at: 11_500,
     buyer_customer_no: 'P202608020001',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     amazon_order_number_normalized: '123-1234567-1234567',
     product_id: 'runtime-product',
     asin_normalized: 'B0RT000001',
@@ -357,17 +360,36 @@ function filteredRefundListRows(sql: string, bindings: readonly unknown[]) {
     const to = Number(bindings[index++]);
     filtered = filtered.filter((row) => row.created_at < to);
   }
-  if (sql.includes('(ledger.created_at>? OR')) {
-    const createdAt = Number(bindings[index++]);
-    index += 1;
+  if (sql.includes('(ledger.status=\'PAID\')>?')) {
+    const settled = Number(bindings[index++]);
+    const settledAgain = Number(bindings[index++]);
+    const reviewApprovedAt = Number(bindings[index++]);
+    const reviewApprovedAgain = Number(bindings[index++]);
     const id = String(bindings[index++]);
-    filtered = filtered.filter(
-      (row) =>
-        row.created_at > createdAt || (row.created_at === createdAt && row.obligation_id > id),
-    );
+    void settledAgain;
+    void reviewApprovedAgain;
+    const unsorted = 9_007_199_254_740_991;
+    filtered = filtered.filter((row) => {
+      const rowSettled = row.status === 'PAID' ? 1 : 0;
+      const rowTs = row.review_approved_at ?? unsorted;
+      return rowSettled > settled
+        || (rowSettled === settled
+          && (rowTs > reviewApprovedAt
+            || (rowTs === reviewApprovedAt && row.obligation_id > id)));
+    });
   }
   const limit = Number(bindings.at(-1));
-  return filtered.slice(0, limit);
+  // 与真实 SQL 一致：未结清在前，组内按评论通过时间（承诺期限）升序。
+  const ordered = [...filtered].sort((left, right) => {
+    const settledDiff = Number(left.status === 'PAID') - Number(right.status === 'PAID');
+    if (settledDiff !== 0) return settledDiff;
+    const unsorted = 9_007_199_254_740_991;
+    const tsDiff = (left.review_approved_at ?? unsorted)
+      - (right.review_approved_at ?? unsorted);
+    if (tsDiff !== 0) return tsDiff;
+    return left.obligation_id < right.obligation_id ? -1 : 1;
+  });
+  return ordered.slice(0, limit);
 }
 
 function refundListRow(obligationId: string, createdAt: number, status: 'DUE' | 'PAID') {
@@ -384,10 +406,11 @@ function refundListRow(obligationId: string, createdAt: number, status: 'DUE' | 
     version: status === 'PAID' ? 2 : 1,
     created_at: createdAt,
     updated_at: createdAt + 100,
+    review_approved_at: createdAt - 5_000,
     reminder_count: status === 'PAID' ? 1 : 2,
     last_reminded_at: createdAt + 50,
     buyer_customer_no: 'P202608020001',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     amazon_order_number_normalized: '123-1234567-1234567',
     product_id: 'runtime-product',
     asin_normalized: 'B0RT000001',
@@ -438,13 +461,6 @@ export function seedWave13RuntimeAuthority(database: SqliteDatabase): void {
        'zz-phase3h-test-owner',2,NULL,2,2),
       ('wave13-runtime-seller-scoped','seller_ops','ACTIVE',
        'zz-phase3h-test-owner',2,NULL,2,2);
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES
-      ('wave13-runtime-limited','phase3h-test-team','ACTIVE',2,NULL,2,2),
-      ('wave13-runtime-scoped','phase3h-test-team','ACTIVE',2,NULL,2,2),
-      ('wave13-runtime-seller-scoped','phase3h-test-team',
-       'ACTIVE',2,NULL,2,2);
     INSERT INTO staff_permission_overrides (
       staff_id, permission_code, effect, status, reason,
       assigned_by_staff_id, assigned_at, revoked_at, created_at, updated_at
@@ -462,7 +478,7 @@ export function seedWave13RuntimeAuthority(database: SqliteDatabase): void {
       created_at, updated_at, activated_at, disabled_at,
       next_member_number
     ) VALUES (
-      'runtime-org','JP','ido-mango-runtime-1',
+      'runtime-org','AMAZON_JP','ido-mango-runtime-1',
       'seller-channel-ido-mango','seller-channel-ido-mango',9101,
       'Runtime Organization','ACTIVE',1,2,2,2,NULL,2
     );
@@ -471,7 +487,7 @@ export function seedWave13RuntimeAuthority(database: SqliteDatabase): void {
       display_name, normalized_name, status, version,
       created_at, updated_at, disabled_at
     ) VALUES (
-      'runtime-store','runtime-org','JP','Runtime Store','runtime store',
+      'runtime-store','runtime-org','AMAZON_JP','Runtime Store','runtime store',
       'ACTIVE',1,2,2,NULL
     );
   `);

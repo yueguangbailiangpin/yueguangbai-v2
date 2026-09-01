@@ -123,14 +123,14 @@ async function installApiFixtures(page, identity) {
       await json(route, { me: {
         account_id: session.account_id,
         member: { id: 'member-performance', display_name: '性能测试卖家', role: 'OWNER', primary_owner: true },
-        organization: { id: 'org-performance', seller_code: 'seller-performance', name: '性能测试组织', marketplace_code: 'JP', status: 'ACTIVE' },
+        organization: { id: 'org-performance', seller_code: 'seller-performance', name: '性能测试组织', marketplace_code: 'AMAZON_JP', status: 'ACTIVE' },
         access: { read_scope: 'ORGANIZATION', store_ids: ['store-performance'], can_submit_product_applications: true, can_submit_demand_batches: true },
       } });
       return;
     }
     if (identity === 'seller' && path === '/api/seller-portal/stores') {
       await json(route, { items: [{
-        id: 'store-performance', marketplace_code: 'JP', canonical_marketplace_code: 'AMAZON_JP',
+        id: 'store-performance', marketplace_code: 'AMAZON_JP', canonical_marketplace_code: 'AMAZON_JP',
         transaction_currency_code: 'JPY', transaction_currency_exponent: 0,
         marketplace_status: 'ACTIVE', adapter_status: 'AVAILABLE', display_name: '性能测试店铺',
         status: 'ACTIVE', version: 1, created_at: 1, updated_at: 1,

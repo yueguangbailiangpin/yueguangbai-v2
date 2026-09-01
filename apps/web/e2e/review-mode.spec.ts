@@ -32,16 +32,17 @@ test('review entry and all three portals render without real API requests', asyn
 
   await page.goto('/review/buyer');
   await expect(page.getByText('前端评审 · Demo 数据', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '当前开放产品' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '当前可预约' })).toBeVisible();
 
   await page.goto('/review/seller');
   await expect(page.getByLabel('卖家评审角色')).toBeVisible();
-  await expect(page.getByRole('heading', { name: '业务进度', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '建议处理', exact: true })).toBeVisible();
 
   await page.goto('/review/staff');
   await expect(page.getByLabel('员工评审角色')).toBeVisible();
-  await expect(page.getByRole('heading', { name: '员工工作台' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /商品申请审核/u })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Demo 总管理员/u })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '建议先处理' })).toBeVisible();
+  await expect(page.getByText('审核卖家产品申请').first()).toBeVisible();
 
   expect(apiRequests).toEqual([]);
   expect(pageErrors).toEqual([]);
@@ -59,20 +60,35 @@ test('review role selectors update visible seller and staff permissions', async 
   await expect(page.getByRole('link', { name: '提交产品申请', exact: true })).toHaveCount(0);
 
   await page.goto('/review/staff');
-  const navigation = page.getByRole('navigation', { name: '员工工作台导航' });
+  const navigation = page.getByRole('navigation', { name: '员工工作台主导航' });
+  // Stage 7.5 导航：订单对全部角色可见；upcoming（规划中）项渲染为 span 非 link，不计数。
   const roles = [
-    ['owner', ['工作队列', '客户开发', '买家客户', '卖家客户', '产品库', '经营看板', '本金汇率策略', '员工管理']],
-    ['acquisition', ['客户开发']],
-    ['pre_sales', ['工作队列', '买家客户', '产品库']],
-    ['seller_ops', ['工作队列', '卖家客户', '产品库', '本金汇率策略']],
-    ['buyer_refund', ['工作队列']],
+    [
+      'owner',
+      [
+        '工作台',
+        '买家客户',
+        '卖家客户',
+        '产品与预约',
+        '订单',
+        '买家返款',
+        '财务',
+        '员工与权限',
+        '经营看板',
+        '客服渠道',
+      ],
+    ],
+    ['pre_sales', ['工作台', '买家客户', '产品与预约', '订单']],
+    ['seller_ops', ['工作台', '卖家客户', '产品与预约', '订单', '财务']],
+    ['buyer_refund', ['工作台', '订单', '买家返款']],
   ] as const;
   for (const [role, expected] of roles) {
     await page.getByLabel('员工评审角色').selectOption(role);
-    for (const name of expected) await expect(navigation.getByRole('link', { name, exact: true })).toBeVisible();
+    for (const name of expected)
+      await expect(navigation.getByRole('link', { name, exact: true })).toBeVisible();
     await expect(navigation.getByRole('link')).toHaveCount(expected.length);
   }
-  await expect(page.getByRole('button', { name: /买家返款/u })).toBeVisible();
+  await expect(page.getByText(/买家返款/u).first()).toBeVisible();
 });
 
 test('review mutations stay inside browser demo state', async ({ page }) => {
@@ -118,7 +134,9 @@ test('review pages fit the required viewport matrix', async ({ page }) => {
   }
 });
 
-test('review detail surfaces keep their real layouts and valid demo contracts', async ({ page }) => {
+test('review detail surfaces keep their real layouts and valid demo contracts', async ({
+  page,
+}) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   const surfaces = [
@@ -143,19 +161,21 @@ test('review detail surfaces keep their real layouts and valid demo contracts', 
     '/review/seller/reviews',
     '/review/seller/settlements',
     '/review/seller/settings',
-    '/review/staff/acquisition',
     '/review/staff/buyer-customers',
     '/review/staff/seller-customers',
     '/review/staff/products',
     '/review/staff/products/review-product-1',
     '/review/staff/admin-business-dashboard',
     '/review/staff/seller-principal-rate-policies',
+    '/review/staff/finance',
     '/review/staff/access-management',
   ];
   for (const path of surfaces) {
     await page.goto(path);
     await expect(page.getByText('前端评审 · Demo 数据', { exact: true })).toBeVisible();
-    await expect(page.locator('body')).not.toContainText(/暂时无法加载|暂时无法读取|服务暂时不可用/u);
+    await expect(page.locator('body')).not.toContainText(
+      /暂时无法加载|暂时无法读取|服务暂时不可用/u,
+    );
   }
   expect(pageErrors).toEqual([]);
 });

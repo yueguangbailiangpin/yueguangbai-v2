@@ -25,7 +25,7 @@
 | `davLDVdZLoPV` | `yinghua1942` | 卖家客户文件夹 3 |
 | `dhtkJdpmZEgh` | `yueguangbaiai` | 卖家客户文件夹 4 |
 
-- 渠道别名表（`CHANNEL_ALIASES`）：`ido/ido-mango/dio` → `ido-mango`；`ygb/ygbceping` → `ygbceping`；`yueguangbai/yueguangbaiai` → `yueguangbaiai`；`yinghua1942/yinghua1942ai` → `yinghua1942`；`queshengai/quesheng520ai` → `queshengai`。
+- 渠道别名表（`CHANNEL_ALIASES`，Owner 2026-09-01 终裁+同日补充）：`ido/ido-mango/idomango/dio` → `ido-mango`；`ygb/ygc/ygcceping/yueguangbai` → `ygbceping`（月光白与 ygbceping 同号）；`yueguangbaiai` → `yueguangbaiai`（月光白AI 独立）；`yinghua1942/yinghua1942ai` → `yinghua1942`；`queshengai/quesheng520ai` → `queshengai`。
 - 文件夹默认渠道与行内别名冲突（`FOLDER_CHANNEL_CONFLICT`）→ quarantine，除非别名是 `queshengai`。
 
 ## 3. 上传表格字段契约（目标 XLSX/CSV 列）

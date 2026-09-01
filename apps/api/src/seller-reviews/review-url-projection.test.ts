@@ -29,7 +29,7 @@ function sellerReview(status: SellerReviewPortalDto['status']): SellerReviewPort
       amazon_order_number: '123-1234567-1234567',
     },
     store: { id: 'store-1', display_name: 'Store' },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     asin: 'B000000001',
     product_name: 'Product',
     review_type: 'TEXT',
@@ -93,7 +93,7 @@ describe('Wave 11 review URL DTO isolation', () => {
       review_case_id: 'review-1',
       order: {
         formal_order_id: 'formal-order-1',
-        marketplace: 'JP',
+        marketplace: 'AMAZON_JP',
         amazon_order_number: '123-1234567-1234567',
         amazon_order_date: '2026-08-01',
         product_name: 'Product',

@@ -7,18 +7,11 @@ import {
 
 export function canonicalMarketplaceCode(value: MarketplaceCode|string): CanonicalMarketplaceCode {
   if (value in MARKETPLACE_RUNTIME_DEFINITIONS) return value as CanonicalMarketplaceCode;
-  if (value==='JP') return 'AMAZON_JP';
-  if (value==='US') return 'AMAZON_US';
-  if (value==='KR') return 'COUPANG_KR';
   throw new Error('unsupported_marketplace_code');
 }
 
 export function marketplaceRuntime(value: MarketplaceCode|string): MarketplaceRuntimeDefinition {
   return MARKETPLACE_RUNTIME_DEFINITIONS[canonicalMarketplaceCode(value)];
-}
-
-export function legacyOrderMarketplaceCode(value: MarketplaceCode|string): string {
-  return marketplaceRuntime(value).legacy_order_code;
 }
 
 export function marketplaceBusinessDate(value: MarketplaceCode|string, epochMs:number): string {

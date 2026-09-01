@@ -11,7 +11,6 @@ import {
   markIdempotencyFailed,
   type IdempotencyClaim,
 } from '../foundation/idempotency';
-import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
 import { requestIdFromContext } from '../http-auth/errors';
 import { customerAuthOriginGuard } from '../middleware/origin-guard';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
@@ -118,15 +117,6 @@ export function registerOperationalAlertAttestationRoutes(app: Hono<AppEnv>): vo
           verified_by_staff_id: actor.staffId,
           verified_receipts: receipts,
         };
-        const outbox = await prepareOutboxEvent({
-          id: crypto.randomUUID(),
-          dedupKey: `operational-alert-attestation:${response.attestation_id}`,
-          eventType: OPERATIONAL_ALERT_ATTESTATION_EVENT,
-          aggregateType: OPERATIONAL_ALERT_ATTESTATION_AGGREGATE,
-          aggregateId,
-          payload: response,
-          createdAt: verifiedAt,
-        });
         await context.env.DB.batch([
           createAuditEventStatement(context.env.DB, {
             id: response.attestation_id,
@@ -143,12 +133,10 @@ export function registerOperationalAlertAttestationRoutes(app: Hono<AppEnv>): vo
           context.env.DB.prepare(
             `INSERT INTO transaction_assertions(assertion_value) SELECT CASE WHEN EXISTS(SELECT 1 FROM audit_events WHERE id=? AND event_type=? AND actor_type='STAFF') THEN 1 ELSE 0 END`,
           ).bind(response.attestation_id, OPERATIONAL_ALERT_ATTESTATION_EVENT),
-          ...createOutboxStatements(context.env.DB, outbox),
           completeIdempotencyStatement(context.env.DB, claim, response, {
             now: verifiedAt,
             resultReferences: {
               attestation_id: response.attestation_id,
-              outbox_id: outbox.input.id,
             },
           }),
           assertIdempotencyCompletionStatement(context.env.DB, claim),

@@ -14,9 +14,7 @@ export async function orderInstructionContentHash(input: {
   referenceOrderAmountJpy: number;
   buyerSelfPayBps: number;
   colorSpecMode: 'MAIN_IMAGE_VARIANT' | 'ANY_VARIANT';
-  orderedKeywordHmacDigests: readonly string[];
-  keywordImageSha256: readonly string[];
-  generatorVersion: string;
+  orderedKeywords: readonly string[];
 }): Promise<string> {
   return sha256Hex(new TextEncoder().encode(canonicalJson({
     reservation_id: input.reservationId,
@@ -31,8 +29,6 @@ export async function orderInstructionContentHash(input: {
     reference_order_amount_jpy: input.referenceOrderAmountJpy,
     buyer_self_pay_bps: input.buyerSelfPayBps,
     color_spec_mode: input.colorSpecMode,
-    ordered_keyword_hmac_digests: [...input.orderedKeywordHmacDigests],
-    keyword_image_sha256: [...input.keywordImageSha256],
-    generator_version: input.generatorVersion,
+    ordered_keywords: [...input.orderedKeywords],
   })));
 }

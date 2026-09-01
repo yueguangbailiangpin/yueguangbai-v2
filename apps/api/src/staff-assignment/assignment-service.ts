@@ -6,16 +6,12 @@ import type {
   StaffWorkItemType,
 } from '@ygb/contracts';
 import { canonicalMarketplaceCode, dutyForWorkItem } from '@ygb/domain';
+import { isStaffEligibleForDuty, isStaffEligibleForFixedDuty } from './candidate-resolver';
 import {
-  isStaffEligibleForDuty,
-  resolveOwnerFallback,
-  resolveOwnerFallbackForFixedDuty,
-  resolveRoundRobinCandidate,
-  resolveRoundRobinFixedDutyCandidate,
-  type ResolvedRoundRobinCandidate,
-} from './candidate-resolver';
-import { StaffAssignmentError } from './errors';
-import { prepareStaffAssignmentOutboxStatements } from './outbox';
+  dutyOwnerNotAssignedErrorCode,
+  normalizeStaffAssignmentError,
+  StaffAssignmentError,
+} from './errors';
 
 interface ActiveAssignmentRow {
   id: string;
@@ -60,6 +56,15 @@ export interface PreparedDirectWorkItem {
   replayedExisting: boolean;
 }
 
+/**
+ * Fixed-duty assignment (D-056): a work item always resolves to the
+ * subject's existing duty owner binding — the buyer's BUYER_PRE_SALES_OWNER,
+ * the buyer's BUYER_REFUND_OWNER, or the seller organization's
+ * SELLER_ACCOUNT_MANAGER. When the required binding is missing or its owner
+ * is no longer eligible, the operation fails closed with a stable
+ * `${duty}_NOT_ASSIGNED` error. There is no pool, no round-robin and no
+ * automatic fallback.
+ */
 export async function prepareDirectWorkItem(
   database: SqlDatabase,
   input: DirectWorkItemInput,
@@ -88,128 +93,33 @@ export async function prepareDirectWorkItem(
   }
 
   const active = await readActiveAssignment(database, input, dutyCode);
-  if (active && await isStaffEligibleForDuty(database, {
+  if (!active || !await isStaffEligibleForDuty(database, {
     staffId: active.staff_id,
     dutyCode,
     workType: input.workType,
     marketplaceCode: input.marketplaceCode,
   })) {
-    const workItemId = crypto.randomUUID();
-    return {
-      workItemId,
-      assignmentId: active.id,
-      assignedStaffId: active.staff_id,
-      assignmentSource: active.source,
-      replayedExisting: false,
-      statements: [
-        ...createWorkItemStatements(database, {
-          ...input,
-          dutyCode,
-          assignmentId: active.id,
-          assignmentType: subjectType(dutyCode),
-          assignedStaffId: active.staff_id,
-          workItemId,
-        }),
-      ],
-    };
+    throw new StaffAssignmentError(
+      dutyOwnerNotAssignedErrorCode(dutyCode),
+      503,
+    );
   }
 
-  const candidate = await resolveRoundRobinCandidate(database, {
-    dutyCode,
-    workType: input.workType,
-    marketplaceCode: input.marketplaceCode,
-  });
-  const fallback = candidate === null
-    ? await resolveFallbackWithFailureEvent(database, {
-        marketplaceCode: input.marketplaceCode,
-        dutyCode,
-        workType: input.workType,
-        actorType: input.actorType,
-        actorId: input.actorId ?? null,
-        requestId: input.requestId ?? null,
-        idempotencyKey: input.idempotencyKey ?? null,
-        now: input.now,
-      })
-    : null;
-  const assignedStaffId = candidate?.staff.staffId ?? fallback?.staffId;
-  if (!assignedStaffId) {
-    throw new StaffAssignmentError('NO_ELIGIBLE_ASSIGNEE', 503);
-  }
-
-  const assignmentSource: StaffAssignmentSource = active
-    ? (candidate ? 'AUTO_REPLACEMENT' : 'OWNER_FALLBACK')
-    : (candidate ? 'AUTO_INITIAL' : 'OWNER_FALLBACK');
-  const assignmentId = crypto.randomUUID();
   const workItemId = crypto.randomUUID();
-  const statements: SqlStatement[] = [];
-  if (active) {
-    statements.push(revokeAssignmentStatement(database, input, dutyCode, active.id));
-  }
-  statements.push(
-    insertAssignmentStatement(database, {
-      ...input,
-      dutyCode,
-      staffId: assignedStaffId,
-      assignmentId,
-      source: assignmentSource,
-    }),
-  );
-  if (candidate) {
-    statements.push(...createCursorAdvanceStatements(
-      database,
-      candidate,
-      assignedStaffId,
-      input.now,
-    ));
-  }
-  const assignmentEventType = active
-    ? 'AUTO_REPLACEMENT'
-    : assignmentSource === 'OWNER_FALLBACK'
-      ? 'OWNER_FALLBACK'
-      : 'AUTO_INITIAL_ASSIGNMENT';
-  const assignmentPayload = {
-    assignment_id: assignmentId,
-    subject_type: subjectType(dutyCode),
-    buyer_customer_id: input.buyerCustomerId ?? null,
-    seller_organization_id: input.sellerOrganizationId ?? null,
-    duty_code: dutyCode,
-    previous_staff_id: active?.staff_id ?? null,
-    assigned_staff_id: assignedStaffId,
-    source: assignmentSource,
-  } as const;
-  statements.push(
-    assignmentEventStatement(database, {
-      eventType: assignmentEventType,
-      input,
-      dutyCode,
-      assignmentId,
-      oldStaffId: active?.staff_id ?? null,
-      newStaffId: assignedStaffId,
-    }),
-    ...createWorkItemStatements(database, {
-      ...input,
-      dutyCode,
-      assignmentId,
-      assignmentType: subjectType(dutyCode),
-      assignedStaffId,
-      workItemId,
-    }),
-    ...await prepareStaffAssignmentOutboxStatements(database, {
-      dedupKey: `staff-assignment:${assignmentId}:created`,
-      eventType: assignmentEventType,
-      aggregateType: 'STAFF_ASSIGNMENT',
-      aggregateId: assignmentId,
-      payload: assignmentPayload,
-      now: input.now,
-    }),
-  );
   return {
     workItemId,
-    assignmentId,
-    assignedStaffId,
-    assignmentSource,
-    statements,
+    assignmentId: active.id,
+    assignedStaffId: active.staff_id,
+    assignmentSource: active.source,
     replayedExisting: false,
+    statements: createWorkItemStatements(database, {
+      ...input,
+      dutyCode,
+      assignmentId: active.id,
+      assignmentType: subjectType(dutyCode),
+      assignedStaffId: active.staff_id,
+      workItemId,
+    }),
   };
 }
 
@@ -224,7 +134,10 @@ export interface PreparedFixedAssignment {
 
 /**
  * Creates the mandatory SELLER_ACCOUNT_MANAGER relationship for a newly
- * created seller organization. It deliberately creates no Work Item.
+ * created seller organization, binding the creating staff member as the
+ * initial fixed owner. It deliberately creates no Work Item. Fails closed
+ * with SELLER_ACCOUNT_MANAGER_NOT_ASSIGNED when the creator cannot hold the
+ * duty.
  */
 export async function prepareInitialSellerAssignment(
   database: SqlDatabase,
@@ -239,6 +152,7 @@ export async function prepareInitialSellerAssignment(
     now: number;
   },
 ): Promise<PreparedFixedAssignment> {
+  const dutyCode: StaffAssignmentDutyCode = 'SELLER_ACCOUNT_MANAGER';
   const existing = await database.prepare(`
     SELECT id, staff_id, source
     FROM seller_staff_assignments
@@ -255,33 +169,19 @@ export async function prepareInitialSellerAssignment(
       replayedExisting: true,
     };
   }
-  const workType: StaffWorkItemType = 'PRODUCT_APPLICATION_REVIEW';
-  const dutyCode: StaffAssignmentDutyCode = 'SELLER_ACCOUNT_MANAGER';
-  const candidate = await resolveRoundRobinFixedDutyCandidate(database, {
-    dutyCode,
-    marketplaceCode: input.marketplaceCode,
-  });
-  const fallback = candidate === null
-    ? await resolveFixedFallbackWithFailureEvent(database, {
-        marketplaceCode: input.marketplaceCode,
-        dutyCode,
-        actorType: input.actorType,
-        actorId: input.actorId ?? null,
-        requestId: input.requestId ?? null,
-        idempotencyKey: input.idempotencyKey ?? null,
-        now: input.now,
-      })
+  const creatorStaffId = input.actorType === 'STAFF'
+    ? (input.actorId ?? null)
     : null;
-  const assignedStaffId = candidate?.staff.staffId ?? fallback?.staffId;
-  if (!assignedStaffId) {
-    throw new StaffAssignmentError('NO_ELIGIBLE_ASSIGNEE', 503);
+  if (!creatorStaffId
+    || !await isStaffEligibleForFixedDuty(database, {
+      staffId: creatorStaffId,
+      dutyCode,
+      marketplaceCode: input.marketplaceCode,
+    })) {
+    throw new StaffAssignmentError('SELLER_ACCOUNT_MANAGER_NOT_ASSIGNED', 503);
   }
-  const assignmentId = crypto.randomUUID();
-  const assignmentSource: StaffAssignmentSource = candidate
-    ? 'AUTO_INITIAL'
-    : 'OWNER_FALLBACK';
   const directInput: DirectWorkItemInput = {
-    workType,
+    workType: 'PRODUCT_APPLICATION_REVIEW',
     sourceEntityType: 'PRODUCT_APPLICATION',
     sourceEntityId: `seller-organization:${input.sellerOrganizationId}`,
     marketplaceCode: input.marketplaceCode,
@@ -293,50 +193,22 @@ export async function prepareInitialSellerAssignment(
     reason: input.reason ?? null,
     now: input.now,
   };
+  const assignmentId = crypto.randomUUID();
   const statements: SqlStatement[] = [
     insertAssignmentStatement(database, {
       ...directInput,
       dutyCode,
-      staffId: assignedStaffId,
+      staffId: creatorStaffId,
       assignmentId,
-      source: assignmentSource,
+      source: 'AUTO_INITIAL',
     }),
-  ];
-  if (candidate) {
-    statements.push(...createCursorAdvanceStatements(
-      database,
-      candidate,
-      assignedStaffId,
-      input.now,
-    ));
-  }
-  const assignmentEventType = assignmentSource === 'OWNER_FALLBACK'
-    ? 'OWNER_FALLBACK'
-    : 'AUTO_INITIAL_ASSIGNMENT';
-  statements.push(
     assignmentEventStatement(database, {
-      eventType: assignmentEventType,
+      eventType: 'AUTO_INITIAL_ASSIGNMENT',
       input: directInput,
       dutyCode,
       assignmentId,
       oldStaffId: null,
-      newStaffId: assignedStaffId,
-    }),
-    ...await prepareStaffAssignmentOutboxStatements(database, {
-      dedupKey: `staff-assignment:${assignmentId}:created`,
-      eventType: assignmentEventType,
-      aggregateType: 'STAFF_ASSIGNMENT',
-      aggregateId: assignmentId,
-      payload: {
-        assignment_id: assignmentId,
-        subject_type: 'SELLER',
-        seller_organization_id: input.sellerOrganizationId,
-        duty_code: dutyCode,
-        previous_staff_id: null,
-        assigned_staff_id: assignedStaffId,
-        source: assignmentSource,
-      },
-      now: input.now,
+      newStaffId: creatorStaffId,
     }),
     database.prepare(`
       INSERT INTO transaction_assertions (assertion_value)
@@ -349,13 +221,112 @@ export async function prepareInitialSellerAssignment(
     `).bind(
       assignmentId,
       input.sellerOrganizationId,
-      assignedStaffId,
+      creatorStaffId,
     ),
-  );
+  ];
   return {
     assignmentId,
-    assignedStaffId,
-    assignmentSource,
+    assignedStaffId: creatorStaffId,
+    assignmentSource: 'AUTO_INITIAL',
+    statements,
+    replayedExisting: false,
+  };
+}
+
+/**
+ * Creates the initial buyer duty binding (BUYER_PRE_SALES_OWNER) with the
+ * creating staff member as the fixed owner. Fails closed with
+ * BUYER_PRE_SALES_OWNER_NOT_ASSIGNED when the creator cannot hold the duty.
+ */
+export async function prepareInitialBuyerAssignment(
+  database: SqlDatabase,
+  input: {
+    buyerCustomerId: string;
+    marketplaceCode: string;
+    actorType: 'STAFF' | 'SYSTEM';
+    actorId?: string | null;
+    requestId?: string | null;
+    idempotencyKey?: string | null;
+    reason?: string | null;
+    now: number;
+  },
+): Promise<PreparedFixedAssignment> {
+  const dutyCode: StaffAssignmentDutyCode = 'BUYER_PRE_SALES_OWNER';
+  const existing = await database.prepare(`
+    SELECT id, staff_id, source
+    FROM buyer_staff_assignments
+    WHERE buyer_customer_id=?
+      AND duty_code='BUYER_PRE_SALES_OWNER'
+      AND status='ACTIVE'
+  `).bind(input.buyerCustomerId).first<ActiveAssignmentRow>();
+  if (existing) {
+    return {
+      assignmentId: existing.id,
+      assignedStaffId: existing.staff_id,
+      assignmentSource: existing.source,
+      statements: [],
+      replayedExisting: true,
+    };
+  }
+  const creatorStaffId = input.actorType === 'STAFF'
+    ? (input.actorId ?? null)
+    : null;
+  if (!creatorStaffId
+    || !await isStaffEligibleForFixedDuty(database, {
+      staffId: creatorStaffId,
+      dutyCode,
+      marketplaceCode: input.marketplaceCode,
+    })) {
+    throw new StaffAssignmentError('BUYER_PRE_SALES_OWNER_NOT_ASSIGNED', 503);
+  }
+  const directInput: DirectWorkItemInput = {
+    workType: 'RESERVATION_DECISION',
+    sourceEntityType: 'RESERVATION',
+    sourceEntityId: `buyer-customer:${input.buyerCustomerId}`,
+    marketplaceCode: input.marketplaceCode,
+    buyerCustomerId: input.buyerCustomerId,
+    actorType: input.actorType,
+    actorId: input.actorId ?? null,
+    requestId: input.requestId ?? null,
+    idempotencyKey: input.idempotencyKey ?? null,
+    reason: input.reason ?? null,
+    now: input.now,
+  };
+  const assignmentId = crypto.randomUUID();
+  const statements: SqlStatement[] = [
+    insertAssignmentStatement(database, {
+      ...directInput,
+      dutyCode,
+      staffId: creatorStaffId,
+      assignmentId,
+      source: 'AUTO_INITIAL',
+    }),
+    assignmentEventStatement(database, {
+      eventType: 'AUTO_INITIAL_ASSIGNMENT',
+      input: directInput,
+      dutyCode,
+      assignmentId,
+      oldStaffId: null,
+      newStaffId: creatorStaffId,
+    }),
+    database.prepare(`
+      INSERT INTO transaction_assertions (assertion_value)
+      SELECT CASE WHEN EXISTS (
+        SELECT 1 FROM buyer_staff_assignments
+        WHERE id=? AND buyer_customer_id=?
+          AND duty_code='BUYER_PRE_SALES_OWNER'
+          AND staff_id=? AND status='ACTIVE'
+      ) THEN 1 ELSE 0 END
+    `).bind(
+      assignmentId,
+      input.buyerCustomerId,
+      creatorStaffId,
+    ),
+  ];
+  return {
+    assignmentId,
+    assignedStaffId: creatorStaffId,
+    assignmentSource: 'AUTO_INITIAL',
     statements,
     replayedExisting: false,
   };
@@ -365,58 +336,31 @@ export async function batchWithFixedAssignmentRetry(
   database: SqlDatabase,
   prepare: () => Promise<PreparedFixedAssignment>,
   businessStatements: readonly SqlStatement[],
-  maximumAttempts = 3,
 ): Promise<PreparedFixedAssignment> {
-  let last: unknown;
-  for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
-    const prepared = await prepare();
-    try {
-      await database.batch([...businessStatements, ...prepared.statements]);
-      return prepared;
-    } catch (error) {
-      last = error;
-      if (!String(error).includes('staff_assignment_cursor_version_conflict')) throw error;
-    }
+  const prepared = await prepare();
+  try {
+    await database.batch([...businessStatements, ...prepared.statements]);
+    return prepared;
+  } catch (error) {
+    throw normalizeStaffAssignmentError(error);
   }
-  throw new StaffAssignmentError(
-    String(last).includes('staff_assignment_cursor_version_conflict')
-      ? 'VERSION_CONFLICT' : 'DEPENDENCY_UNAVAILABLE',
-    String(last).includes('staff_assignment_cursor_version_conflict') ? 409 : 503,
-  );
 }
 
 export async function batchWithAssignmentRetry(
   database: SqlDatabase,
   prepare: () => Promise<PreparedDirectWorkItem>,
   businessStatements: readonly SqlStatement[],
-  maximumAttempts = 3,
 ): Promise<PreparedDirectWorkItem> {
-  let last: unknown;
-  for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
-    const prepared = await prepare();
-    try {
-      await database.batch([
-        ...businessStatements,
-        ...prepared.statements,
-      ]);
-      return prepared;
-    } catch (error) {
-      last = error;
-      if (!String(error).includes(
-        'staff_assignment_cursor_version_conflict',
-      )) {
-        throw error;
-      }
-    }
+  const prepared = await prepare();
+  try {
+    await database.batch([
+      ...businessStatements,
+      ...prepared.statements,
+    ]);
+    return prepared;
+  } catch (error) {
+    throw normalizeStaffAssignmentError(error);
   }
-  throw new StaffAssignmentError(
-    String(last).includes('staff_assignment_cursor_version_conflict')
-      ? 'VERSION_CONFLICT'
-      : 'DEPENDENCY_UNAVAILABLE',
-    String(last).includes('staff_assignment_cursor_version_conflict')
-      ? 409
-      : 503,
-  );
 }
 
 export async function prepareWorkItemCompletionStatements(
@@ -505,114 +449,6 @@ export async function prepareWorkItemCompletionStatements(
 }
 
 
-async function resolveFallbackWithFailureEvent(
-  database: SqlDatabase,
-  input: {
-    marketplaceCode: string;
-    dutyCode: StaffAssignmentDutyCode;
-    workType: StaffWorkItemType;
-    actorType: 'STAFF' | 'SYSTEM';
-    actorId: string | null;
-    requestId: string | null;
-    idempotencyKey: string | null;
-    now: number;
-  },
-) {
-  try {
-    return await resolveOwnerFallback(database, input);
-  } catch (error) {
-    await recordAssignmentFailure(database, {
-      ...input,
-      errorCode: error instanceof StaffAssignmentError
-        ? error.code : 'DEPENDENCY_UNAVAILABLE',
-    });
-    throw error;
-  }
-}
-
-async function resolveFixedFallbackWithFailureEvent(
-  database: SqlDatabase,
-  input: {
-    marketplaceCode: string;
-    dutyCode: StaffAssignmentDutyCode;
-    actorType: 'STAFF' | 'SYSTEM';
-    actorId: string | null;
-    requestId: string | null;
-    idempotencyKey: string | null;
-    now: number;
-  },
-) {
-  try {
-    return await resolveOwnerFallbackForFixedDuty(database, input);
-  } catch (error) {
-    await recordAssignmentFailure(database, {
-      ...input,
-      workType: null,
-      errorCode: error instanceof StaffAssignmentError
-        ? error.code : 'DEPENDENCY_UNAVAILABLE',
-    });
-    throw error;
-  }
-}
-
-async function recordAssignmentFailure(
-  database: SqlDatabase,
-  input: {
-    marketplaceCode: string;
-    dutyCode: StaffAssignmentDutyCode;
-    workType: StaffWorkItemType | null;
-    actorType: 'STAFF' | 'SYSTEM';
-    actorId: string | null;
-    requestId: string | null;
-    idempotencyKey: string | null;
-    now: number;
-    errorCode: string;
-  },
-): Promise<void> {
-  const failureKey = input.idempotencyKey ?? crypto.randomUUID();
-  const outbox = await prepareStaffAssignmentOutboxStatements(database, {
-    dedupKey: `failure:${input.dutyCode}:${failureKey}`,
-    eventType: 'ASSIGNMENT_FAILED',
-    aggregateType: 'STAFF_ASSIGNMENT_FALLBACK',
-    aggregateId: input.marketplaceCode,
-    payload: {
-      marketplace_code: input.marketplaceCode,
-      duty_code: input.dutyCode,
-      work_type: input.workType,
-      error_code: input.errorCode,
-      request_id: input.requestId,
-      idempotency_key: input.idempotencyKey,
-    },
-    now: input.now,
-  });
-  await database.batch([
-    database.prepare(`
-      INSERT OR IGNORE INTO staff_assignment_events (
-        id, event_type, subject_type, subject_id,
-        duty_code, assignment_id, work_item_id, batch_id,
-        old_staff_id, new_staff_id, actor_type, actor_id,
-        reason, request_id, idempotency_key, metadata_json, created_at
-      ) VALUES (?, 'ASSIGNMENT_FAILED', 'MARKETPLACE', ?, ?, NULL, NULL, NULL,
-        NULL, NULL, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      crypto.randomUUID(),
-      input.marketplaceCode,
-      input.dutyCode,
-      input.actorType,
-      input.actorId,
-      input.errorCode,
-      input.requestId,
-      input.idempotencyKey,
-      JSON.stringify({
-        work_type: input.workType,
-        error_code: input.errorCode,
-      }),
-      input.now,
-    ),
-    ...outbox,
-  ]);
-}
-
 async function readActiveAssignment(
   database: SqlDatabase,
   input: DirectWorkItemInput,
@@ -656,23 +492,6 @@ function subjectType(
   dutyCode: StaffAssignmentDutyCode,
 ): 'BUYER' | 'SELLER' {
   return dutyCode === 'SELLER_ACCOUNT_MANAGER' ? 'SELLER' : 'BUYER';
-}
-
-function revokeAssignmentStatement(
-  database: SqlDatabase,
-  input: DirectWorkItemInput,
-  dutyCode: StaffAssignmentDutyCode,
-  assignmentId: string,
-): SqlStatement {
-  const table = dutyCode === 'SELLER_ACCOUNT_MANAGER'
-    ? 'seller_staff_assignments'
-    : 'buyer_staff_assignments';
-  return database.prepare(`
-    UPDATE ${table}
-    SET status='REVOKED', revoked_at=?,
-      version=version+1, updated_at=MAX(?, updated_at+1)
-    WHERE id=? AND status='ACTIVE'
-  `).bind(input.now, input.now, assignmentId);
 }
 
 function insertAssignmentStatement(
@@ -722,78 +541,6 @@ function insertAssignmentStatement(
     input.now,
     input.now,
   );
-}
-
-export function createCursorAdvanceStatements(
-  database: SqlDatabase,
-  candidate: ResolvedRoundRobinCandidate,
-  staffId: string,
-  now: number,
-): readonly SqlStatement[] {
-  const cursor = candidate.cursor;
-  if (!cursor.exists) {
-    return [
-      database.prepare(`
-        INSERT INTO staff_assignment_cursors (
-          duty_code, marketplace_code, candidate_pool_key, team_id,
-          last_assigned_staff_id, version, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-      `).bind(
-        cursor.dutyCode,
-        cursor.marketplaceCode,
-        cursor.candidatePoolKey,
-        cursor.teamId,
-        staffId,
-        now,
-        now,
-      ),
-      database.prepare(`
-        INSERT INTO staff_assignment_cursor_assertions (assertion_value)
-        SELECT CASE WHEN EXISTS (
-          SELECT 1 FROM staff_assignment_cursors
-          WHERE duty_code=? AND marketplace_code=?
-            AND candidate_pool_key=?
-            AND last_assigned_staff_id=? AND version=1
-        ) THEN 1 ELSE 0 END
-      `).bind(
-        cursor.dutyCode,
-        cursor.marketplaceCode,
-        cursor.candidatePoolKey,
-        staffId,
-      ),
-    ];
-  }
-  return [
-    database.prepare(`
-      UPDATE staff_assignment_cursors
-      SET last_assigned_staff_id=?, version=version+1,
-        updated_at=MAX(?, updated_at+1)
-      WHERE duty_code=? AND marketplace_code=?
-        AND candidate_pool_key=? AND version=?
-    `).bind(
-      staffId,
-      now,
-      cursor.dutyCode,
-      cursor.marketplaceCode,
-      cursor.candidatePoolKey,
-      cursor.expectedVersion,
-    ),
-    database.prepare(`
-      INSERT INTO staff_assignment_cursor_assertions (assertion_value)
-      SELECT CASE WHEN EXISTS (
-        SELECT 1 FROM staff_assignment_cursors
-        WHERE duty_code=? AND marketplace_code=?
-          AND candidate_pool_key=?
-          AND last_assigned_staff_id=? AND version=?
-      ) THEN 1 ELSE 0 END
-    `).bind(
-      cursor.dutyCode,
-      cursor.marketplaceCode,
-      cursor.candidatePoolKey,
-      staffId,
-      cursor.expectedVersion + 1,
-    ),
-  ];
 }
 
 function createWorkItemStatements(
@@ -873,7 +620,7 @@ function createWorkItemStatements(
 function assignmentEventStatement(
   database: SqlDatabase,
   input: {
-    eventType: 'AUTO_INITIAL_ASSIGNMENT' | 'AUTO_REPLACEMENT' | 'OWNER_FALLBACK';
+    eventType: 'AUTO_INITIAL_ASSIGNMENT';
     input: DirectWorkItemInput;
     dutyCode: StaffAssignmentDutyCode;
     assignmentId: string;

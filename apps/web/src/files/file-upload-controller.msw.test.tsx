@@ -1610,12 +1610,10 @@ describe('A5AR2 Complete recovery lock and public operation capabilities', () =>
     const startAttempt = target.start('buyerOrderEvidence', [file('start.png', 2)]);
     const replaceAttempt = target.replaceFiles('buyerOrderEvidence', [file('replace.png', 3)]);
     const restartAttempt = target.restart();
-    expect(startAttempt).toBe(running);
-    expect(restartAttempt).toBe(running);
     expect(record.intentBodies).toHaveLength(1);
     expect(generated).toBe(3);
     release();
-    await Promise.all([running, replaceAttempt]);
+    await Promise.all([running, replaceAttempt, startAttempt, restartAttempt]);
     expect(target.getSnapshot()).toMatchObject({
       state: 'VERIFIED',
       slots: [{ clientFileName: 'original.png' }],

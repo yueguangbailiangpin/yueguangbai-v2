@@ -2,16 +2,20 @@ import {
   apiSuccess,
   DEMAND_BATCH_STATUSES,
   isDemandTaskType,
+  isMarketplaceCode,
   PRODUCT_APPLICATION_STATUSES,
   PRODUCT_STATUSES,
   type DemandBatchStatus,
   type DemandTaskType,
   type ProductApplicationStatus,
   type ProductStatus,
-  type SubmitSellerPortalDemandBatchBody,
   type SubmitSellerPortalProductApplicationBody,
 } from '@ygb/contracts';
+import {
+  canWriteSellerSettlementAccount,
+} from '@ygb/domain';
 import type { Context, Hono } from 'hono';
+import { createSellerStore } from '../catalog/create-store';
 import { submitDemandBatch } from '../demand-batches/submit-demand-batch';
 import { withdrawDemandBatch } from '../demand-batches/withdraw-demand-batch';
 import { requestIdFromContext } from '../http-auth/errors';
@@ -43,6 +47,10 @@ import {
   requireScopedProductApplication,
   requireScopedStore,
 } from './queries';
+import {
+  parseSellerSettlementAccountInput,
+  updateSellerSettlementAccount,
+} from './update-settlement-account';
 
 export function registerSellerPortalRoutes(app: Hono<any>): void {
   const session = customerSessionMiddleware();
@@ -53,10 +61,22 @@ export function registerSellerPortalRoutes(app: Hono<any>): void {
     session,
     withSellerPortalErrors(me),
   );
+  app.patch(
+    '/api/seller-portal/me/settlement-account',
+    origin,
+    session,
+    withSellerPortalErrors(updateSettlementAccount),
+  );
   app.get(
     '/api/seller-portal/stores',
     session,
     withSellerPortalErrors(stores),
+  );
+  app.post(
+    '/api/seller-portal/stores',
+    origin,
+    session,
+    withSellerPortalErrors(createStore),
   );
   app.get(
     '/api/seller-portal/products',
@@ -124,6 +144,26 @@ async function me(context: Context<any>): Promise<Response> {
   return success(context, { me: actor.me });
 }
 
+async function updateSettlementAccount(
+  context: Context<any>,
+): Promise<Response> {
+  const body = await readObject(context);
+  const input = parseSellerSettlementAccountInput(body);
+  const actor = await resolveSellerPortalActor(context);
+  // P16：结算账户写入限 OWNER / OPERATIONS / FINANCE；VIEWER 只读。
+  if (!canWriteSellerSettlementAccount(actor.role)) {
+    throw new SellerPortalError('FORBIDDEN', 403);
+  }
+  await updateSellerSettlementAccount(
+    context.env.DB,
+    actor.sellerOrganizationId,
+    input,
+    Date.now(),
+  );
+  const refreshed = await resolveSellerPortalActor(context);
+  return success(context, { me: refreshed.me });
+}
+
 async function stores(context: Context<any>): Promise<Response> {
   const actor = await resolveSellerPortalActor(context);
   const pagination = parseSellerPortalPagination(
@@ -134,6 +174,35 @@ async function stores(context: Context<any>): Promise<Response> {
     actor,
     pagination,
   ));
+}
+
+async function createStore(context: Context<any>): Promise<Response> {
+  const actor = await resolveSellerPortalActor(context);
+  const body = await readObject(context);
+  const marketplace = requiredString(body, 'marketplace_code');
+  if (!isMarketplaceCode(marketplace)) validation();
+  const result = await createSellerStore(
+    context.env.DB,
+    {
+      sellerOrganizationId: actor.sellerOrganizationId,
+      marketplaceCode: marketplace,
+      storeName: requiredString(body, 'store_name'),
+    },
+    {
+      actor: {
+        memberId: actor.memberId,
+        sellerOrganizationId: actor.sellerOrganizationId,
+        role: actor.role,
+      },
+      idempotencyKey: idempotencyKey(context),
+      requestId: requestIdFromContext(context),
+    },
+  );
+  return success(
+    context,
+    { store: result },
+    result.replayed ? 200 : 201,
+  );
 }
 
 async function products(context: Context<any>): Promise<Response> {
@@ -244,6 +313,8 @@ async function createProductApplication(
         internalNotes: null,
       },
       sellerNotes: body.seller_notes,
+      orderingGuideExpectedAmountJpy:
+        body.ordering_guide_expected_amount_jpy,
       imageFiles: body.image_files.map((file) => ({
         fileObjectId: file.file_object_id,
         expectedFileVersion: file.expected_file_version,
@@ -352,9 +423,6 @@ async function createDemandBatch(
       targetQuantity: body.target_quantity,
       buyerVisibleNotes: body.buyer_visible_notes,
       sellerNotes: body.seller_notes,
-      openAt: body.open_at,
-      reservationDeadline: body.reservation_deadline,
-      orderDeadline: body.order_deadline,
     },
     {
       actor,
@@ -428,6 +496,8 @@ async function readProductApplicationBody(
     product_url: nullableString(body, 'product_url'),
     buyer_visible_notes: nullableString(body, 'buyer_visible_notes'),
     seller_notes: nullableString(body, 'seller_notes'),
+    ordering_guide_expected_amount_jpy:
+      requiredInteger(body, 'ordering_guide_expected_amount_jpy'),
     image_files: requiredFileReferences(body, 'image_files'),
   };
 }
@@ -450,20 +520,25 @@ function requiredFileReferences(
 
 async function readDemandBatchBody(
   context: Context<any>,
-): Promise<SubmitSellerPortalDemandBatchBody> {
+): Promise<{
+  product_id: string;
+  task_type: DemandTaskType;
+  target_quantity: number;
+  buyer_visible_notes: string | null;
+  seller_notes: string | null;
+}> {
   const body = await readObject(context);
   const taskType = body['task_type'];
   if (!isDemandTaskType(taskType)) validation();
+  if ('open_at' in body || 'reservation_deadline' in body || 'order_deadline' in body) {
+    throw new SellerPortalError('VALIDATION_ERROR', 400);
+  }
   return {
     product_id: requiredString(body, 'product_id'),
     task_type: taskType as DemandTaskType,
     target_quantity: requiredInteger(body, 'target_quantity'),
     buyer_visible_notes: nullableString(body, 'buyer_visible_notes'),
     seller_notes: nullableString(body, 'seller_notes'),
-    open_at: requiredInteger(body, 'open_at'),
-    reservation_deadline:
-      requiredInteger(body, 'reservation_deadline'),
-    order_deadline: requiredInteger(body, 'order_deadline'),
   };
 }
 

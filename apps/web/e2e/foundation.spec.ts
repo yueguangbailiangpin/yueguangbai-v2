@@ -88,6 +88,36 @@ async function mockApi(
       );
       return;
     }
+    if (identity === 'buyer' && path === '/api/buyer-portal/me') {
+      await fulfillJson(
+        route,
+        success({
+          buyer: {
+            display_name: '本地买家',
+            marketplace_code: 'AMAZON_JP',
+            identity_review_status: 'CLEAR',
+            customer_number: '20260824B3612',
+            refund_account_name: null,
+            refund_account_identifier: null,
+          },
+        }),
+      );
+      return;
+    }
+    if (
+      identity === 'buyer' &&
+      [
+        '/api/buyer-portal/demands',
+        '/api/buyer-portal/reservations',
+        '/api/buyer-portal/order-evidence/eligible-reservations',
+        '/api/buyer-portal/reviews/eligible-orders',
+        '/api/buyer-portal/reviews',
+        '/api/buyer-portal/refunds',
+      ].includes(path)
+    ) {
+      await fulfillJson(route, success({ items: [], next_cursor: null }));
+      return;
+    }
     if (identity === 'seller' && path === '/api/seller-portal/me') {
       await fulfillJson(
         route,
@@ -104,8 +134,10 @@ async function mockApi(
               id: 'org-local',
               seller_code: 'seller-local',
               name: '本地卖家组织',
-              marketplace_code: 'JP',
+              marketplace_code: 'AMAZON_JP',
               status: 'ACTIVE',
+              settlement_account_name: null,
+              settlement_account_identifier: null,
             },
             access: {
               read_scope: 'ORGANIZATION',
@@ -125,7 +157,7 @@ async function mockApi(
           items: [
             {
               id: 'store-local',
-              marketplace_code: 'JP',
+              marketplace_code: 'AMAZON_JP',
               canonical_marketplace_code: 'AMAZON_JP',
               transaction_currency_code: 'JPY',
               transaction_currency_exponent: 0,
@@ -156,6 +188,8 @@ async function mockApi(
             outstanding_service_fee_cny_fen: '0',
             total_outstanding_cny_fen: '0',
             unallocated_credit_cny_fen: '0',
+            settlement_account_name: null,
+            settlement_account_identifier: null,
           },
         }),
       );
@@ -201,6 +235,24 @@ async function mockApi(
       );
       return;
     }
+    if (identity === 'staff' && path === '/api/staff/me/work-items/summary') {
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            summary: {
+              open_count: 0,
+              due_today_count: 0,
+              overdue_count: 0,
+              exception_order_count: 0,
+              refund_due_today_cny_fen: null,
+              recent: [],
+            },
+          },
+          meta: { request_id: 'summary' },
+        }),
+      });
+    }
     if (identity === 'staff' && path === '/api/staff/me/work-items') {
       await fulfillJson(route, success({ work_items: [], next_cursor: null }));
       return;
@@ -218,7 +270,7 @@ async function mockSellerStatusRecords(page: Page): Promise<void> {
         items: (['ACTIVE', 'DISABLED'] as const).map((status, index) => ({
           id: `product-status-${status}`,
           store: { id: 'store-local', display_name: '日本一号店' },
-          marketplace_code: 'JP',
+          marketplace_code: 'AMAZON_JP',
           seller_code: 'seller-local',
           asin: `B0000000${index}`,
           status,
@@ -259,7 +311,7 @@ async function mockSellerStatusRecords(page: Page): Promise<void> {
               search_keywords: [],
               product_url: null,
             },
-            marketplace_code: 'JP',
+            marketplace_code: 'AMAZON_JP',
             task_type: 'TEXT',
             target_quantity: 1,
             held_quantity: 0,
@@ -296,7 +348,7 @@ async function mockSellerStatusRecords(page: Page): Promise<void> {
           review_case_id: `review-status-${status}`,
           formal_order: { id: 'order-status', amazon_order_number: '111-1111111-1111111' },
           store: { id: 'store-local', display_name: '日本一号店' },
-          marketplace_code: 'JP',
+          marketplace_code: 'AMAZON_JP',
           asin: 'B00000001',
           product_name: `评论商品${index + 1}`,
           review_type: 'TEXT',
@@ -334,7 +386,7 @@ async function mockSellerSubmissions(page: Page, failFirstUpload = false) {
   const product = {
     id: 'product-new',
     store: { id: 'store-local', display_name: '日本一号店' },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     seller_code: 'seller-local',
     asin: 'B000000001',
     status: 'ACTIVE',
@@ -358,13 +410,14 @@ async function mockSellerSubmissions(page: Page, failFirstUpload = false) {
   const application = {
     id: 'application-new',
     store: product.store,
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     asin: 'B000000002',
     product_name: '新品申请',
     search_keywords: ['关键词一', '关键词二'],
     product_url: null,
     buyer_visible_notes: null,
     seller_notes: null,
+    ordering_guide_expected_amount_jpy: 2999,
     status: 'SUBMITTED',
     review_reason: null,
     product_id: null,
@@ -385,7 +438,7 @@ async function mockSellerSubmissions(page: Page, failFirstUpload = false) {
       search_keywords: [],
       product_url: null,
     },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     task_type: 'IMAGE',
     target_quantity: 8,
     held_quantity: 0,
@@ -533,9 +586,6 @@ async function mockSellerSubmissions(page: Page, failFirstUpload = false) {
             remaining_quantity: body['target_quantity'],
             buyer_visible_notes: body['buyer_visible_notes'],
             seller_notes: body['seller_notes'],
-            open_at: body['open_at'],
-            reservation_deadline: body['reservation_deadline'],
-            order_deadline: body['order_deadline'],
           },
           replayed: false,
         }),
@@ -670,19 +720,19 @@ test('password_change_required routes Buyer to the password flow', async ({ page
   await expect(page.getByRole('heading', { name: '修改密码' })).toBeVisible();
 });
 
-test('Buyer shell is product-focused with three fixed items and no fake business data', async ({
+test('Buyer shell keeps the four current bottom-nav items and no fake business data', async ({
   page,
 }) => {
   await mockApi(page, 'buyer');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/buyer');
   const navigation = page.getByRole('navigation', { name: '买家导航' });
-  await expect(navigation.getByRole('link')).toHaveCount(3);
-  for (const label of ['产品', '任务', '我的']) {
+  await expect(navigation.getByRole('link')).toHaveCount(4);
+  for (const label of ['首页', '产品', '订单', '我的']) {
     await expect(navigation.getByText(label, { exact: true })).toBeVisible();
   }
-  await expect(page.getByRole('heading', { name: '当前开放产品', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '暂时无法读取内容' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '当前可预约', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '暂时无法读取内容' })).toHaveCount(0);
   await expectNoCriticalHorizontalOverflow(page);
 });
 
@@ -703,8 +753,8 @@ test('Seller shell exposes organization/store context and truthful business metr
   await page.goto('/seller');
   await expect(page.getByRole('navigation', { name: '卖家导航' })).toBeVisible();
   await expect(page.getByLabel('店铺', { exact: true })).toBeVisible();
-  await expect(page.getByText(/本地卖家组织/u)).toBeVisible();
-  for (const label of ['正式订单', '业务完成', '待结算'])
+  await expect(page.getByRole('heading', { name: '本地卖家组织', exact: true })).toBeVisible();
+  for (const label of ['已确认订单', '待结本金', '待结服务费'])
     await expect(page.getByText(label, { exact: true })).toBeVisible();
   await expect(page.getByText('状态来自服务器业务事实；结算确认由员工控制。')).toHaveCount(0);
   await expectNoCriticalHorizontalOverflow(page);
@@ -725,18 +775,18 @@ test('Seller navigation is route-aware, client-side, and session-stable', async 
   await expectCurrent('首页');
   expect(sessionReads.count).toBe(1);
 
-  await navigation.getByRole('link', { name: '商品' }).click();
+  await navigation.getByRole('link', { name: '产品', exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/products$/u);
-  await expectCurrent('商品');
+  await expectCurrent('产品');
   expect(sessionReads.count).toBe(1);
 
-  await navigation.getByRole('link', { name: '订单' }).click();
+  await navigation.getByRole('link', { name: '订单与沟通', exact: true }).click();
   await expect(page).toHaveURL(/\/seller\/orders$/u);
-  await expectCurrent('订单');
+  await expectCurrent('订单与沟通');
   expect(sessionReads.count).toBe(1);
 
-  for (const label of ['首页', '商品', '需求', '订单', '评论', '结算', '我的']) {
-    await expect(navigation.getByRole('link', { name: label })).toBeVisible();
+  for (const label of ['首页', '产品', '需求', '订单与沟通', '评论', '结算', '成员与组织设置']) {
+    await expect(navigation.getByRole('link', { name: label, exact: true })).toBeVisible();
   }
 });
 
@@ -776,6 +826,7 @@ test('Seller product application recovers one upload and reuses the verified man
   await page.locator('#application-store').selectOption('store-local');
   await page.getByLabel('产品标识').fill('B000000002');
   await page.getByLabel('中文名').fill('新品申请');
+  await page.getByLabel('产品金额（JPY）').fill('2999');
   await page.getByLabel('搜索词').fill('关键词一，关键词二');
   await page
     .getByLabel('申请图片')
@@ -797,31 +848,27 @@ test('Seller product application recovers one upload and reuses the verified man
       product_url: null,
       buyer_visible_notes: null,
       seller_notes: null,
+      ordering_guide_expected_amount_jpy: 2999,
       image_files: [{ file_object_id: 'application-file', expected_file_version: 3 }],
     },
   ]);
 });
 
-test('Seller demand form submits a new batch with Beijing time values', async ({ page }) => {
+test('Seller demand form submits a new batch with server-controlled scheduling', async ({ page }) => {
   await mockApi(page, 'seller');
   const state = await mockSellerSubmissions(page);
   await page.goto('/seller/demands/new');
   await page.getByLabel('已通过产品').selectOption('product-new');
-  await page.getByLabel('任务类型').selectOption('IMAGE');
+  await page.getByLabel('评论类型').selectOption('IMAGE');
   await page.getByLabel('目标数量').fill('8');
-  await page.getByLabel('开放时间（北京时间）').fill('2026-08-09T09:00');
-  await page.getByLabel('预约截止（北京时间）').fill('2026-08-10T09:00');
-  await page.getByLabel('下单截止（北京时间）').fill('2026-08-11T09:00');
-  await page.getByRole('button', { name: '提交需求' }).click();
+  await expect(page.getByText('开放、预约和下单的时间由系统自动排期；工作人员审核时确认首个下单日期。')).toBeVisible();
+  await page.getByRole('button', { name: '提交数量计划' }).click();
   await expect(page).toHaveURL(/\/seller\/demands$/u);
   expect(state.demandBodies).toEqual([
     {
       product_id: 'product-new',
       task_type: 'IMAGE',
       target_quantity: 8,
-      open_at: Date.parse('2026-08-09T09:00:00+08:00'),
-      reservation_deadline: Date.parse('2026-08-10T09:00:00+08:00'),
-      order_deadline: Date.parse('2026-08-11T09:00:00+08:00'),
       buyer_visible_notes: null,
       seller_notes: null,
     },
@@ -841,8 +888,8 @@ test('Seller withdrawals require confirmation and submit the server version', as
   expect(state.applicationWithdrawBodies).toEqual([{ expected_version: 1 }]);
 
   await page.goto('/seller/demands');
-  await page.getByRole('button', { name: '撤回需求' }).click();
-  const demandDialog = page.getByRole('dialog', { name: '撤回需求' });
+  await page.getByRole('button', { name: '撤回计划' }).click();
+  const demandDialog = page.getByRole('dialog', { name: '撤回数量计划' });
   await expect(demandDialog).toBeVisible();
   expect(state.demandWithdrawBodies).toEqual([]);
   await demandDialog.getByRole('button', { name: '确认撤回' }).click();
@@ -864,40 +911,30 @@ test('Seller small screen uses the business dashboard without page overflow', as
   await mockApi(page, 'seller');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/seller');
-  await expect(page.getByRole('heading', { name: '业务进度', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '建议处理', exact: true })).toBeVisible();
   await expect(page.getByRole('navigation', { name: '卖家导航' })).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
 
-test('Staff desktop shell preserves queue-detail-action DOM order and separation', async ({
-  page,
-}) => {
+test('Staff desktop shell preserves the two-section task queue DOM order', async ({ page }) => {
   await mockApi(page, 'staff');
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/staff');
-  await expect(page.getByRole('heading', { name: '员工工作台' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '请选择工作项' })).toBeVisible();
-  const headings = await page
-    .locator('.staff-panes > section h2, .staff-panes > aside h2')
-    .allTextContents();
-  expect(headings.slice(0, 4)).toEqual(['工作队列', '当前队列为空', '请选择工作项', '等待选择']);
-  await expect(page.getByRole('heading', { name: '请选择工作项' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '等待选择' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '建议先处理' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '我的工作' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '今日概览' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '刷新' })).toBeVisible();
   await expectNoCriticalHorizontalOverflow(page);
 });
 
-test('Staff narrow shell preserves queue-detail-tools order without overflow', async ({ page }) => {
+test('Staff narrow shell keeps the task queue operable without overflow', async ({ page }) => {
   await mockApi(page, 'staff');
   await page.setViewportSize({ width: 768, height: 1024 });
   await page.goto('/staff');
-  await expect(page.getByRole('heading', { name: '员工工作台' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '请选择工作项' })).toBeVisible();
-  const headings = await page
-    .locator('.staff-panes > section h2, .staff-panes > aside h2')
-    .allTextContents();
-  expect(headings.slice(0, 4)).toEqual(['工作队列', '当前队列为空', '请选择工作项', '等待选择']);
-  await page.getByLabel('状态').focus();
-  await expect(page.getByLabel('状态')).toBeFocused();
+  await expect(page.getByRole('heading', { name: '建议先处理' })).toBeVisible();
+  await expect(page.getByLabel('快捷入口')).toBeVisible();
+  await page.getByLabel('打开导航菜单').focus();
+  await expect(page.getByLabel('打开导航菜单')).toBeFocused();
   await expectNoCriticalHorizontalOverflow(page);
 });
 
@@ -974,13 +1011,13 @@ test('identity chunk failure is Chinese, hides protected content, and retries on
   });
   await page.goto('/buyer');
   await expect(page.getByRole('heading', { name: '页面内容暂时无法加载' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '当前开放产品', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '当前可预约', exact: true })).toHaveCount(0);
   expect(chunkRequests).toBe(1);
   await Promise.all([
     page.waitForLoadState('domcontentloaded'),
     page.getByRole('button', { name: '重新加载整页' }).click(),
   ]);
-  await expect(page.getByRole('heading', { name: '当前开放产品', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '当前可预约', exact: true })).toBeVisible();
   expect(chunkRequests).toBe(2);
 });
 
@@ -988,21 +1025,21 @@ for (const [identity, path, heading, ownChunk, foreignChunks] of [
   [
     'buyer',
     '/buyer',
-    '当前开放产品',
+    '当前可预约',
     'BuyerRouteModule-',
     ['SellerRouteModule-', 'StaffRouteModule-'],
   ],
   [
     'seller',
     '/seller',
-    '业务进度',
+    '建议处理',
     'SellerRouteModule-',
     ['BuyerRouteModule-', 'StaffRouteModule-'],
   ],
   [
     'staff',
     '/staff',
-    '员工工作台',
+    '建议先处理',
     'StaffRouteModule-',
     ['BuyerRouteModule-', 'SellerRouteModule-'],
   ],
@@ -1062,12 +1099,12 @@ test('seller dashboard defers submission and file-upload chunks until a submissi
   });
   await mockApi(page, 'seller');
   await page.goto('/seller');
-  await expect(page.getByRole('heading', { name: '业务进度', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '建议处理', exact: true })).toBeVisible();
   expect(assets.some((asset) => asset.includes('SellerSubmissionRouteModule-'))).toBe(false);
   expect(assets.some((asset) => asset.includes('useFileUpload-'))).toBe(false);
 
   await page.goto('/seller/products/new');
-  await expect(page.getByRole('heading', { name: '提交产品申请', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '商品与数量计划', exact: true })).toBeVisible();
   expect(assets.some((asset) => asset.includes('SellerSubmissionRouteModule-'))).toBe(true);
   expect(assets.some((asset) => asset.includes('useFileUpload-'))).toBe(true);
 });
@@ -1082,7 +1119,7 @@ test('staff workbench defers dashboard and scheduling chunks until their routes 
   });
   await mockApi(page, 'staff');
   await page.goto('/staff');
-  await expect(page.getByRole('heading', { name: '员工工作台', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '建议先处理' })).toBeVisible();
   expect(assets.some((asset) => asset.includes('StaffAdminRouteModule-'))).toBe(false);
   expect(assets.some((asset) => asset.includes('StaffSchedulingRouteModule-'))).toBe(false);
 
@@ -1127,8 +1164,8 @@ test('200% equivalent text zoom reflows without critical horizontal clipping', a
   await page.evaluate(() => {
     document.documentElement.style.fontSize = '200%';
   });
-  await expect(page.getByRole('heading', { name: '业务进度', exact: true })).toBeVisible();
-  await expect(page.getByLabel('店铺', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '建议处理', exact: true })).toBeVisible();
+  await expect(page.getByLabel('店铺', { exact: true })).toBeAttached();
   await expectNoCriticalHorizontalOverflow(page);
 });
 

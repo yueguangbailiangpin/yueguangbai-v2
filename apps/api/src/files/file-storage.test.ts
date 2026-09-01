@@ -23,6 +23,7 @@ import { linkVerifiedFileToEntity } from './file-entity-links';
 import {
   consumeFileReadIntent,
   createFileReadIntent,
+  createFileReadIntentsBatch,
 } from './file-read-service';
 import { MockObjectStorage } from './mock-object-storage';
 import { uploadFileObject } from './upload-file-object';
@@ -217,7 +218,17 @@ describe('file manifest and upload intent lifecycle', () => {
       },
     );
     if (!readIntent.accessToken) throw new Error('missing_read_token');
-    expect(JSON.stringify(readIntent)).not.toContain('url');
+    expect(readIntent).not.toHaveProperty('url');
+    expect(readIntent).not.toHaveProperty('permanentUrl');
+    expect(readIntent).not.toHaveProperty('permanent_url');
+    expect(Object.keys(readIntent).sort()).toEqual([
+      'accessToken',
+      'accessTokenAvailable',
+      'expiresAt',
+      'fileObjectId',
+      'readIntentId',
+      'replayed',
+    ]);
 
     const read = await consumeFileReadIntent(
       database,
@@ -229,7 +240,9 @@ describe('file manifest and upload intent lifecycle', () => {
       },
       { actor, now: 1700 },
     );
-    expect(read.bytes).toEqual(png);
+    expect(read.byteSize).toBe(png.byteLength);
+    expect(read.bytes ?? new Uint8Array(await new Response(read.stream!).arrayBuffer()))
+      .toEqual(png);
     await expect(consumeFileReadIntent(
       database,
       storage,
@@ -517,3 +530,295 @@ class CoordinatedReadStorage extends MockObjectStorage {
     return super.readObject(objectKey);
   }
 }
+
+describe('batch file read intents', () => {
+  async function seedVerifiedFile(
+    label: string,
+    now: number,
+  ): Promise<{ fileObjectId: string; uploadToken: string; uploadIntentId: string }> {
+    const storage = new MockObjectStorage();
+    const intent = await createFileUploadIntent(
+      database!,
+      authorization,
+      {
+        purpose: 'ORDER_EVIDENCE',
+        visibility: 'SELLER_VISIBLE',
+        files: [{
+          clientFileName: `${label}.png`,
+          declaredMime: 'image/png',
+          byteSize: png.byteLength,
+        }],
+      },
+      { actor, idempotencyKey: `file:batch:${label}:intent`, now },
+    );
+    const slot = intent.uploads[0];
+    if (!slot?.uploadToken) throw new Error('missing_upload_token');
+    await uploadFileObject(
+      database!,
+      storage,
+      authorization,
+      {
+        fileObjectId: slot.fileObjectId,
+        uploadToken: slot.uploadToken,
+        declaredMime: 'image/png',
+        bytes: png,
+      },
+      { actor, idempotencyKey: `file:batch:${label}:upload`, now: now + 100 },
+    );
+    await completeFileUploadIntent(
+      database!,
+      storage,
+      authorization,
+      {
+        uploadIntentId: intent.uploadIntentId,
+        expectedVersion: 1,
+      },
+      { actor, idempotencyKey: `file:batch:${label}:complete`, now: now + 200 },
+    );
+    await linkVerifiedFileToEntity(
+      database!,
+      authorization,
+      {
+        fileObjectId: slot.fileObjectId,
+        expectedFileVersion: 3,
+        entityType: 'ORDER',
+        entityId: `order-${label}`,
+      },
+      { actor, idempotencyKey: `file:batch:${label}:link`, now: now + 300 },
+    );
+    return {
+      fileObjectId: slot.fileObjectId,
+      uploadToken: slot.uploadToken,
+      uploadIntentId: intent.uploadIntentId,
+    };
+  }
+
+  it('issues intents for several files atomically and replays per item', async () => {
+    database = createMigratedTestDatabase();
+    const first = await seedVerifiedFile('one', 1000);
+    const second = await seedVerifiedFile('two', 2000);
+
+    const batch = await createFileReadIntentsBatch(
+      database,
+      authorization,
+      {
+        requests: [
+          { fileObjectId: first.fileObjectId, expectedFileVersion: 3 },
+          { fileObjectId: second.fileObjectId, expectedFileVersion: 3 },
+        ],
+        idempotencyKeys: ['file:batch:read:one', 'file:batch:read:two'],
+      },
+      { actor, now: 3000 },
+    );
+    expect(batch.intents).toHaveLength(2);
+    expect(new Set(batch.intents.map((item) => item.fileObjectId)).size).toBe(2);
+    for (const item of batch.intents) {
+      expect(item.accessTokenAvailable).toBe(true);
+      expect(item.accessToken).toBeTruthy();
+      expect(item.replayed).toBe(false);
+    }
+
+    const rows = await database!.prepare(`
+      SELECT COUNT(*) AS count FROM file_read_intents
+      WHERE status='ISSUED'
+    `).first<{ count: number }>();
+    expect(Number(rows?.count)).toBe(2);
+
+    const replay = await createFileReadIntentsBatch(
+      database,
+      authorization,
+      {
+        requests: [
+          { fileObjectId: first.fileObjectId, expectedFileVersion: 3 },
+          { fileObjectId: second.fileObjectId, expectedFileVersion: 3 },
+        ],
+        idempotencyKeys: ['file:batch:read:one', 'file:batch:read:two'],
+      },
+      { actor, now: 3100 },
+    );
+    expect(replay.intents).toHaveLength(2);
+    for (const item of replay.intents) {
+      expect(item.replayed).toBe(true);
+      expect(item.accessTokenAvailable).toBe(false);
+      expect(item.accessToken).toBeNull();
+    }
+    const rowsAfterReplay = await database!.prepare(`
+      SELECT COUNT(*) AS count FROM file_read_intents
+    `).first<{ count: number }>();
+    expect(Number(rowsAfterReplay?.count)).toBe(2);
+
+    await expect(createFileReadIntentsBatch(
+      database,
+      authorization,
+      {
+        requests: [
+          { fileObjectId: first.fileObjectId, expectedFileVersion: 4 },
+        ],
+        idempotencyKeys: ['file:batch:read:stale'],
+      },
+      { actor, now: 3200 },
+    )).rejects.toMatchObject({ code: 'VERSION_CONFLICT', status: 409 });
+
+    await expect(createFileReadIntentsBatch(
+      database,
+      authorization,
+      {
+        requests: [
+          { fileObjectId: first.fileObjectId, expectedFileVersion: 3 },
+          { fileObjectId: first.fileObjectId, expectedFileVersion: 3 },
+        ],
+        idempotencyKeys: ['file:batch:read:dup:one', 'file:batch:read:dup:two'],
+      },
+      { actor, now: 3300 },
+    )).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
+  });
+});
+
+describe('streaming read intent consumption', () => {
+  async function seedStreamingFile(
+    label: string,
+  ): Promise<{ storage: MockObjectStorage; fileObjectId: string }> {
+    const storage = new MockObjectStorage();
+    const intent = await createFileUploadIntent(
+      database!,
+      authorization,
+      {
+        purpose: 'ORDER_EVIDENCE',
+        visibility: 'SELLER_VISIBLE',
+        files: [{
+          clientFileName: `${label}.png`,
+          declaredMime: 'image/png',
+          byteSize: png.byteLength,
+        }],
+      },
+      { actor, idempotencyKey: `file:stream:${label}:intent`, now: 1000 },
+    );
+    const slot = intent.uploads[0];
+    if (!slot?.uploadToken) throw new Error('missing_upload_token');
+    await uploadFileObject(
+      database!,
+      storage,
+      authorization,
+      {
+        fileObjectId: slot.fileObjectId,
+        uploadToken: slot.uploadToken,
+        declaredMime: 'image/png',
+        bytes: png,
+      },
+      { actor, idempotencyKey: `file:stream:${label}:upload`, now: 1100 },
+    );
+    await completeFileUploadIntent(
+      database!,
+      storage,
+      authorization,
+      {
+        uploadIntentId: intent.uploadIntentId,
+        expectedVersion: 1,
+      },
+      { actor, idempotencyKey: `file:stream:${label}:complete`, now: 1200 },
+    );
+    await linkVerifiedFileToEntity(
+      database!,
+      authorization,
+      {
+        fileObjectId: slot.fileObjectId,
+        expectedFileVersion: 3,
+        entityType: 'ORDER',
+        entityId: `order-stream-${label}`,
+      },
+      { actor, idempotencyKey: `file:stream:${label}:link`, now: 1250 },
+    );
+    return { storage, fileObjectId: slot.fileObjectId };
+  }
+
+  async function streamingReadIntent(
+    fileObjectId: string,
+    label: string,
+  ) {
+    return createFileReadIntent(
+      database!,
+      authorization,
+      {
+        fileObjectId,
+        expectedFileVersion: 3,
+        ttlMs: 60_000,
+      },
+      { actor, idempotencyKey: `file:stream:${label}:read`, now: 1300 },
+    );
+  }
+
+  it('streams the stored body through the adapter without buffering in the Worker', async () => {
+    database = createMigratedTestDatabase();
+    const { storage, fileObjectId } = await seedStreamingFile('body');
+    const readIntent = await streamingReadIntent(fileObjectId, 'body');
+    if (!readIntent.accessToken) throw new Error('missing_read_token');
+
+    const result = await consumeFileReadIntent(
+      database!,
+      storage,
+      authorization,
+      { readIntentId: readIntent.readIntentId, accessToken: readIntent.accessToken },
+      { actor, now: 1400 },
+    );
+    expect(result.bytes).toBeUndefined();
+    expect(result.stream).toBeInstanceOf(ReadableStream);
+    expect(result.byteSize).toBe(png.byteLength);
+    expect(result.contentType).toBe('image/png');
+    const streamed = new Uint8Array(
+      await new Response(result.stream!).arrayBuffer(),
+    );
+    expect(streamed).toEqual(png);
+  });
+
+  it('rejects a tampered stored checksum with the same conflict semantics', async () => {
+    database = createMigratedTestDatabase();
+    const { storage, fileObjectId } = await seedStreamingFile('tamper');
+    const readIntent = await streamingReadIntent(fileObjectId, 'tamper');
+    if (!readIntent.accessToken) throw new Error('missing_read_token');
+    const objectKey = await database!
+      .prepare('SELECT object_key FROM file_objects WHERE id=?')
+      .bind(fileObjectId)
+      .first<{ object_key: string }>();
+    storage.tamperHead(objectKey!.object_key, {
+      checksumSha256: '0'.repeat(64),
+    });
+
+    await expect(consumeFileReadIntent(
+      database!,
+      storage,
+      authorization,
+      { readIntentId: readIntent.readIntentId, accessToken: readIntent.accessToken },
+      { actor, now: 1400 },
+    )).rejects.toMatchObject({ code: 'FILE_STORAGE_CONFLICT' });
+    const status = await database!
+      .prepare('SELECT status FROM file_read_intents WHERE id=?')
+      .bind(readIntent.readIntentId)
+      .first<{ status: string }>();
+    expect(status?.status).toBe('ISSUED');
+  });
+
+  it('falls back to the buffered read when the adapter has no streaming variant', async () => {
+    database = createMigratedTestDatabase();
+    const { storage, fileObjectId } = await seedStreamingFile('legacy');
+    const legacyStorage: import('@ygb/contracts').ObjectStorageAdapter = {
+      putObject: (input) => storage.putObject(input),
+      headObject: (key) => storage.headObject(key),
+      readPrefix: (key, maximum) => storage.readPrefix(key, maximum),
+      readObject: (key) => storage.readObject(key),
+      deleteObject: (key) => storage.deleteObject(key),
+    };
+    const readIntent = await streamingReadIntent(fileObjectId, 'legacy');
+    if (!readIntent.accessToken) throw new Error('missing_read_token');
+
+    const result = await consumeFileReadIntent(
+      database!,
+      legacyStorage,
+      authorization,
+      { readIntentId: readIntent.readIntentId, accessToken: readIntent.accessToken },
+      { actor, now: 1400 },
+    );
+    expect(result.stream).toBeUndefined();
+    expect(result.bytes).toEqual(png);
+    expect(result.byteSize).toBe(png.byteLength);
+  });
+});

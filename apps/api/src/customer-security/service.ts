@@ -29,15 +29,83 @@ export const PASSWORD_RESET_TTL_MS = 30 * 60 * 1000;
 
 interface InvitationSafeResult {
   invitation_id: string;
+  buyer_customer_id: string;
+  buyer_customer_no: string;
   wechat_id: string;
   marketplace_code: BuyerSupportedMarketplaceCode;
   version: number;
   expires_at: number;
 }
 
+interface InvitationBoundBuyerRow {
+  buyer_customer_id: string;
+  buyer_customer_no: string;
+  access_status: string;
+  identity_review_status: string;
+  normalized_wechat: string;
+  marketplace_code: string;
+}
+
+/**
+ * Stage 6.6E binding checks: the invitation target must be an existing buyer
+ * that is not yet activated, whose ACTIVE WeChat claim matches the submitted
+ * wechat id and whose marketplace matches the invitation marketplace. Any
+ * mismatch fails closed instead of creating a new profile.
+ */
+async function requireInvitationBoundBuyer(
+  database: SqlDatabase,
+  input: {
+    buyerCustomerId: string;
+    marketplaceCode: BuyerSupportedMarketplaceCode;
+    normalizedWechat: string;
+  },
+): Promise<InvitationBoundBuyerRow> {
+  const id = input.buyerCustomerId.normalize('NFKC').trim();
+  if (id.length < 1 || id.length > 120) {
+    throw new CustomerSecurityError('VALIDATION_ERROR', 400);
+  }
+  const row = await database.prepare(`
+    SELECT buyer.id AS buyer_customer_id,
+      buyer.buyer_customer_no,
+      buyer.access_status,
+      buyer.identity_review_status,
+      claim.normalized_wechat,
+      assignment.marketplace_code
+    FROM buyer_customers buyer
+    JOIN wechat_identity_claims claim
+      ON claim.identity_subject_id=buyer.identity_subject_id
+      AND claim.status='ACTIVE'
+    JOIN buyer_marketplace_assignments assignment
+      ON assignment.buyer_customer_id=buyer.id
+    WHERE buyer.id=?
+  `).bind(id).first<InvitationBoundBuyerRow>();
+  if (!row) throw new CustomerSecurityError('NOT_FOUND', 404);
+  if (row.access_status !== 'DISABLED') {
+    throw new CustomerSecurityError('CONFLICT', 409);
+  }
+  if (row.identity_review_status !== 'CLEAR') {
+    throw new CustomerSecurityError('CONFLICT', 409);
+  }
+  if (row.normalized_wechat !== input.normalizedWechat
+    || row.marketplace_code !== input.marketplaceCode) {
+    throw new CustomerSecurityError('CONFLICT', 409);
+  }
+  const conflicting = await database.prepare(`
+    SELECT 1 AS present FROM customer_buyer_invitations
+    WHERE buyer_customer_id=? AND status='ACTIVE' AND expires_at>?
+    LIMIT 1
+  `).bind(row.buyer_customer_id, Date.now()).first<{ present: number }>();
+  if (conflicting) throw new CustomerSecurityError('CONFLICT', 409);
+  return row;
+}
+
 export async function issueBuyerInvitation(
   database: SqlDatabase,
-  input: { wechatId: string; marketplaceCode: BuyerSupportedMarketplaceCode },
+  input: {
+    buyerCustomerId: string;
+    wechatId: string;
+    marketplaceCode: BuyerSupportedMarketplaceCode;
+  },
   command: {
     actor: AssignmentStaffAuthorization;
     idempotencyKey: string;
@@ -50,8 +118,17 @@ export async function issueBuyerInvitation(
   const now = command.now ?? Date.now();
   const wechat = normalizeWechatId(input.wechatId);
   await requireActiveMarketplace(database, input.marketplaceCode);
+  // Stage 6.6E: an invitation may only be bound to an existing, not-yet-
+  // activated buyer profile with a matching WeChat identity and marketplace.
+  // It must never create a second profile or a new buyer number.
+  const buyer = await requireInvitationBoundBuyer(database, {
+    buyerCustomerId: input.buyerCustomerId,
+    marketplaceCode: input.marketplaceCode,
+    normalizedWechat: wechat.normalized,
+  });
   const requestHash = await hashCanonicalJson({
     action: 'ISSUE_BUYER_INVITATION',
+    buyer_customer_id: buyer.buyer_customer_id,
     normalized_wechat: wechat.normalized,
     marketplace_code: input.marketplaceCode,
   });
@@ -67,8 +144,8 @@ export async function issueBuyerInvitation(
     actorType: 'STAFF',
     actorId: command.actor.staffId,
     action: 'ISSUE_BUYER_INVITATION',
-    targetType: 'WECHAT_MARKETPLACE',
-    targetId: `${wechat.normalized}:${input.marketplaceCode}`,
+    targetType: 'BUYER_CUSTOMER',
+    targetId: buyer.buyer_customer_id,
     idempotencyKey: command.idempotencyKey,
     requestHash,
   }, { now });
@@ -80,6 +157,8 @@ export async function issueBuyerInvitation(
   const expiresAt = now + BUYER_INVITATION_TTL_MS;
   const safe: InvitationSafeResult = {
     invitation_id: invitationId,
+    buyer_customer_id: buyer.buyer_customer_id,
+    buyer_customer_no: buyer.buyer_customer_no,
     wechat_id: wechat.display,
     marketplace_code: input.marketplaceCode,
     version: 1,
@@ -92,9 +171,10 @@ export async function issueBuyerInvitation(
           id, token_hash, wechat_display, normalized_wechat, wechat_hash,
           marketplace_code, issued_by_staff_id, status, version,
           issued_at, expires_at, consumed_at, consumed_by_account_id,
-          revoked_at, revoked_by_staff_id, created_at, updated_at
+          revoked_at, revoked_by_staff_id, created_at, updated_at,
+          buyer_customer_id
         ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 1, ?, ?, NULL, NULL,
-          NULL, NULL, ?, ?)
+          NULL, NULL, ?, ?, ?)
       `).bind(
         invitationId,
         tokenHash,
@@ -109,6 +189,7 @@ export async function issueBuyerInvitation(
         expiresAt,
         now,
         now,
+        buyer.buyer_customer_id,
       ),
       invitationEvent(database, {
         invitationId,

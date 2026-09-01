@@ -5,6 +5,7 @@ import { hashCanonicalJson, operationalAlertDescriptorFromRuntime } from '@ygb/d
 import worker from './worker';
 import {
   isAllowedSameOriginApiRequest,
+  isApiRequestPath,
   resolveCloudflareRuntime,
   type CloudflareWorkerBindings,
 } from './cloudflare-runtime';
@@ -20,6 +21,12 @@ const alertDescriptor = operationalAlertDescriptorFromRuntime({
 const alertFingerprint = await hashCanonicalJson(alertDescriptor);
 
 describe('production Cloudflare Worker runtime', () => {
+  it('does not classify retired MCP paths as API requests', () => {
+    expect(isApiRequestPath('/mcp')).toBe(false);
+    expect(isApiRequestPath('/.well-known/oauth-protected-resource/mcp')).toBe(false);
+    expect(isApiRequestPath('/api/staff/me/assignments')).toBe(true);
+  });
+
   it('routes API to Hono and serves SPA content with security headers', async () => {
     const health = await fetchWorker('/health');
     expect(health.status).toBe(200);
@@ -79,8 +86,6 @@ describe('production Cloudflare Worker runtime', () => {
       { ...bindings(), STAFF_ACCESS_AUD: 'short' },
       { ...bindings(), STAFF_AUTH_ALLOWED_ORIGINS: 'https://other.invalid' },
       { ...bindings(), SCHEDULED_OPERATIONS_ENABLED: 'invalid' },
-      { ...bindings(), OUTBOX_DELIVERY_ENABLED: undefined },
-      { ...bindings(), ACQUISITION_MAINTENANCE_ENABLED: undefined },
       { ...bindings(), OPERATIONAL_ALERT_MODE: 'disabled' },
       { ...bindings(), OPERATIONAL_ALERT_SINK: undefined },
       { ...bindings(), APP_RELEASE_SHA: undefined },
@@ -98,6 +103,24 @@ describe('production Cloudflare Worker runtime', () => {
       const response = await worker.fetch(new Request(`${origin}/health`), env, executionContext);
       expect(response.status).toBe(503);
       expect(await response.text()).not.toMatch(/REQUIRED|staff-access-audience/u);
+    }
+  });
+
+  it('fails closed when any archive release switch is missing, enabled, or non-string', async () => {
+    const flags = [
+      'ARCHIVE_SELECTOR_ENABLED',
+      'ARCHIVE_DRIVE_UPLOAD_ENABLED',
+      'ARCHIVE_HOT_DELETE_ENABLED',
+      'ARCHIVE_RESTORE_WORKER_ENABLED',
+    ] as const;
+    for (const flag of flags) {
+      const missing = bindings();
+      delete missing[flag];
+      expect(await resolveCloudflareRuntime(missing)).toBeNull();
+      const enabled = { ...bindings(), [flag]: 'true' };
+      expect(await resolveCloudflareRuntime(enabled)).toBeNull();
+      const nonString = { ...bindings(), [flag]: false } as unknown as CloudflareWorkerBindings;
+      expect(await resolveCloudflareRuntime(nonString)).toBeNull();
     }
   });
 
@@ -137,14 +160,12 @@ describe('production Cloudflare Worker runtime', () => {
       await resolveCloudflareRuntime({
         ...bindings(),
         SCHEDULED_OPERATIONS_ENABLED: 'true',
-        ACQUISITION_MAINTENANCE_ENABLED: 'true',
       }),
     ).not.toBeNull();
     expect(
       await resolveCloudflareRuntime({
         ...bindings(),
         SCHEDULED_OPERATIONS_ENABLED: 'false',
-        ACQUISITION_MAINTENANCE_ENABLED: 'true',
       }),
     ).not.toBeNull();
   });
@@ -210,12 +231,10 @@ function bindings(): CloudflareWorkerBindings {
     STAFF_ACCESS_AUD: 'staff-access-audience-001',
     STAFF_AUTH_ALLOWED_ORIGINS: origin,
     SCHEDULED_OPERATIONS_ENABLED: 'false',
-    OUTBOX_DELIVERY_ENABLED: 'false',
-    ACQUISITION_MAINTENANCE_ENABLED: 'false',
-    DRIVE_ARCHIVE_ENABLED: 'false',
-    DRIVE_ARCHIVE_COPY_ENABLED: 'false',
-    DRIVE_ARCHIVE_PROXY_READ_ENABLED: 'false',
-    DRIVE_ARCHIVE_R2_DELETE_ENABLED: 'false',
+    ARCHIVE_SELECTOR_ENABLED: 'false',
+    ARCHIVE_DRIVE_UPLOAD_ENABLED: 'false',
+    ARCHIVE_HOT_DELETE_ENABLED: 'false',
+    ARCHIVE_RESTORE_WORKER_ENABLED: 'false',
     OPERATIONAL_ALERT_MODE: 'bound',
     OPERATIONAL_ALERT_SINK: {
       async notify() {},

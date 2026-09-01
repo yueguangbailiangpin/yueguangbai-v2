@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { BuyerOrderEvidenceFileReadIntentAdapter } from '../../files/file-read-providers';
+import { ProtectedImagePreview } from '../../files/ProtectedImagePreview';
 import {
   Alert,
   Button,
@@ -25,12 +26,13 @@ import {
   priceDifferenceDirection,
 } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
-import { BuyerFilePicker } from '../shared/BuyerFilePicker';
+import { FileDropZone } from '../../ui/FileDropZone';
 import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { ProtectedFileButton } from '../shared/ProtectedFileButton';
 import { statusLabel, statusTone } from '../shared/status';
 import { useFileUpload } from '../shared/useFileUpload';
-import { BuyerJourney } from '../shared/BuyerJourney';
+import { BuyerJourney, evidenceJourneyStep } from '../shared/BuyerJourney';
+import { StageContactCard, STAGE_FOR_ROUTE } from '../shared/StageContactCard';
 
 export function BuyerOrderEvidenceDetailPage(): React.JSX.Element {
   const { submissionId = '' } = useParams();
@@ -57,7 +59,7 @@ export function BuyerOrderEvidenceDetailPage(): React.JSX.Element {
   const item = query.data;
   return (
     <section className="buyer-page buyer-flow-page buyer-detail-page">
-      <BuyerJourney current="materials" />
+      <BuyerJourney current={evidenceJourneyStep(item.status)} />
       <PageHeader
         eyebrow="订单资料详情"
         title={item.reservation.product_name}
@@ -65,6 +67,7 @@ export function BuyerOrderEvidenceDetailPage(): React.JSX.Element {
       >
         <StatusBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge>
       </PageHeader>
+      <StageContactCard stage={STAGE_FOR_ROUTE['/buyer/order-materials']} />
       {item.price_mismatch ? <Alert tone="warning">实际支付金额与参考金额不一致</Alert> : null}
       {item.status === 'CHANGES_REQUESTED' && item.public_change_reason ? (
         <Alert tone="warning">修改说明：{item.public_change_reason}</Alert>
@@ -114,9 +117,9 @@ export function BuyerOrderEvidenceDetailPage(): React.JSX.Element {
             <dd>{formatJpy(item.buyer_refundable_principal_jpy)}</dd>
           </div>
           <div>
-            <dt>资料版本</dt>
+            <dt>提交版本</dt>
             <dd>
-              {item.version}（证据版本 {item.evidence_version_no}）
+              {item.version}（第 {item.evidence_version_no} 次提交）
             </dd>
           </div>
           <div>
@@ -213,9 +216,14 @@ function EvidenceFile({
         </p>
       </div>
       {provider ? (
-        <ProtectedFileButton provider={provider} />
+        file.mime.startsWith('image/') ? <ProtectedImagePreview
+          provider={provider}
+          alt={file.client_file_name}
+          className="protected-evidence-thumbnail"
+          fallback={<span className="protected-image-placeholder">图片加载中</span>}
+        /> : <ProtectedFileButton provider={provider} />
       ) : (
-        <p className="metadata-only-note">历史文件仅保留元数据，当前没有读取授权。</p>
+        <p className="metadata-only-note">历史文件已不再提供下载，只能看到文件信息。</p>
       )}
     </article>
   );
@@ -321,14 +329,16 @@ function EvidenceResubmitForm({
           description="必须且只能选择一张图片"
           required
         >
-          <BuyerFilePicker
-            name="file"
+          <FileDropZone
+            id="resubmit-file"
             accept="image/jpeg,image/png,image/webp"
             required
+            maximumFiles={1}
+            maximumBytes={20 * 1024 * 1024}
             buttonLabel="选择新的订单截图"
             emptyLabel="尚未选择截图"
-            onChange={(event) => {
-              file.current = event.currentTarget.files?.[0] ?? null;
+            onFilesChange={(files) => {
+              file.current = files[0] ?? null;
             }}
           />
         </FormField>

@@ -7,6 +7,7 @@ import { formatCnyFen, formatShanghai } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
 import { BuyerJourney } from '../shared/BuyerJourney';
 import { paymentChannelLabel, statusLabel, statusTone } from '../shared/status';
+import { StageContactCard, STAGE_FOR_ROUTE } from '../shared/StageContactCard';
 import { startOperation } from '../../api/idempotency';
 
 export function BuyerRefundDetailPage(): React.JSX.Element {
@@ -27,7 +28,7 @@ export function BuyerRefundDetailPage(): React.JSX.Element {
   const item = query.data;
   return (
     <section className="buyer-page buyer-flow-page buyer-detail-page buyer-refund-page">
-      <BuyerJourney current={item.status === 'PAID' ? 'complete' : null} />
+      <BuyerJourney current="refund" settled={item.status === 'PAID'} />
       <PageHeader
         eyebrow="返款详情"
         title={item.order.product_name}
@@ -35,6 +36,7 @@ export function BuyerRefundDetailPage(): React.JSX.Element {
       >
         <StatusBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge>
       </PageHeader>
+      <StageContactCard stage={STAGE_FOR_ROUTE['/buyer/refunds']} />
       <Card className="buyer-summary-card buyer-refund-summary">
         <h2>返款信息</h2>
         <dl className="buyer-facts">
@@ -51,7 +53,7 @@ export function BuyerRefundDetailPage(): React.JSX.Element {
             <dd>{formatCnyFen(item.due_amount_cny_fen)}</dd>
           </div>
           <div>
-            <dt>净已付</dt>
+            <dt>实际已付</dt>
             <dd>{formatCnyFen(item.net_paid_cny_fen)}</dd>
           </div>
           <div>
@@ -90,7 +92,7 @@ export function BuyerRefundDetailPage(): React.JSX.Element {
         </Card>
       ) : null}
       <section aria-labelledby="refund-activity-title">
-        <h2 id="refund-activity-title">付款与冲正</h2>
+        <h2 id="refund-activity-title">付款记录</h2>
         {item.activities.length === 0 ? (
           <p>暂无支付活动。</p>
         ) : (
@@ -108,7 +110,7 @@ export function BuyerRefundDetailPage(): React.JSX.Element {
                   </p>
                   <dl className="compact-facts">
                     <div>
-                      <dt>活动后净已付</dt>
+                      <dt>这笔之后实际已付</dt>
                       <dd>{formatCnyFen(activity.balance_after.net_paid_cny_fen)}</dd>
                     </div>
                     <div>

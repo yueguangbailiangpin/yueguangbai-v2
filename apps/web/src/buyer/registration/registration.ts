@@ -41,7 +41,12 @@ export const disconnectedHumanVerificationProvider: HumanVerificationProvider = 
 });
 
 export type RegistrationResult =
-  | Readonly<{ kind: 'AUTHENTICATED'; session: CustomerSession }>
+  | Readonly<{
+    kind: 'AUTHENTICATED';
+    session: CustomerSession;
+    /** D2：注册即分配的客户编码（已在注册事务预占）。 */
+    buyerNumber: string | null;
+  }>
   | Readonly<{ kind: 'MISMATCH_CLEANED' }>
   | Readonly<{ kind: 'MISMATCH_CLEANUP_FAILED'; requestId: string | null }>;
 
@@ -72,7 +77,7 @@ export class BuyerRegistrationController {
       ...body,
       ...(token === null ? {} : { human_verification_token: token }),
     };
-    await apiRequest({
+    const registration = await apiRequest({
       path: '/api/buyer-auth/register',
       method: 'POST',
       schema: registrationResponseSchema,
@@ -90,7 +95,11 @@ export class BuyerRegistrationController {
         : { kind: 'MISMATCH_CLEANUP_FAILED', requestId: cleaned.requestId };
     }
     this.client.setQueryData(queryKeys.buyer.session, session.data.session);
-    return { kind: 'AUTHENTICATED', session: session.data.session };
+    return {
+      kind: 'AUTHENTICATED',
+      session: session.data.session,
+      buyerNumber: registration.data.identity.buyer_number,
+    };
   }
 
   async readInvitation(token: string, signal: AbortSignal): Promise<BuyerInvitationContext> {

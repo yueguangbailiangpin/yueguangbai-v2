@@ -1,5 +1,5 @@
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { queryClient, reviewQueryClient } from './api/query-client';
 import { CustomerChangePasswordPage } from './auth/customer/CustomerChangePasswordPage';
@@ -17,7 +17,6 @@ import { SellerMemberRegistrationPage } from './seller/registration/SellerMember
 import { safeReturnPath } from './routes/return-path';
 import { RouteChunkBoundary } from './routes/RouteChunkBoundary';
 import { BuyerRouteSlot, SellerRouteSlot, StaffRouteSlot } from './routes/IdentityRouteSlots';
-import { ReviewHome } from './review/ReviewHome';
 import {
   isReviewRuntime,
   ReviewChrome,
@@ -200,6 +199,8 @@ export function AppRoutes(): React.JSX.Element {
         <Route path="orders" element={<SellerRouteSlot />} />
         <Route path="reviews" element={<SellerRouteSlot />} />
         <Route path="settlements" element={<SellerRouteSlot />} />
+        {/* Stage 7.5R-2: read-only batch detail for every member role. */}
+        <Route path="settlements/:batchId" element={<SellerRouteSlot />} />
         <Route path="settings" element={<SellerRouteSlot />} />
         <Route path="*" element={<DomainNotFound />} />
       </Route>
@@ -214,11 +215,19 @@ export function AppRoutes(): React.JSX.Element {
         <Route index element={<StaffRouteSlot />} />
         <Route path="queue" element={<StaffRouteSlot />} />
         <Route path="work/:workItemId" element={<StaffRouteSlot />} />
-        <Route path="acquisition" element={<StaffRouteSlot />} />
         <Route path="buyer-customers" element={<StaffRouteSlot />} />
         <Route path="seller-customers" element={<StaffRouteSlot />} />
         <Route path="admin-business-dashboard" element={<StaffRouteSlot />} />
         <Route path="access-management" element={<StaffRouteSlot />} />
+        <Route path="service-channels" element={<StaffRouteSlot />} />
+        <Route path="finance" element={<StaffRouteSlot />} />
+        <Route path="operations" element={<StaffRouteSlot />} />
+        <Route path="orders" element={<StaffRouteSlot />} />
+        <Route path="orders/:orderId" element={<StaffRouteSlot />} />
+        <Route path="refunds" element={<StaffRouteSlot />} />
+        <Route path="refunds/:obligationId" element={<StaffRouteSlot />} />
+        {/* 旧费率中心路径：无独立页面，仅让 /staff/* 槽位接管以触发 StaffRouteModule 内的重定向（含 query）。 */}
+        <Route path="rate-center" element={<StaffRouteSlot />} />
         <Route path="seller-principal-rate-policies" element={<StaffRouteSlot />} />
         <Route path="products" element={<StaffRouteSlot />} />
         <Route path="products/:productId" element={<StaffRouteSlot />} />
@@ -246,10 +255,18 @@ export function AppRoutes(): React.JSX.Element {
   );
 }
 
+// 评审首页只存在于 /review 运行时，lazy 加载避免演示代码进入生产首屏。
+const ReviewHome = lazy(() =>
+  import('./review/ReviewHome').then((module) => ({ default: module.ReviewHome })));
+
 export function ReviewRoutes(): React.JSX.Element {
   return (
     <Routes>
-      <Route path="/" element={<ReviewHome />} />
+      <Route path="/" element={
+        <Suspense fallback={<main className="centered"><p>正在加载评审环境…</p></main>}>
+          <ReviewHome />
+        </Suspense>
+      } />
       <Route
         path="/buyer/*"
         element={
@@ -296,6 +313,8 @@ export function ReviewRoutes(): React.JSX.Element {
         <Route path="orders" element={<SellerRouteSlot />} />
         <Route path="reviews" element={<SellerRouteSlot />} />
         <Route path="settlements" element={<SellerRouteSlot />} />
+        {/* Stage 7.5R-2: read-only batch detail for every member role. */}
+        <Route path="settlements/:batchId" element={<SellerRouteSlot />} />
         <Route path="settings" element={<SellerRouteSlot />} />
         <Route path="*" element={<DomainNotFound />} />
       </Route>
@@ -310,11 +329,19 @@ export function ReviewRoutes(): React.JSX.Element {
         <Route index element={<StaffRouteSlot />} />
         <Route path="queue" element={<StaffRouteSlot />} />
         <Route path="work/:workItemId" element={<StaffRouteSlot />} />
-        <Route path="acquisition" element={<StaffRouteSlot />} />
         <Route path="buyer-customers" element={<StaffRouteSlot />} />
         <Route path="seller-customers" element={<StaffRouteSlot />} />
         <Route path="admin-business-dashboard" element={<StaffRouteSlot />} />
         <Route path="access-management" element={<StaffRouteSlot />} />
+        <Route path="service-channels" element={<StaffRouteSlot />} />
+        <Route path="finance" element={<StaffRouteSlot />} />
+        <Route path="operations" element={<StaffRouteSlot />} />
+        <Route path="orders" element={<StaffRouteSlot />} />
+        <Route path="orders/:orderId" element={<StaffRouteSlot />} />
+        <Route path="refunds" element={<StaffRouteSlot />} />
+        <Route path="refunds/:obligationId" element={<StaffRouteSlot />} />
+        {/* 旧费率中心路径：无独立页面，仅让 /staff/* 槽位接管以触发 StaffRouteModule 内的重定向（含 query）。 */}
+        <Route path="rate-center" element={<StaffRouteSlot />} />
         <Route path="seller-principal-rate-policies" element={<StaffRouteSlot />} />
         <Route path="products" element={<StaffRouteSlot />} />
         <Route path="products/:productId" element={<StaffRouteSlot />} />

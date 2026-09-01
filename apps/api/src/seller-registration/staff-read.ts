@@ -12,14 +12,13 @@ interface Row{
 export async function readCurrentSellerInvitation(
   database:SqlDatabase,
   actor:AssignmentStaffAuthorization,
-  input:{sellerOrganizationId:string|null;leadId:string|null},
+  input:{sellerOrganizationId:string|null},
   now=Date.now(),
 ){
   if((!actor.roles.has('owner')&&!actor.roles.has('seller_ops'))||!actor.permissions.has('SELLER_MANAGE'))throw new SellerRegistrationError('FORBIDDEN',403);
-  const hasOrg=Boolean(input.sellerOrganizationId?.trim()),hasLead=Boolean(input.leadId?.trim());
-  if(hasOrg===hasLead)throw new SellerRegistrationError('VALIDATION_ERROR',400);
-  const clause=hasOrg?'invitation.seller_organization_id=?':'invitation.acquisition_lead_id=?';
-  const value=(hasOrg?input.sellerOrganizationId:input.leadId)!.normalize('NFKC').trim();
+  if(!input.sellerOrganizationId?.trim())throw new SellerRegistrationError('VALIDATION_ERROR',400);
+  const clause='invitation.seller_organization_id=?';
+  const value=input.sellerOrganizationId!.normalize('NFKC').trim();
   const row=await database.prepare(`SELECT invitation.id,invitation.wechat_display,invitation.marketplace_code,
       invitation.seller_organization_id,invitation.seller_member_id,invitation.onboarding_kind,
       invitation.issued_by_staff_id,invitation.status,invitation.version,invitation.issued_at,

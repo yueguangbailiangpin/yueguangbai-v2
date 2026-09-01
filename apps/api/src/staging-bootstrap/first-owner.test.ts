@@ -4,6 +4,7 @@ import {
   bootstrapStagingFirstOwner,
   type StagingFirstOwnerInput,
 } from './first-owner';
+import { resolveAssignmentStaffAuthorization } from '../staff-assignment/effective-authorization';
 
 const DATABASE_ID = '11111111-1111-4111-8111-111111111111';
 const LONG_RUNNING_TEST_TIMEOUT_MS = 30_000;
@@ -35,7 +36,7 @@ describe('staging first owner bootstrap', () => {
       (SELECT COUNT(*) FROM staff_marketplace_scopes) AS scopes,
       (SELECT COUNT(*) FROM staff_sessions) AS sessions,
       (SELECT COUNT(*) FROM buyer_channels
-        WHERE id='staging-buyer-channel' AND code='STG' AND status='ACTIVE') AS buyer_channels,
+        WHERE id='buyer-channel-wechat-b' AND code='B' AND status='ACTIVE') AS buyer_channels,
       (SELECT COUNT(*) FROM staff_authorization_events) AS authorization_events,
       (SELECT COUNT(*) FROM audit_events
         WHERE event_type='STAGING_FIRST_OWNER_BOOTSTRAPPED') AS audits
@@ -53,6 +54,10 @@ describe('staging first owner bootstrap', () => {
       FROM staff_email_identities`).get()).toEqual({
       normalized_email: 'owner@example.test',
     });
+    expect((await resolveAssignmentStaffAuthorization(database, first.staff_id))
+      ?.roles.has('owner')).toBe(true);
+    expect((await resolveAssignmentStaffAuthorization(database, first.staff_id))
+      ?.permissions.has('STAFF_MANAGE')).toBe(true);
     const command = database.raw.prepare(`SELECT response_json
       FROM command_idempotency_records
       WHERE action='BOOTSTRAP_STAGING_FIRST_OWNER'`).get() as {response_json:string};
@@ -107,17 +112,15 @@ describe('staging first owner bootstrap', () => {
       .toEqual({total:0});
   });
 
-  it('fails closed when the staging synthetic Buyer foundation already exists',async()=>{
+  it('fails closed when the seeded Buyer foundation has already been used',async()=>{
     database=migratedEmptyDatabase();
-    database.raw.prepare(`INSERT INTO buyer_channels(
-      id,code,name,status,next_sequence,version,created_at,updated_at,disabled_at
-    ) VALUES('unexpected-channel','OLD','Unexpected','ACTIVE',1,1,1,1,NULL)`).run();
+    database.raw.prepare(`UPDATE buyer_channels
+      SET next_sequence=2, version=2, updated_at=created_at+1
+      WHERE id='buyer-channel-wechat-b'`).run();
     await expect(bootstrapStagingFirstOwner(database,INPUT,1000))
       .rejects.toMatchObject({code:'STAGING_FOUNDATION_NOT_EMPTY'});
     expect(database.raw.prepare('SELECT COUNT(*) AS total FROM staff_users').get())
       .toEqual({total:0});
-    expect(database.raw.prepare('SELECT COUNT(*) AS total FROM buyer_channels').get())
-      .toEqual({total:1});
   });
 
   it.each([
@@ -126,16 +129,21 @@ describe('staging first owner bootstrap', () => {
     ['Seller',`INSERT INTO seller_organizations(
       id,marketplace_code,seller_code,origin_channel_id,current_channel_id,
       seller_sequence,organization_name,status,version,created_at,updated_at
-    ) VALUES('dirty-seller','JP','S01','dirty-origin','dirty-current',1,
+    ) VALUES('dirty-seller','AMAZON_JP','S01','dirty-origin','dirty-current',1,
       'Dirty seller','DISABLED',1,1,1)`],
     ['Product',`INSERT INTO products(
       id,organization_id,store_id,marketplace_code,asin_display,
       asin_normalized,status,current_version_no,version,created_at,updated_at
-    ) VALUES('dirty-product','missing-seller','missing-store','JP','B000000001',
+    ) VALUES('dirty-product','missing-seller','missing-store','AMAZON_JP','B000000001',
       'B000000001','ACTIVE',1,1,1,1)`],
-    ['Order',`INSERT INTO platform_order_identities(
-      id,marketplace_code,platform_order_identifier,status,created_at,updated_at
-    ) VALUES('dirty-order-identity','AMAZON_JP','dirty-order','ACTIVE',1,1)`],
+    ['Buyer',`INSERT INTO customer_identity_subjects(id,subject_type,created_at)
+      VALUES('dirty-subject','BUYER_CUSTOMER',1);
+    INSERT INTO buyer_customers(
+      id,identity_subject_id,marketplace_code,buyer_channel_id,
+      buyer_customer_no,buyer_sequence,display_name,access_status,
+      identity_review_status,version,created_at,updated_at,activated_at,disabled_at
+    ) VALUES('dirty-buyer','dirty-subject','AMAZON_JP','buyer-channel-wechat-b',
+      '20260801B0001',1,'Dirty buyer','ACTIVE','CLEAR',1,1,1,1,NULL)`],
   ])('fails closed for pre-existing %s business stock',async(_label,insertSql)=>{
     database=migratedEmptyDatabase();database.raw.exec('PRAGMA foreign_keys=OFF');
     database.raw.exec(insertSql);database.raw.exec('PRAGMA foreign_keys=ON');
@@ -168,14 +176,15 @@ describe('staging first owner bootstrap', () => {
       (SELECT COUNT(*) FROM staff_users) AS staff,
       (SELECT COUNT(*) FROM staff_role_assignments) AS roles,
       (SELECT COUNT(*) FROM staff_email_identities) AS emails,
-      (SELECT COUNT(*) FROM buyer_channels) AS buyer_channels,
+      (SELECT COUNT(*) FROM buyer_channels
+        WHERE next_sequence<>1) AS buyer_channels_used,
       (SELECT COUNT(*) FROM staff_authorization_events) AS authorization_events,
       (SELECT COUNT(*) FROM audit_events) AS audits
     `).get()).toEqual({
       staff: 0,
       roles: 0,
       emails: 0,
-      buyer_channels: 0,
+      buyer_channels_used: 0,
       authorization_events: 0,
       audits: 0,
     });

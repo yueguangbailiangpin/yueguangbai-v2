@@ -2,7 +2,6 @@ import {
   apiFailure,
   apiSuccess,
   type ApiErrorCode,
-  type ObjectStorageAdapter,
 } from '@ygb/contracts';
 import { parseIdempotencyKey, readBoundedJson } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
@@ -11,17 +10,11 @@ import { requestIdFromContext } from '../http-auth/errors';
 import { customerSessionMiddleware } from '../middleware/customer-auth';
 import { customerAuthOriginGuard } from '../middleware/origin-guard';
 import type { AssignmentStaffAuthorization } from '../staff-assignment/effective-authorization';
-import { prepareInstructionAssets } from './asset-preparation';
-import { reconcileInstructionAssetOrphans } from './asset-reconciliation';
 import { cancelOrderInstruction } from './cancel';
 import {
   getOrderInstructionExpiryScanCursor,
   runOrderInstructionExpiryScan,
 } from './expiry-scan';
-import {
-  ServiceBindingKeywordImageGenerator,
-  type TrustedKeywordGeneratorBinding,
-} from './keyword-image-generator';
 import { publishOrderInstruction } from './publish';
 import {
   getBuyerOrderInstruction,
@@ -33,7 +26,6 @@ import { createBuyerInstructionImageReadIntent } from './read-intent';
 import { reconcileApprovedReservations } from './reconciliation';
 import {
   OrderInstructionError,
-  requireInstructionBuyerScope,
   type OrderInstructionStaffActor,
 } from './shared';
 
@@ -67,15 +59,6 @@ export function registerOrderInstructionRoutes(app: Hono<any>): void {
     withErrors(getStaffInstructionVersions),
   );
   app.post(
-    '/api/staff/order-instructions/:id/assets/prepare',
-    customerAuthOriginGuard(),
-    withErrors(prepareAssets),
-  );
-  app.get(
-    '/api/staff/order-instructions/:id/assets/:batchId',
-    withErrors(getAssetBatch),
-  );
-  app.post(
     '/api/staff/order-instructions/:id/publish',
     customerAuthOriginGuard(),
     withErrors(publishInstruction),
@@ -93,11 +76,6 @@ export function registerOrderInstructionRoutes(app: Hono<any>): void {
   app.get(
     '/api/staff/order-instructions/expiry-scan/state',
     withErrors(getExpiryScanState),
-  );
-  app.post(
-    '/api/staff/order-instructions/assets/reconciliation/run',
-    customerAuthOriginGuard(),
-    withErrors(runAssetReconciliation),
   );
   app.post(
     '/api/staff/order-instructions/reconciliation/run',
@@ -131,7 +109,8 @@ async function createBuyerImageReadIntent(
 ): Promise<Response> {
   const actor = await requireBuyerPortalContext(context);
   const raw = context.req.param('position');
-  const position = raw === 'main' ? 'main' : positiveInteger(raw);
+  if (raw !== 'main') throw new OrderInstructionError('VALIDATION_ERROR', 400);
+  const position = 'main' as const;
   const result = await createBuyerInstructionImageReadIntent(
     context.env.DB,
     {
@@ -171,96 +150,16 @@ async function getStaffInstructionVersions(
   });
 }
 
-async function prepareAssets(context: Context<any>): Promise<Response> {
-  const actor = requireStaffActor(context);
-  const body = exactBody(
-    await readBoundedJson(context.req.raw, WRITE_BODY_LIMIT),
-    ['expected_version'],
-    ['render_profile'],
-  );
-  const generatorBinding = context.env.KEYWORD_IMAGE_GENERATOR as
-    | TrustedKeywordGeneratorBinding
-    | null
-    | undefined;
-  const generatorSecret = typeof context.env.KEYWORD_GENERATOR_SHARED_SECRET === 'string'
-    ? context.env.KEYWORD_GENERATOR_SHARED_SECRET
-    : '';
-  const objectStorage = context.env.FILE_OBJECT_STORAGE as
-    | ObjectStorageAdapter
-    | null
-    | undefined;
-  const keywordHmacSecret = typeof context.env.KEYWORD_HMAC_SECRET === 'string'
-    ? context.env.KEYWORD_HMAC_SECRET
-    : null;
-  const result = await prepareInstructionAssets(
-    context.env.DB,
-    {
-      generator: generatorBinding
-        ? new ServiceBindingKeywordImageGenerator(
-          generatorBinding,
-          generatorSecret,
-        )
-        : null,
-      objectStorage: objectStorage ?? null,
-      keywordHmacSecret,
-    },
-    {
-      instructionId: requiredIdentifier(context.req.param('id')),
-      expectedVersion: integer(body['expected_version']),
-      ...(optionalString(body['render_profile']) === null
-        ? {}
-        : { renderProfile: optionalString(body['render_profile'])! }),
-    },
-    {
-      actor,
-      idempotencyKey: requireIdempotencyKey(context),
-      requestId: requestIdFromContext(context),
-    },
-  );
-  return success(context, { asset_batch: result }, 201);
-}
-
-async function getAssetBatch(context: Context<any>): Promise<Response> {
-  const actor = requireStaffActor(context);
-  if (!actor.permissions.has('ORDER_INSTRUCTION_VIEW')) {
-    throw new OrderInstructionError('FORBIDDEN', 403);
-  }
-  const row = await context.env.DB.prepare(`
-    SELECT batch.id AS asset_batch_id, batch.instruction_id,
-           batch.product_version_id, instruction.buyer_customer_id,
-           batch.status, batch.item_count, batch.ready_count, batch.failed_count,
-           batch.generator_version, batch.failure_code, batch.version,
-           batch.created_at, batch.updated_at, batch.ready_at,
-           batch.consumed_at, batch.cancelled_at
-    FROM order_instruction_asset_batches batch
-    JOIN order_instructions instruction ON instruction.id=batch.instruction_id
-    WHERE batch.id=? AND batch.instruction_id=?
-  `).bind(
-    requiredIdentifier(context.req.param('batchId')),
-    requiredIdentifier(context.req.param('id')),
-  ).first();
-  if (!row) throw new OrderInstructionError('NOT_FOUND', 404);
-  await requireInstructionBuyerScope(
-    context.env.DB,
-    actor,
-    (row as { buyer_customer_id: string }).buyer_customer_id,
-    'ORDER_INSTRUCTION_VIEW',
-  );
-  const { buyer_customer_id: _buyerCustomerId, ...safeRow } = row as
-    Record<string, unknown> & { buyer_customer_id: string };
-  return success(context, { asset_batch: safeRow });
-}
 
 async function publishInstruction(context: Context<any>): Promise<Response> {
   const actor = requireStaffActor(context);
   const body = exactBody(
     await readBoundedJson(context.req.raw, WRITE_BODY_LIMIT),
-    ['asset_batch_id', 'expected_version'],
+    ['expected_version'],
     ['staff_public_note'],
   );
   const result = await publishOrderInstruction(context.env.DB, {
     instructionId: requiredIdentifier(context.req.param('id')),
-    assetBatchId: requiredIdentifier(body['asset_batch_id']),
     expectedVersion: integer(body['expected_version']),
     staffPublicNote: optionalString(body['staff_public_note']),
   }, {
@@ -297,7 +196,7 @@ async function runExpiryScan(context: Context<any>): Promise<Response> {
     ['limit'],
   );
   const result = await runOrderInstructionExpiryScan(context.env.DB, {
-    marketplaceCode: 'JP',
+    marketplaceCode: 'AMAZON_JP',
     ...(body['limit'] == null ? {} : { limit: integer(body['limit']) }),
   }, {
     actor,
@@ -312,36 +211,11 @@ async function getExpiryScanState(context: Context<any>): Promise<Response> {
   const cursor = await getOrderInstructionExpiryScanCursor(
     context.env.DB,
     actor,
-    'JP',
+    'AMAZON_JP',
   );
   return success(context, { cursor });
 }
 
-async function runAssetReconciliation(
-  context: Context<any>,
-): Promise<Response> {
-  const actor = requireStaffActor(context);
-  const body = exactBody(
-    await readBoundedJson(context.req.raw, WRITE_BODY_LIMIT),
-    [],
-    ['limit'],
-  );
-  const objectStorage = context.env.FILE_OBJECT_STORAGE as
-    | ObjectStorageAdapter
-    | null
-    | undefined;
-  const result = await reconcileInstructionAssetOrphans(
-    context.env.DB,
-    objectStorage ?? null,
-    { ...(body['limit'] == null ? {} : { limit: integer(body['limit']) }) },
-    {
-      actor,
-      idempotencyKey: requireIdempotencyKey(context),
-      requestId: requestIdFromContext(context),
-    },
-  );
-  return success(context, { asset_reconciliation: result });
-}
 
 async function runReconciliation(context: Context<any>): Promise<Response> {
   const actor = requireStaffActor(context);
@@ -354,7 +228,7 @@ async function runReconciliation(context: Context<any>): Promise<Response> {
     ['after_reservation_id', 'limit'],
   );
   const result = await reconcileApprovedReservations(context.env.DB, {
-    marketplaceCode: 'JP',
+    marketplaceCode: 'AMAZON_JP',
     ...(optionalString(body['after_reservation_id']) === null
       ? {}
       : { afterReservationId: optionalString(body['after_reservation_id'])! }),
@@ -424,7 +298,6 @@ function publicMessage(code: OrderInstructionError['code']): string {
     case 'INSUFFICIENT_ORDER_WINDOW': return '剩余下单时间不足六小时';
     case 'MAIN_IMAGE_REQUIRED': return '产品主图尚未准备完成';
     case 'KEYWORDS_REQUIRED': return '下单关键词尚未配置';
-    case 'KEYWORD_ASSETS_NOT_READY': return '关键词图片尚未准备完成';
     case 'ORDER_NUMBER_ALREADY_CLAIMED': return 'Amazon 订单号已被占用';
     case 'ORDER_NUMBER_CONFLICT_REQUIRES_REVIEW': return '历史订单号冲突需人工处理';
     case 'FORBIDDEN':
@@ -491,12 +364,3 @@ function integer(value: unknown): number {
   return value;
 }
 
-function positiveInteger(value: unknown): number {
-  const parsed = typeof value === 'string' && /^\d+$/u.test(value)
-    ? Number(value)
-    : integer(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 1) {
-    throw new OrderInstructionError('VALIDATION_ERROR', 400);
-  }
-  return parsed;
-}

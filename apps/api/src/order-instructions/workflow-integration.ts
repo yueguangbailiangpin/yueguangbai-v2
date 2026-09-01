@@ -7,7 +7,7 @@ export function createInstructionForApprovedReservationStatement(
     instructionId: string;
     reservationId: string;
     buyerCustomerId: string;
-    marketplaceCode: 'JP';
+    marketplaceCode: 'AMAZON_JP';
     now: number;
   },
 ): SqlStatement {

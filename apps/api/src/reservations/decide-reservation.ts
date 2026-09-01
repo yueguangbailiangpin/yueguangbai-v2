@@ -20,10 +20,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   batchWithAssignmentRetry,
   prepareDirectWorkItem,
   prepareWorkItemCompletionStatements,
@@ -48,7 +44,7 @@ interface ReservationSource {
   buyer_customer_id: string;
   organization_id: string;
   store_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   status: ReservationStatus;
   reservation_version: number;
   hold_expires_at: number;
@@ -201,15 +197,6 @@ export async function decideReservation(
     const eventType = input.decision === 'APPROVE'
       ? 'RESERVATION_APPROVED'
       : 'RESERVATION_REJECTED';
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `reservation-decided:${reservationId}`,
-      eventType,
-      aggregateType: 'RESERVATION',
-      aggregateId: reservationId,
-      payload: response,
-      createdAt: now,
-    });
 
     await requireAssignedWorkflowActor(database, {
       staffId: command.actor.staffId,
@@ -325,7 +312,6 @@ export async function decideReservation(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

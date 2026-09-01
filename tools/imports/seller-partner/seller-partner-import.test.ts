@@ -35,6 +35,55 @@ describe('seller partner master-data import', () => {
       .toMatchObject({ exceptionCode: 'UNKNOWN_CHANNEL_ALIAS' });
   });
 
+  it('quarantines an explicit moonwhite alias that contradicts its frozen folder default', async () => {
+    // Owner ruling 2026-09-01 (same-day follow-up): yueguangbai (月光白)
+    // folds into ygbceping, while F4's frozen default stays yueguangbaiai
+    // (月光白AI). An explicit yueguangbai alias under F4 therefore resolves
+    // to ygbceping -- a folder/channel contradiction that must quarantine as
+    // FOLDER_CHANNEL_CONFLICT instead of silently re-routing the seller to
+    // the moonwhite-AI account. Under F2 (default ygbceping) the same alias
+    // aligns with the folder default and imports without conflict.
+    const plan = await previewSellerPartnerImport({
+      records: [{
+        sourceFolderId: 'dhtkJdpmZEgh', sourceRecordId: 'explicit-yueguangbai',
+        sourceLocator: 'fixture://dhtkJdpmZEgh/explicit-yueguangbai',
+        sellerWechat: 'moonwhite-split-seller', asin: 'B0ABC12360',
+        productName: '显式月光白别名应隔离', channelAlias: 'yueguangbai',
+        cooperationStatus: 'CURRENT', currentReservable: true,
+      }],
+    });
+    expect(plan.counts).toMatchObject({ source: 1, valid: 0, quarantined: 1 });
+    expect(plan.records.find((record) => record.status === 'QUARANTINED'))
+      .toMatchObject({ exceptionCode: 'FOLDER_CHANNEL_CONFLICT' });
+  });
+
+  it('imports an explicit yueguangbai alias under its own family folder as ygbceping', async () => {
+    // Codex 0901 P1-3: the fold ruling's positive path. F2's default is
+    // ygbceping, so an explicit 月光白 alias aligns with the folder and must
+    // preview valid and commit onto the ygbceping channel.
+    const plan = await previewSellerPartnerImport({
+      records: [{
+        sourceFolderId: 'dDUYsBOrYoEk', sourceRecordId: 'explicit-moonwhite-f2',
+        sourceLocator: 'fixture://dDUYsBOrYoEk/explicit-moonwhite-f2',
+        sellerWechat: 'moonwhite-family-seller', asin: 'B0ABC12361',
+        productName: '月光白家族文件夹显式别名', channelAlias: 'yueguangbai',
+        cooperationStatus: 'CURRENT', currentReservable: true,
+      }],
+    });
+    expect(plan.counts).toMatchObject({ source: 1, valid: 1, quarantined: 0 });
+    expect(plan.groups.map((group) => group.channelCode)).toEqual(['ygbceping']);
+    database = createMigratedTestDatabase();
+    const result = await commitSellerPartnerImport(database, plan, {
+      actorStaffId: 'fixture-staff', now: 1_700_000_000_000,
+    });
+    expect(result.organizationCount).toBe(1);
+    await expect(database.prepare(`
+      SELECT channels.code AS code FROM seller_organizations org
+      JOIN seller_channels channels ON channels.id=org.current_channel_id
+      WHERE org.id LIKE 'seller-import-org-%'
+    `).first()).resolves.toEqual({ code: 'ygbceping' });
+  });
+
   it('commits two independent organizations for the same WeChat and one standard ASIN', async () => {
     database = createMigratedTestDatabase();
     const plan = await previewSellerPartnerImport(anonymousSellerPartnerFixture);

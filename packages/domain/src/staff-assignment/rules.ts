@@ -10,7 +10,6 @@ const DUTY_ELIGIBILITY: Readonly<Record<
 >> = Object.freeze({
   SELLER_ACCOUNT_MANAGER: 'ASSIGNMENT_ELIGIBLE_SELLER_ACCOUNT',
   BUYER_PRE_SALES_OWNER: 'ASSIGNMENT_ELIGIBLE_BUYER_PRE_SALES',
-  BUYER_AFTER_SALES_OWNER: 'ASSIGNMENT_ELIGIBLE_BUYER_AFTER_SALES',
   BUYER_REFUND_OWNER: 'ASSIGNMENT_ELIGIBLE_BUYER_REFUND',
 });
 
@@ -21,7 +20,6 @@ const DUTY_BASE_PERMISSION: Readonly<Record<
 >> = Object.freeze({
   SELLER_ACCOUNT_MANAGER: 'PRODUCT_VIEW',
   BUYER_PRE_SALES_OWNER: 'BUYER_VIEW',
-  BUYER_AFTER_SALES_OWNER: 'REVIEW_VIEW',
   BUYER_REFUND_OWNER: 'BUYER_REFUND_VIEW',
 });
 
@@ -44,13 +42,10 @@ const DUTY_BUSINESS_PERMISSIONS: Readonly<Record<
     'ORDER_VIEW',
     'ORDER_CONFIRM',
   ],
-  BUYER_AFTER_SALES_OWNER: [
+  BUYER_REFUND_OWNER: [
     'BUYER_VIEW',
     'REVIEW_VIEW',
     'REVIEW_DECIDE',
-  ],
-  BUYER_REFUND_OWNER: [
-    'BUYER_VIEW',
     'BUYER_REFUND_VIEW',
     'BUYER_REFUND_RECORD',
   ],
@@ -65,7 +60,7 @@ const WORK_ITEM_DUTY: Readonly<Record<
   RESERVATION_DECISION: 'BUYER_PRE_SALES_OWNER',
   ORDER_INSTRUCTION_PUBLISH: 'BUYER_PRE_SALES_OWNER',
   ORDER_EVIDENCE_REVIEW: 'BUYER_PRE_SALES_OWNER',
-  REVIEW_DECISION: 'BUYER_AFTER_SALES_OWNER',
+  REVIEW_DECISION: 'BUYER_REFUND_OWNER',
   BUYER_REFUND_PROCESSING: 'BUYER_REFUND_OWNER',
 });
 
@@ -135,4 +130,58 @@ export function cleanAssignmentIdentifier(
     throw new Error('invalid_assignment_identifier');
   }
   return normalized;
+}
+
+/**
+ * Stage 7.5 batch 1 SLA policy: backend-authoritative hours per work type.
+ * `BUYER_REFUND_PROCESSING` anchors on the obligation's created_at (the
+ * obligations table carries no due date); every other type anchors on the
+ * work item's created_at.
+ */
+export const WORK_ITEM_SLA_HOURS: Readonly<Record<StaffWorkItemType, number>> =
+  Object.freeze({
+    PRODUCT_APPLICATION_REVIEW: 48,
+    DEMAND_REVIEW: 48,
+    RESERVATION_DECISION: 24,
+    ORDER_INSTRUCTION_PUBLISH: 24,
+    ORDER_EVIDENCE_REVIEW: 48,
+    REVIEW_DECISION: 48,
+    BUYER_REFUND_PROCESSING: 72,
+  });
+
+export function workItemSlaDueAt(
+  workType: StaffWorkItemType,
+  createdAt: number,
+  sourceCreatedAt: number | null,
+): number {
+  const anchor = workType === 'BUYER_REFUND_PROCESSING'
+    ? sourceCreatedAt ?? createdAt
+    : createdAt;
+  return anchor + WORK_ITEM_SLA_HOURS[workType] * 60 * 60 * 1000;
+}
+
+const WORK_ITEM_NEXT_ACTION: Readonly<Record<StaffWorkItemType, string>> =
+  Object.freeze({
+    PRODUCT_APPLICATION_REVIEW: 'REVIEW_PRODUCT_APPLICATION',
+    DEMAND_REVIEW: 'REVIEW_DEMAND',
+    RESERVATION_DECISION: 'DECIDE_RESERVATION',
+    ORDER_INSTRUCTION_PUBLISH: 'PUBLISH_ORDER_INSTRUCTION',
+    ORDER_EVIDENCE_REVIEW: 'REVIEW_ORDER_EVIDENCE',
+    REVIEW_DECISION: 'DECIDE_REVIEW',
+    BUYER_REFUND_PROCESSING: 'PROCESS_BUYER_REFUND',
+  });
+
+export function workItemNextAction(workType: StaffWorkItemType): string {
+  return WORK_ITEM_NEXT_ACTION[workType];
+}
+
+export type StaffWorkItemPriority = 'OVERDUE' | 'DUE_TODAY' | 'NORMAL';
+
+export function workItemPriority(
+  slaDueAt: number,
+  chinaTodayOf: (epoch: number) => string,
+  now: number,
+): StaffWorkItemPriority {
+  if (slaDueAt < now) return 'OVERDUE';
+  return chinaTodayOf(slaDueAt) === chinaTodayOf(now) ? 'DUE_TODAY' : 'NORMAL';
 }

@@ -108,7 +108,7 @@ export interface SellerOrganizationPlan {
   organizationKey: string;
   channelCode: string;
   sellerWechat: string;
-  marketplaceCode: 'JP';
+  marketplaceCode: 'AMAZON_JP';
   status: 'ACTIVE_CANDIDATE';
 }
 
@@ -118,7 +118,7 @@ export interface SellerStorePlan {
   organizationKey: string;
   displayName: string;
   normalizedName: string;
-  marketplaceCode: 'JP';
+  marketplaceCode: 'AMAZON_JP';
   status: 'ACTIVE_CANDIDATE';
 }
 
@@ -341,7 +341,7 @@ export async function createStagingImportPlan(
         organizationKey: offer.organizationKey,
         channelCode: offer.channelCode,
         sellerWechat: offer.sellerWechat,
-        marketplaceCode: 'JP',
+        marketplaceCode: 'AMAZON_JP',
         status: 'ACTIVE_CANDIDATE',
       });
       storeByKey.set(offer.organizationKey, {
@@ -350,7 +350,7 @@ export async function createStagingImportPlan(
         organizationKey: offer.organizationKey,
         displayName: `${offer.channelCode} historical store`,
         normalizedName: `${offer.channelCode}-historical-store`,
-        marketplaceCode: 'JP',
+        marketplaceCode: 'AMAZON_JP',
         status: 'ACTIVE_CANDIDATE',
       });
       const offeringKey = `${product.productKey}:${offer.organizationKey}`;

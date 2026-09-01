@@ -18,16 +18,13 @@ function allFiles(directory: string): string[] {
 }
 
 describe('Phase 3G static source policy', () => {
-  it('retains the consecutive 0021 through 0024 migration chain', () => {
+  it('retains the stage 3 clean baseline chain with the order instruction domain', () => {
     const migrations = readdirSync(join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations.filter((name) => /^002[1-4]_/.test(name))).toEqual([
-      '0021_order_instructions.sql',
-      '0022_review_submission_metadata.sql',
-      '0023_seller_payables.sql',
-      '0024_seller_payments_allocations.sql',
-    ]);
+    expect(migrations).toHaveLength(41);
+    expect(migrations).toContain('0016_order_instructions.sql');
+    expect(migrations.at(-1)).toBe('0041_owner_alias_yueguangbai_ygbceping.sql');
   });
 
   it('does not use public/claimable/unassigned work items', () => {
@@ -48,10 +45,30 @@ describe('Phase 3G static source policy', () => {
     expect(text('packages/contracts/src/order-instruction.ts')).not.toContain('object_key');
   });
 
-  it('does not expose keyword text in instruction DTO contracts', () => {
-    expect(text('packages/contracts/src/order-instruction.ts')).not.toMatch(
-      /keyword_(?:text|raw)|search_keywords/u,
+  it('exposes only Buyer-safe keyword text without the storage JSON field', () => {
+    const contract = text('packages/contracts/src/order-instruction.ts');
+    expect(contract).toMatch(/search_keywords:\s*readonly string\[\]/u);
+    expect(contract).not.toMatch(/keyword_(?:text|raw)|search_keywords_json/u);
+  });
+
+  it('publishes new instructions without a keyword asset batch', () => {
+    const publish = text('apps/api/src/order-instructions/publish.ts');
+    const routes = text('apps/api/src/order-instructions/routes.ts');
+    expect(publish).toContain('orderedKeywords');
+    expect(publish).not.toContain('requireReadyAssets');
+    expect(publish).not.toContain('assetBatchId');
+    expect(routes).not.toMatch(/\['asset_batch_id',\s*'expected_version'\]/u);
+  });
+
+  it('completes the Staff work item in the unchanged-content publish transaction', () => {
+    const publish = text('apps/api/src/order-instructions/publish.ts');
+    const unchanged = publish.slice(
+      publish.indexOf('if (current?.content_hash === contentHash)'),
+      publish.indexOf('const nextVersionNo = source.current_version_no + 1'),
     );
+    expect(unchanged).toContain('prepareWorkItemCompletionStatements');
+    expect(unchanged).toContain('completeIdempotencyStatement');
+    expect(unchanged).toContain('assertIdempotencyCompletionStatement');
   });
 
   it('allows only PNG output from the generator', () => {

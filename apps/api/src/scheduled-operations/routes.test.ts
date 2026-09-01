@@ -50,13 +50,12 @@ describe('scheduled operation Staff HTTP contract', () => {
         display_timezone: string;
       };
     };
-    expect(body.data.jobs).toHaveLength(5);
+    expect(body.data.jobs).toHaveLength(4);
     expect(
       Object.fromEntries(body.data.jobs.map((j) => [j['job_name'], j['capability_scope']])),
     ).toEqual({
       reservation_expiry: 'ALL_ENABLED_MARKETPLACES',
       instruction_expiry: 'LEGACY_JP_ONLY',
-      outbox_delivery: 'HARD_DISABLED',
       file_orphan_cleanup: 'ALL_ENABLED_MARKETPLACES',
       drive_archive: 'HARD_DISABLED',
     });
@@ -68,13 +67,13 @@ describe('scheduled operation Staff HTTP contract', () => {
     const enabledResponse = await app.request(
       'http://local/api/staff/operations/health',
       { headers: { 'X-Test-Permission': 'audit' } },
-      { ...bindings, OUTBOX_DELIVERY_ENABLED: 'true' },
+      bindings,
     );
     const enabledBody = (await enabledResponse.json()) as {
       data: { jobs: Array<Record<string, unknown>> };
     };
     expect(
-      enabledBody.data.jobs.find((job) => job['job_name'] === 'outbox_delivery'),
+      enabledBody.data.jobs.find((job) => job['job_name'] === 'reservation_expiry'),
     ).toMatchObject({ enabled: true, capability_scope: 'ALL_ENABLED_MARKETPLACES' });
     expect(body.data.alerts).toEqual([
       expect.objectContaining({
@@ -177,17 +176,10 @@ describe('scheduled operation Staff HTTP contract', () => {
 
   it('enforces permission and strict idempotent manual-run HTTP commands', async () => {
     database = createMigratedTestDatabase();
-    seedOutbox(database, 'http-manual-event');
-    let sends = 0;
+    seedExpirableReservation(database, 'http-manual');
     const bindings: AppBindings = {
       DB: database,
       SCHEDULED_OPERATIONS_ENABLED: 'true',
-      OUTBOX_DELIVERY_ENABLED: 'true',
-      OUTBOX_DELIVERY_ADAPTER: {
-        deliver: async () => {
-          sends += 1;
-        },
-      },
     };
     const app = createTestApp();
     const request = {
@@ -198,7 +190,7 @@ describe('scheduled operation Staff HTTP contract', () => {
     expect(
       (
         await app.request(
-          'http://local/api/staff/operations/jobs/outbox_delivery/retry',
+          'http://local/api/staff/operations/jobs/reservation_expiry/retry',
           request,
           bindings,
         )
@@ -208,7 +200,7 @@ describe('scheduled operation Staff HTTP contract', () => {
     expect(
       (
         await app.request(
-          'http://local/api/staff/operations/jobs/outbox_delivery/retry',
+          'http://local/api/staff/operations/jobs/reservation_expiry/retry',
           {
             ...authorized,
             headers: { 'Content-Type': 'application/json', 'X-Test-Permission': 'run' },
@@ -218,25 +210,25 @@ describe('scheduled operation Staff HTTP contract', () => {
       ).status,
     ).toBe(400);
     const first = await app.request(
-      'http://local/api/staff/operations/jobs/outbox_delivery/retry',
+      'http://local/api/staff/operations/jobs/reservation_expiry/retry',
       authorized,
       bindings,
     );
     const replay = await app.request(
-      'http://local/api/staff/operations/jobs/outbox_delivery/retry',
+      'http://local/api/staff/operations/jobs/reservation_expiry/retry',
       authorized,
       bindings,
     );
-    expect([first.status, replay.status, sends]).toEqual([200, 200, 1]);
+    expect([first.status, replay.status]).toEqual([200, 200]);
     expect(await first.json()).toEqual(await replay.json());
     const conflict = await app.request(
-      'http://local/api/staff/operations/jobs/outbox_delivery/retry',
+      'http://local/api/staff/operations/jobs/reservation_expiry/retry',
       { ...authorized, body: JSON.stringify({ reason_code: 'BACKLOG_RECOVERY' }) },
       bindings,
     );
     expect(conflict.status).toBe(409);
     const unknown = await app.request(
-      'http://local/api/staff/operations/jobs/outbox_delivery/retry',
+      'http://local/api/staff/operations/jobs/reservation_expiry/retry',
       {
         ...authorized,
         headers: { ...authorized.headers, 'Idempotency-Key': 'http-unknown-key' },
@@ -259,29 +251,20 @@ describe('scheduled operation Staff HTTP contract', () => {
     ).toBe(400);
   });
 
-  it('keeps Staff-triggered outbox delivery inert while governed off', async () => {
+  it('keeps Staff-triggered drive archive inert while hard disabled', async () => {
     database = createMigratedTestDatabase();
-    seedOutbox(database, 'http-manual-disabled-event');
-    let sends = 0;
     const bindings: AppBindings = {
       DB: database,
       SCHEDULED_OPERATIONS_ENABLED: 'true',
-      OUTBOX_DELIVERY_ENABLED: 'false',
-      OUTBOX_DELIVERY_ADAPTER: {
-        deliver: async () => {
-          sends += 1;
-          throw new Error('must_not_deliver');
-        },
-      },
     };
     const app = createTestApp();
     const response = await app.request(
-      'http://local/api/staff/operations/jobs/outbox_delivery/retry',
+      'http://local/api/staff/operations/jobs/drive_archive/retry',
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Idempotency-Key': 'http-manual-disabled-key',
+          'Idempotency-Key': 'http-drive-disabled',
           'X-Test-Permission': 'run',
         },
         body: JSON.stringify({ reason_code: 'OPERATOR_RETRY' }),
@@ -292,106 +275,29 @@ describe('scheduled operation Staff HTTP contract', () => {
     await expect(response.json()).resolves.toMatchObject({
       data: { command: { outcome: 'DISABLED' } },
     });
-    expect(sends).toBe(0);
-    expect(
-      await database
-        .prepare(
-          "SELECT status,attempt_count,last_error,lease_token,lease_expires_at FROM integration_outbox WHERE id='http-manual-disabled-event'",
-        )
-        .first(),
-    ).toEqual({
-      status: 'PENDING',
-      attempt_count: 0,
-      last_error: null,
-      lease_token: null,
-      lease_expires_at: null,
-    });
-    expect(
-      await database
-        .prepare(
-          "SELECT COUNT(*) AS count FROM scheduled_job_runs WHERE job_name='outbox_delivery'",
-        )
-        .first(),
-    ).toEqual({ count: 0 });
-    expect(
-      await database
-        .prepare(
-          "SELECT COUNT(*) AS count FROM scheduled_dead_letters WHERE source_id='http-manual-disabled-event'",
-        )
-        .first(),
-    ).toEqual({ count: 0 });
   });
 
-  it('conceals missing or handled dead letters and applies the replay kill switch', async () => {
+  it('returns a real 404 for the retired dead-letter replay route', async () => {
     database = createMigratedTestDatabase();
-    seedDeadLetter(database, 'http-dead', 'http-poison-event');
-    const app = createTestApp();
     const bindings: AppBindings = {
       DB: database,
-      SCHEDULED_OPERATIONS_ENABLED: 'false',
-      OUTBOX_DELIVERY_ENABLED: 'true',
+      SCHEDULED_OPERATIONS_ENABLED: 'true',
     };
-    const request = {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Idempotency-Key': 'http-replay-disabled',
-        'X-Test-Permission': 'run',
-      },
-      body: JSON.stringify({ event_id: 'http-poison-event', reason_code: 'POISON_RECOVERY' }),
-    };
-    const disabled = await app.request(
-      'http://local/api/staff/operations/dead-letters/http-dead/replay',
-      request,
-      bindings,
-    );
-    expect(disabled.status).toBe(200);
-    expect(await disabled.json()).toMatchObject({ data: { command: { outcome: 'DISABLED' } } });
-    expect(
-      await database
-        .prepare("SELECT replay_status FROM scheduled_dead_letters WHERE id='http-dead'")
-        .first(),
-    ).toEqual({ replay_status: 'QUARANTINED' });
-    bindings.SCHEDULED_OPERATIONS_ENABLED = 'true';
-    bindings.OUTBOX_DELIVERY_ENABLED = 'false';
-    const governedOff = await app.request(
-      'http://local/api/staff/operations/dead-letters/http-dead/replay',
+    const app = createTestApp();
+    const response = await app.request(
+      'http://local/api/staff/operations/dead-letters/anything/replay',
       {
-        ...request,
-        headers: { ...request.headers, 'Idempotency-Key': 'http-replay-governed-off' },
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'http-replay-retired',
+          'X-Test-Permission': 'run',
+        },
+        body: JSON.stringify({ event_id: 'x', reason_code: 'POISON_RECOVERY' }),
       },
       bindings,
     );
-    expect(governedOff.status).toBe(200);
-    await expect(governedOff.json()).resolves.toMatchObject({
-      data: { command: { outcome: 'DISABLED' } },
-    });
-    expect(
-      await database
-        .prepare("SELECT replay_status FROM scheduled_dead_letters WHERE id='http-dead'")
-        .first(),
-    ).toEqual({ replay_status: 'QUARANTINED' });
-    bindings.OUTBOX_DELIVERY_ENABLED = 'true';
-    const replayed = await app.request(
-      'http://local/api/staff/operations/dead-letters/http-dead/replay',
-      { ...request, headers: { ...request.headers, 'Idempotency-Key': 'http-replay-success' } },
-      bindings,
-    );
-    expect(replayed.status).toBe(200);
-    const handled = await app.request(
-      'http://local/api/staff/operations/dead-letters/http-dead/replay',
-      { ...request, headers: { ...request.headers, 'Idempotency-Key': 'http-replay-handled' } },
-      bindings,
-    );
-    const missing = await app.request(
-      'http://local/api/staff/operations/dead-letters/missing/replay',
-      { ...request, headers: { ...request.headers, 'Idempotency-Key': 'http-replay-missing' } },
-      bindings,
-    );
-    expect([handled.status, missing.status]).toEqual([404, 404]);
-    expect(JSON.stringify(await replayed.json())).not.toMatch(
-      /payload|secret|object_key|token|wechat|last_error/u,
-    );
+    expect(response.status).toBe(404);
   });
 });
 
@@ -422,14 +328,71 @@ function createTestApp() {
   registerScheduledOperationRoutes(app);
   return app;
 }
-function seedOutbox(db: SqliteDatabase, id: string) {
-  db.exec(
-    `INSERT INTO integration_outbox(id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,payload_hash,status,available_at,lease_token,lease_expires_at,attempt_count,last_error,created_at,updated_at,sent_at) VALUES('${id}','dedup-${id}','TEST','TEST','aggregate','{}','${'c'.repeat(64)}','PENDING',1,NULL,NULL,0,NULL,1,1,NULL)`,
-  );
-}
-function seedDeadLetter(db: SqliteDatabase, deadLetterId: string, eventId: string) {
-  db.exec("INSERT INTO scheduled_job_states(job_name,updated_at) VALUES('outbox_delivery',1)");
-  db.exec(
-    `INSERT INTO integration_outbox(id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,payload_hash,status,available_at,lease_token,lease_expires_at,attempt_count,last_error,created_at,updated_at,sent_at) VALUES('${eventId}','dedup-${eventId}','TEST','TEST','aggregate','{}','${'d'.repeat(64)}','FAILED',1,NULL,NULL,5,'quarantined',1,1,NULL); INSERT INTO scheduled_dead_letters(id,job_name,source_kind,source_id,failure_category,attempt_count,quarantined_at) VALUES('${deadLetterId}','outbox_delivery','OUTBOX','${eventId}','delivery_failed',5,1)`,
-  );
+function seedExpirableReservation(db: SqliteDatabase, suffix = 'so'): void {
+  db.exec(`
+    INSERT INTO customer_identity_subjects (id, subject_type, created_at)
+      VALUES ('${suffix}-subject','BUYER_CUSTOMER',1000);
+    INSERT INTO buyer_customers (
+      id, identity_subject_id, marketplace_code, buyer_channel_id,
+      buyer_customer_no, buyer_sequence, display_name, access_status,
+      identity_review_status, version, created_at, updated_at, activated_at, disabled_at
+    ) VALUES ('${suffix}-buyer','${suffix}-subject','AMAZON_JP','buyer-channel-wechat-b',
+      '20260801B9901',9901,'命令测试买家','ACTIVE','CLEAR',1,1000,1000,1000,NULL);
+    INSERT INTO seller_channels (
+      id, code, prefix, name, status, version, created_at, updated_at, disabled_at
+    ) VALUES ('${suffix}-channel','socmd','socmd-','命令渠道','ACTIVE',1,1000,1000,NULL);
+    INSERT INTO seller_organizations (
+      id, marketplace_code, seller_code, origin_channel_id, current_channel_id,
+      seller_sequence, organization_name, status, version,
+      created_at, updated_at, activated_at, next_member_number
+    ) VALUES ('${suffix}-org','AMAZON_JP','${suffix}-org-1','${suffix}-channel','${suffix}-channel',
+      9801,'命令测试组织','ACTIVE',1,1000,1000,1000,2);
+    INSERT INTO customer_identity_subjects (id, subject_type, created_at)
+      VALUES ('${suffix}-member-subject','SELLER_ORG_MEMBER',1000);
+    INSERT INTO seller_organization_members (
+      id, identity_subject_id, organization_id, member_number, username_fallback,
+      display_name, role, primary_owner, status, version,
+      created_at, updated_at, activated_at, disabled_at
+    ) VALUES ('${suffix}-member','${suffix}-member-subject','${suffix}-org',1,
+      '${suffix}-member-1','命令成员','OWNER',1,'ACTIVE',1,1000,1000,1000,NULL);
+    INSERT INTO seller_stores (
+      id, organization_id, marketplace_code, display_name, normalized_name,
+      status, version, created_at, updated_at, disabled_at
+    ) VALUES ('${suffix}-store','${suffix}-org','AMAZON_JP','命令店铺','命令店铺',
+      'ACTIVE',1,1000,1000,NULL);
+    INSERT INTO products (
+      id, organization_id, store_id, marketplace_code, asin_display, asin_normalized,
+      status, current_version_no, version, created_at, updated_at, disabled_at
+    ) VALUES ('${suffix}-product','${suffix}-org','${suffix}-store','AMAZON_JP',
+      'B0SOCMD001','B0SOCMD001','ACTIVE',1,1,1000,1000,NULL);
+    INSERT INTO product_versions (
+      id, product_id, version_no, product_name, search_keywords_json, product_url,
+      buyer_visible_notes, internal_notes, created_by_staff_id, created_at,
+      ordering_guide_expected_amount_jpy, color_spec_mode
+    ) VALUES ('${suffix}-product-v1','${suffix}-product',1,'命令产品','[]',NULL,
+      NULL,NULL,'zz-phase3h-test-owner',1000,1980,'MAIN_IMAGE_VARIANT');
+    INSERT INTO demand_batches (
+      id, organization_id, store_id, marketplace_code, product_id, product_version_no,
+      submitted_by_member_id, task_type, target_quantity, buyer_visible_notes,
+      seller_notes, open_at, reservation_deadline, order_deadline, status,
+      reviewed_by_staff_id, version,
+      submitted_at, updated_at, reviewed_at, published_at, withdrawn_at, closed_at,
+      held_reservation_count, approved_reservation_count
+    ) VALUES ('${suffix}-demand','${suffix}-org','${suffix}-store','AMAZON_JP',
+      '${suffix}-product',1,'${suffix}-member','TEXT',1,NULL,NULL,500,900,2000,'PUBLISHED',
+      'zz-phase3h-test-owner',2,
+      1000,3000,3000,3000,NULL,NULL,1,0);
+    INSERT INTO product_reservations (
+      id, demand_batch_id, buyer_customer_id, organization_id, store_id, product_id,
+      product_version_no, marketplace_code, status, precheck_snapshot_json,
+      hold_expires_at, order_deadline_snapshot, version, submitted_at, updated_at,
+      decided_by_staff_id, decision_reason, decided_at, cancelled_at, expired_at,
+      reopened_count, buyer_self_pay_bps_snapshot, reference_order_amount_jpy_snapshot,
+      estimated_self_pay_jpy_snapshot, estimated_refundable_principal_jpy_snapshot,
+      buyer_self_pay_accepted_at, buyer_self_pay_accepted_demand_version
+    ) VALUES ('${suffix}-reservation','${suffix}-demand','${suffix}-buyer',
+      '${suffix}-org','${suffix}-store','${suffix}-product',1,'AMAZON_JP',
+      'PENDING_REVIEW','{}',1000,2000,1,1000,1000,NULL,NULL,NULL,NULL,NULL,0,
+      0,1980,0,1980,1000,2);
+  `);
 }

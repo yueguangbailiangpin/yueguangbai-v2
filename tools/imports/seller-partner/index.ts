@@ -13,13 +13,20 @@ export const FROZEN_SOURCE_FOLDERS = {
   dhtkJdpmZEgh: 'yueguangbaiai',
 } as const;
 
+// Owner ruling 2026-09-01: yueguangbai (月光白) and ygbceping are the same
+// account, so yueguangbai folds into ygbceping; yueguangbaiai (月光白AI) is a
+// separate account and must never merge with either. idomango/dio/ygc/ygcceping
+// are confirmed input aliases; the yinghua1942 and quesheng merges are confirmed.
 export const CHANNEL_ALIASES = {
   ido: 'ido-mango',
   'ido-mango': 'ido-mango',
+  idomango: 'ido-mango',
   dio: 'ido-mango',
   ygb: 'ygbceping',
+  ygc: 'ygbceping',
+  ygcceping: 'ygbceping',
   ygbceping: 'ygbceping',
-  yueguangbai: 'yueguangbaiai',
+  yueguangbai: 'ygbceping',
   yueguangbaiai: 'yueguangbaiai',
   yinghua1942: 'yinghua1942',
   yinghua1942ai: 'yinghua1942',
@@ -397,7 +404,7 @@ export async function commitSellerPartnerImport(
         id, marketplace_code, seller_code, origin_channel_id,
         current_channel_id, seller_sequence, organization_name, status, version,
         created_at, updated_at, activated_at, disabled_at, next_member_number
-      ) VALUES (?, 'JP', ?, ?, ?, ?, ?, 'DISABLED', 1, ?, ?, NULL, ?, 2)
+      ) VALUES (?, 'AMAZON_JP', ?, ?, ?, ?, ?, 'DISABLED', 1, ?, ?, NULL, ?, 2)
     `).bind(
       group.organizationId,
       sellerCode,
@@ -429,7 +436,7 @@ export async function commitSellerPartnerImport(
       INSERT INTO seller_stores (
         id, organization_id, marketplace_code, display_name, normalized_name,
         status, version, created_at, updated_at, disabled_at
-      ) VALUES (?, ?, 'JP', ?, ?, 'DISABLED', 1, ?, ?, ?)
+      ) VALUES (?, ?, 'AMAZON_JP', ?, ?, 'DISABLED', 1, ?, ?, ?)
     `).bind(
       storeId,
       group.organizationId,

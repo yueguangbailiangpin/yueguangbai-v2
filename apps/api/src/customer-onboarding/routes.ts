@@ -1,15 +1,17 @@
 import { apiFailure, apiSuccess, type SqlDatabase } from '@ygb/contracts';
 import { normalizeWechatId } from '@ygb/domain';
-import { hashNormalizedWechat } from '../acquisition/privacy';
+import { hashNormalizedWechat } from './wechat-identity-crypto';
 import type { Context, Hono } from 'hono';
 import { requestIdFromContext } from '../http-auth/errors';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { resolveStaffMarketplaceCodes } from '../staff-assignment/data-scope';
 import { listHistoricalSellerDirectory } from './historical-seller-directory';
+import { listOrderCommunicationScreenshots } from '../order-communication-screenshots';
 
 interface BuyerRow {
   subject_id: string;
   display_name: string;
+  buyer_customer_no: string | null;
   marketplace_code: string | null;
   account_id: string | null;
   formal_order_count: number;
@@ -25,9 +27,22 @@ type CustomerMatch = {
   customer_type: 'BUYER' | 'SELLER';
   subject_id: string;
   display_name: string;
+  customer_number: string | null;
   marketplace_code: string;
   has_portal_account: boolean;
   historical_order_count: number;
+  orders: readonly {
+    formal_order_id: string;
+    product_name: string;
+    platform_order_identifier: string | null;
+    confirmed_at: number;
+    communication_screenshots: readonly {
+      file_object_id: string;
+      file_version: number;
+      purpose: 'ORDER_COMMUNICATION_SCREENSHOT';
+      visibility: 'SELLER_VISIBLE';
+    }[];
+  }[];
   source_status: 'HISTORICAL_UNKNOWN';
 };
 
@@ -38,7 +53,10 @@ export function registerCustomerOnboardingRoutes(app: Hono<any>): void {
       const actor = requireActor(context);
       const url = new URL(context.req.url);
       if ([...url.searchParams.keys()].length > 0) throw new Error('VALIDATION');
-      const items = await listHistoricalSellerDirectory(context.env.DB, actor);
+      const items = await listHistoricalSellerDirectory(
+        context.env.DB,
+        actor,
+      );
       context.header('Cache-Control', 'no-store');
       return context.json(apiSuccess({ items }, requestId));
     } catch (error) {
@@ -116,7 +134,7 @@ async function buyerMatches(
 ): Promise<CustomerMatch[]> {
   const rows = await database
     .prepare(
-      `SELECT buyer.id AS subject_id,buyer.display_name,
+      `SELECT buyer.id AS subject_id,buyer.display_name,buyer.buyer_customer_no,
       assignment.marketplace_code,account.id AS account_id,
       (SELECT COUNT(*) FROM formal_orders formal_order WHERE formal_order.buyer_customer_id=buyer.id) AS formal_order_count
     FROM wechat_identity_claims claim
@@ -128,16 +146,47 @@ async function buyerMatches(
     )
     .bind(wechat)
     .all<BuyerRow>();
-  return rows.results
-    .filter((row) => markets === null || markets.includes(row.marketplace_code ?? 'AMAZON_JP'))
-    .map((row) => ({
-      customer_type: 'BUYER',
+  const orderRows = await Promise.all(rows.results.map((row) => database
+    .prepare(`
+      SELECT id AS formal_order_id, product_name_snapshot AS product_name,
+        amazon_order_number_normalized AS platform_order_identifier,
+        confirmed_at
+      FROM formal_orders
+      WHERE buyer_customer_id=?
+      ORDER BY confirmed_at DESC, id
+      LIMIT 10
+    `).bind(row.subject_id)
+    .all<{
+      formal_order_id: string;
+      product_name: string;
+      platform_order_identifier: string | null;
+      confirmed_at: number;
+    }>()));
+  const visibleRows = rows.results
+    .filter((row) => markets === null || markets.includes(row.marketplace_code ?? 'AMAZON_JP'));
+  const orderIds = visibleRows.flatMap(
+    (_, index) => orderRows[index]?.results.map((order) => order.formal_order_id) ?? [],
+  );
+  const chatScreenshots = await listOrderCommunicationScreenshots(database, orderIds);
+  return visibleRows
+    .map((row, index) => ({
+      customer_type: 'BUYER' as const,
       subject_id: row.subject_id,
       display_name: row.display_name,
+      customer_number: row.buyer_customer_no ?? null,
       marketplace_code: row.marketplace_code ?? 'AMAZON_JP',
       has_portal_account: row.account_id !== null,
       historical_order_count: Number(row.formal_order_count),
-      source_status: 'HISTORICAL_UNKNOWN',
+      orders: Object.freeze(orderRows[index]?.results.map((order) => ({
+        formal_order_id: order.formal_order_id,
+        product_name: order.product_name,
+        platform_order_identifier: order.platform_order_identifier,
+        confirmed_at: Number(order.confirmed_at),
+        communication_screenshots: Object.freeze(
+          chatScreenshots.get(order.formal_order_id) ?? [],
+        ),
+      })) ?? []),
+      source_status: 'HISTORICAL_UNKNOWN' as const,
     }));
 }
 
@@ -164,34 +213,22 @@ async function sellerMatches(
     )
     .bind(wechat)
     .all<SellerRow>();
-  const importedRows = await database
-    .prepare(
-      `SELECT organization.id AS subject_id,organization.organization_name AS display_name,
-      organization.marketplace_code,${accountSql} AS account_id,
-      (SELECT COUNT(*) FROM formal_orders formal_order WHERE formal_order.seller_organization_id=organization.id) AS formal_order_count
-    FROM seller_partner_import_source_records source
-    JOIN seller_organizations organization ON organization.seller_code=source.source_seller_code
-    WHERE source.seller_wechat_normalized=? AND source.status IN ('VALID','IMPORTED') AND organization.status='ACTIVE'
-    GROUP BY organization.id,organization.organization_name,organization.marketplace_code
-    ORDER BY organization.activated_at,organization.id`,
-    )
-    .bind(wechat)
-    .all<SellerRow>();
   const dedup = new Map<string, SellerRow>();
-  for (const row of [...importedRows.results, ...identityRows.results])
-    dedup.set(row.subject_id, row);
+  for (const row of identityRows.results) dedup.set(row.subject_id, row);
   return [...dedup.values()]
     .filter((row) => {
-      const canonical = row.marketplace_code === 'JP' ? 'AMAZON_JP' : row.marketplace_code;
+      const canonical = row.marketplace_code === 'AMAZON_JP' ? 'AMAZON_JP' : row.marketplace_code;
       return markets === null || markets.includes(canonical);
     })
     .map((row) => ({
       customer_type: 'SELLER',
       subject_id: row.subject_id,
       display_name: row.display_name,
-      marketplace_code: row.marketplace_code === 'JP' ? 'AMAZON_JP' : row.marketplace_code,
+      customer_number: null,
+      marketplace_code: row.marketplace_code === 'AMAZON_JP' ? 'AMAZON_JP' : row.marketplace_code,
       has_portal_account: row.account_id !== null,
       historical_order_count: Number(row.formal_order_count),
+      orders: [],
       source_status: 'HISTORICAL_UNKNOWN',
     }));
 }
@@ -232,7 +269,7 @@ async function buyerBySubject(
 ): Promise<CustomerMatch | null> {
   const row = await database
     .prepare(
-      `SELECT buyer.id AS subject_id,buyer.display_name,
+      `SELECT buyer.id AS subject_id,buyer.display_name,buyer.buyer_customer_no,
       account.id AS account_id,(SELECT COUNT(*) FROM formal_orders formal_order WHERE formal_order.buyer_customer_id=buyer.id) AS formal_order_count
     FROM buyer_customers buyer LEFT JOIN customer_account_personas persona ON persona.buyer_customer_id=buyer.id AND persona.persona_type='BUYER'
     LEFT JOIN customer_login_accounts account ON account.id=persona.account_id AND account.status='ACTIVE'
@@ -245,9 +282,11 @@ async function buyerBySubject(
         customer_type: 'BUYER',
         subject_id: String(row.subject_id),
         display_name: String(row.display_name),
+        customer_number: (row as { buyer_customer_no?: string | null }).buyer_customer_no ?? null,
         marketplace_code: market,
         has_portal_account: row.account_id !== null,
         historical_order_count: Number(row.formal_order_count),
+        orders: [],
         source_status: 'HISTORICAL_UNKNOWN',
       }
     : null;
@@ -273,9 +312,11 @@ async function sellerBySubject(
         customer_type: 'SELLER',
         subject_id: String(row.subject_id),
         display_name: String(row.display_name),
+        customer_number: null,
         marketplace_code: market,
         has_portal_account: row.account_id !== null,
         historical_order_count: Number(row.formal_order_count),
+        orders: [],
         source_status: 'HISTORICAL_UNKNOWN',
       }
     : null;

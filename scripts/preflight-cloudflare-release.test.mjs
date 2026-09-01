@@ -14,6 +14,8 @@ import {
   inspectReleaseTemplate,
   operationalAlertFingerprint,
   readLocalReleaseConfig,
+  archiveReleaseFlags,
+  retiredArchiveReleaseFlags,
   requiredManagedSecrets,
   templatePath,
   validateReleaseConfig,
@@ -24,15 +26,6 @@ const root = path.resolve(import.meta.dirname, '..');
 const script = path.join(root, 'scripts/preflight-cloudflare-release.mjs');
 
 describe('Cloudflare release preflight', () => {
-  it('keeps Outbox delivery disabled in every checked-in environment template',()=>{
-    for(const file of [
-      'wrangler.example.jsonc',
-      'apps/api/wrangler.local.jsonc',
-      'apps/api/wrangler.staging.template.jsonc',
-      'apps/api/wrangler.production.template.jsonc',
-    ]) expect(readLocalReleaseConfig(path.join(root,file)).vars.OUTBOX_DELIVERY_ENABLED).toBe('false');
-  });
-
   for (const environment of ['staging', 'production']) {
     it(`reports ${environment} operator fields without treating the template as deployable`, () => {
       const report = inspectReleaseTemplate(environment);
@@ -48,13 +41,46 @@ describe('Cloudflare release preflight', () => {
     it(`accepts only a complete anonymous ${environment} rendering`, () => {
       const config = anonymousConfig(environment);
       expect(validateReleaseConfig(config, environment)).toEqual([]);
-      config.vars.OUTBOX_DELIVERY_ENABLED = 'true';
+      config.vars.ARCHIVE_HOT_DELETE_ENABLED = 'true';
       expect(validateReleaseConfig(config, environment))
-        .toContain('vars.OUTBOX_DELIVERY_ENABLED:must_be_false');
-      config.vars.OUTBOX_DELIVERY_ENABLED = 'false';
-      config.vars.DRIVE_ARCHIVE_R2_DELETE_ENABLED = 'true';
-      expect(validateReleaseConfig(config, environment))
-        .toContain('vars.DRIVE_ARCHIVE_R2_DELETE_ENABLED:must_be_false');
+        .toContain('vars.ARCHIVE_HOT_DELETE_ENABLED:must_be_false');
+    });
+
+    it(`requires every canonical archive switch in the rendered ${environment} config`, () => {
+      const template = readLocalReleaseConfig(templatePath(environment));
+      expect(Object.fromEntries(archiveReleaseFlags.map((flag) => [flag, template.vars?.[flag]])))
+        .toEqual(Object.fromEntries(archiveReleaseFlags.map((flag) => [flag, 'false'])));
+      for (const flag of archiveReleaseFlags) {
+        const missing = anonymousConfig(environment);
+        delete missing.vars[flag];
+        expect(validateReleaseConfig(missing, environment))
+          .toContain(`vars.${flag}:must_be_false`);
+        const nonString = anonymousConfig(environment);
+        nonString.vars[flag] = false;
+        expect(validateReleaseConfig(nonString, environment))
+          .toContain(`vars.${flag}:must_be_false`);
+        const enabled = anonymousConfig(environment);
+        enabled.vars[flag] = 'true';
+        expect(validateReleaseConfig(enabled, environment))
+          .toContain(`vars.${flag}:must_be_false`);
+      }
+    });
+
+    it(`does not accept retired archive switch names for ${environment}`, () => {
+      const config = anonymousConfig(environment);
+      for (const flag of archiveReleaseFlags) delete config.vars[flag];
+      for (const flag of retiredArchiveReleaseFlags) config.vars[flag] = 'false';
+      const errors = validateReleaseConfig(config, environment);
+      for (const flag of archiveReleaseFlags) {
+        expect(errors).toContain(`vars.${flag}:must_be_false`);
+      }
+      for (const flag of retiredArchiveReleaseFlags) {
+        expect(errors).toContain(`vars.${flag}:deprecated`);
+      }
+      const both = anonymousConfig(environment);
+      both.vars.DRIVE_ARCHIVE_ENABLED = 'false';
+      expect(validateReleaseConfig(both, environment))
+        .toContain('vars.DRIVE_ARCHIVE_ENABLED:deprecated');
     });
 
     it(`requires ${environment} public Worker-to-Worker fetch routing for Access JWKS`, () => {
@@ -99,6 +125,18 @@ describe('Cloudflare release preflight', () => {
     staging.triggers={crons:['0 * * * *']};
     expect(validateReleaseConfig(staging,'staging'))
       .toContain('triggers:forbidden_when_scheduler_disabled');
+  });
+
+  it('rejects any unexpected service binding now that keyword generation is retired',()=>{
+    const staging=anonymousConfig('staging');
+    expect(staging.services ?? []).toEqual([]);
+    expect(validateReleaseConfig(staging,'staging')).toEqual([]);
+    staging.services=[{
+      binding:'KEYWORD_IMAGE_GENERATOR',
+      service:'yueguangbai-keyword-image-generator-staging',
+    }];
+    expect(validateReleaseConfig(staging,'staging'))
+      .toContain('services:unexpected_binding');
   });
 
   it('rejects a staging rendering that points every deployable resource at production',()=>{
@@ -248,6 +286,24 @@ describe('Cloudflare release preflight', () => {
     expect(errors).toContain('d1_databases:binding_invalid');
     expect(errors).toContain('r2_buckets:binding_invalid');
     expect(errors).toContain('services:operational_alert_sink_binding_required');
+  });
+
+  it('rejects rendered external configs when any canonical archive switch is missing', () => {
+    const outside = mkdtempSync(path.join(tmpdir(), 'ygb-release-archive-switches-'));
+    try {
+      for (const flag of archiveReleaseFlags) {
+        const config = anonymousConfig('production');
+        delete config.vars[flag];
+        const file = path.join(outside, `${flag}.json`);
+        writeFileSync(file, JSON.stringify(config));
+        const result = runConfig(file);
+        expect(result.status).not.toBe(0);
+        expect(JSON.parse(result.stdout).errors)
+          .toContain(`vars.${flag}:must_be_false`);
+      }
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it('allows only real files outside the repository by lexical and real path', () => {

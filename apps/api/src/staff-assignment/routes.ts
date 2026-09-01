@@ -3,7 +3,12 @@ import type { Context, Hono } from 'hono';
 import type { AssignmentStaffAuthorization } from './effective-authorization';
 import { StaffAssignmentError } from './errors';
 import { decodeStaffWorkItemCursor, encodeStaffWorkItemCursor } from './pagination';
-import { getVisibleWorkItem, listMyAssignments, listVisibleWorkItems } from './read-model';
+import {
+  getVisibleWorkItem,
+  listMyAssignments,
+  listVisibleWorkItems,
+  readWorkbenchSummary,
+} from './read-model';
 
 /** Frozen Staff V1 exposes only read-only Role × Marketplace work queues. */
 export function registerStaffAssignmentRoutes(app: Hono<any>): void {
@@ -77,6 +82,24 @@ export function registerStaffAssignmentRoutes(app: Hono<any>): void {
     }),
   );
 
+  // Stage 7.5 batch 1: authoritative workbench metrics (SLA counts, exception
+  // orders, role-gated refund amount, recent items). Registered before the
+  // :id route so the literal path wins.
+  app.get(
+    '/api/staff/me/work-items/summary',
+    withStaffErrors(async (context) => {
+      const actor = requireStaffActor(context);
+      const parameters = new URL(context.req.url).searchParams;
+      if (parameters.size > 0) throw new StaffAssignmentError('VALIDATION_ERROR', 400);
+      return context.json(
+        apiSuccess(
+          { summary: await readWorkbenchSummary(context.env.DB, actor) },
+          requestId(context),
+        ),
+      );
+    }),
+  );
+
   app.get(
     '/api/staff/me/work-items/:id',
     withStaffErrors(async (context) => {
@@ -140,9 +163,9 @@ function toApiErrorCode(code: StaffAssignmentError['code']): ApiErrorCode {
     case 'IDEMPOTENCY_CONFLICT':
       return 'IDEMPOTENCY_CONFLICT';
     case 'DEPENDENCY_UNAVAILABLE':
-    case 'NO_ELIGIBLE_ASSIGNEE':
-    case 'OWNER_FALLBACK_NOT_CONFIGURED':
-    case 'OWNER_FALLBACK_INVALID':
+    case 'BUYER_PRE_SALES_OWNER_NOT_ASSIGNED':
+    case 'BUYER_REFUND_OWNER_NOT_ASSIGNED':
+    case 'SELLER_ACCOUNT_MANAGER_NOT_ASSIGNED':
       return 'DEPENDENCY_UNAVAILABLE';
     default:
       return 'STATE_CONFLICT';

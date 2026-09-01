@@ -5,32 +5,27 @@ let database:SqliteDatabase|null=null;
 afterEach(()=>{database?.close();database=null;});
 
 describe('customer portal onboarding migrations 0049-0050',()=>{
-  it('preserves the onboarding schema beneath current schema 70',async()=>{
+  it('preserves the onboarding schema beneath the stage 3 clean baseline',async()=>{
     database=createMigratedTestDatabase();
     const state=await database.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`)
       .first<{schema_version:number}>();
-    expect(Number(state?.schema_version)).toBe(70);
+    expect(Number(state?.schema_version)).toBe(41);
   });
 
-  it('creates seller invitation persistence and buyer lead attribution mapping',async()=>{
+  it('creates seller invitation persistence',async()=>{
     database=createMigratedTestDatabase();
     const objects=await database.prepare(`SELECT type,name FROM sqlite_schema
       WHERE name IN (
         'customer_seller_invitations',
-        'customer_seller_invitation_events',
-        'customer_buyer_invitation_lead_links',
-        'trg_buyer_invitation_consumed_link_acquisition_lead'
+        'customer_seller_invitation_events'
       ) ORDER BY name`).all<{type:string;name:string}>();
     expect(objects.results.map((row)=>row.name)).toEqual([
-      'customer_buyer_invitation_lead_links',
       'customer_seller_invitation_events',
       'customer_seller_invitations',
-      'trg_buyer_invitation_consumed_link_acquisition_lead',
     ]);
-    expect(objects.results.find((row)=>row.name==='trg_buyer_invitation_consumed_link_acquisition_lead')?.type).toBe('trigger');
   });
 
-  it('keeps the seller onboarding channel separate from acquisition source channels',async()=>{
+  it('keeps the seller onboarding channel in seller_channels only',async()=>{
     database=createMigratedTestDatabase();
     const row=await database.prepare(`SELECT id,code,name,status FROM seller_channels
       WHERE id='seller-channel-portal-onboarding'`).first<{id:string;code:string;name:string;status:string}>();
@@ -40,8 +35,6 @@ describe('customer portal onboarding migrations 0049-0050',()=>{
       name:'新系统卖家账号开通',
       status:'ACTIVE',
     });
-    const acquisition=await database.prepare(`SELECT COUNT(*) AS count FROM acquisition_channels
-      WHERE code='portal-onboarding' OR display_name='新系统卖家账号开通'`).first<{count:number}>();
-    expect(Number(acquisition?.count??0)).toBe(0);
+    // D-056: acquisition_channels is retired; separation holds by absence.
   });
 });

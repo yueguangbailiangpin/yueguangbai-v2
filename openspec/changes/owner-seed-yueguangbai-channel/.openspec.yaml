@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-09-01
+goal: 修复别名契约拆分后的运行时缺口——seller_channels 补种 yueguangbai 第七通道（schema 40），主 spec 冻结路由要求按 Owner 2026-09-01 终裁修订。

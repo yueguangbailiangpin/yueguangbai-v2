@@ -144,7 +144,7 @@ export async function correctBuyerMarketplace(
             SELECT 1 FROM review_cases WHERE buyer_customer_id=?
           )
           AND NOT EXISTS (
-            SELECT 1 FROM formal_order_marketplace_money_snapshots
+            SELECT 1 FROM formal_order_financial_snapshots
             WHERE buyer_customer_id=?
           )
       `).bind(
@@ -267,7 +267,7 @@ async function hasFormalFacts(
       UNION ALL SELECT 1 FROM order_evidence_submissions WHERE buyer_customer_id=?
       UNION ALL SELECT 1 FROM formal_orders WHERE buyer_customer_id=?
       UNION ALL SELECT 1 FROM review_cases WHERE buyer_customer_id=?
-      UNION ALL SELECT 1 FROM formal_order_marketplace_money_snapshots
+      UNION ALL SELECT 1 FROM formal_order_financial_snapshots
         WHERE buyer_customer_id=?
     ) AS found
   `).bind(buyerId, buyerId, buyerId, buyerId, buyerId)

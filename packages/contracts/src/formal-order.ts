@@ -28,12 +28,13 @@ export interface FormalOrderFinancialSnapshotProjection {
   buyer_rate_version_id: string;
   buyer_rate_version_no: number;
   buyer_rate_business_date: string;
-  buyer_rate_confirmed_at: number;
-  buyer_cny_per_jpy_e8: FixedIntegerString;
-  service_fee_version_id: string;
+  buyer_rate_created_at: number;
+  buyer_rate_value: FixedIntegerString;
+  buyer_rate_scale: FixedIntegerString;
+  service_fee_rule_version_id: string;
   service_fee_version_no: number;
   service_fee_effective_from: number;
-  service_fee_confirmed_at: number;
+  service_fee_created_at: number;
   service_fee_cny_fen: FixedIntegerString;
   buyer_self_pay_bps: number;
   buyer_self_pay_jpy: FixedIntegerString;
@@ -56,7 +57,6 @@ export interface ConfirmFormalOrderResult {
   demand_batch_id: string;
   buyer_customer_id: string;
   buyer_customer_no: string;
-  buyer_number_allocated: boolean;
   seller_organization_id: string;
   store_id: string;
   marketplace_code: MarketplaceCode;

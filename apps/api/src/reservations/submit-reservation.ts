@@ -15,10 +15,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   batchWithAssignmentRetry,
   prepareDirectWorkItem,
 } from '../staff-assignment';
@@ -34,6 +30,13 @@ import {
   ReservationError,
   type BuyerReservationActor,
 } from './reservation-shared';
+import {
+  autoApproveReservation,
+  type ReservationAutoApproveConfig,
+} from './auto-approve';
+import {
+  assertNoHistoricalParticipation,
+} from './participation-history';
 
 interface DemandEligibilityRow {
   demand_batch_id: string;
@@ -44,7 +47,7 @@ interface DemandEligibilityRow {
   demand_version: number;
   buyer_self_pay_bps_snapshot: number;
   ordering_guide_expected_amount_jpy: number;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   demand_status: string;
   target_quantity: number;
   held_reservation_count: number;
@@ -65,7 +68,7 @@ export interface SubmitReservationResult {
   buyer_customer_id: string;
   product_id: string;
   product_version_no: number;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   status: 'PENDING_REVIEW';
   hold_expires_at: number;
   order_deadline_snapshot: number;
@@ -91,6 +94,7 @@ export async function submitReservation(
     idempotencyKey: string;
     requestId?: string | null;
     now?: number;
+    autoApprove?: ReservationAutoApproveConfig;
   },
 ): Promise<SubmitReservationResult> {
   validateBuyerReservationActor(command.actor);
@@ -141,6 +145,15 @@ export async function submitReservation(
       command.actor,
       now,
     );
+    const participationException = await assertNoHistoricalParticipation(
+      database,
+      {
+        buyerCustomerId: command.actor.buyerCustomerId,
+        sellerOrganizationId: source.organization_id,
+        demandBatchId: source.demand_batch_id,
+        now,
+      },
+    );
     await assertNoReservationConflict(
       database,
       source,
@@ -178,7 +191,7 @@ export async function submitReservation(
       replayed: false,
     };
 
-    if (command.actor.marketplaceCode !== 'JP') {
+    if (command.actor.marketplaceCode !== 'AMAZON_JP') {
       throw new ReservationError('NOT_FOUND', 404);
     }
     const precheck = reservationPrecheckSnapshot({
@@ -202,22 +215,9 @@ export async function submitReservation(
       checkedAt: now,
     });
 
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `reservation-submitted:${reservationId}`,
-      eventType: 'RESERVATION_SUBMITTED',
-      aggregateType: 'RESERVATION',
-      aggregateId: reservationId,
-      payload: {
-        ...response,
-        seller_organization_id:
-          source.organization_id,
-        store_id: source.store_id,
-      },
-      createdAt: now,
-    });
 
-    const statements: SqlStatement[] = [
+    const statements: SqlStatement[] = [];
+    statements.push(
       database.prepare(`
         INSERT INTO product_reservations (
           id,
@@ -298,11 +298,41 @@ export async function submitReservation(
             SELECT 1
             FROM product_reservations active
             WHERE active.buyer_customer_id=buyer.id
-              AND active.product_id=demand.product_id
+              AND active.store_id=demand.store_id
               AND active.status IN (
                 'PENDING_REVIEW',
                 'APPROVED'
               )
+          )
+          AND (
+            (
+              NOT EXISTS (
+                SELECT 1
+                FROM product_reservations prior
+                JOIN demand_batches prior_demand
+                  ON prior_demand.id=prior.demand_batch_id
+                WHERE prior.buyer_customer_id=buyer.id
+                  AND prior_demand.organization_id=demand.organization_id
+                  AND prior.status='APPROVED'
+              )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM formal_orders formal_order
+                JOIN seller_stores prior_store
+                  ON prior_store.id=formal_order.store_id
+                WHERE formal_order.buyer_customer_id=buyer.id
+                  AND prior_store.organization_id=demand.organization_id
+              )
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM reservation_participation_exceptions exemption
+              WHERE exemption.buyer_customer_id=buyer.id
+                AND exemption.seller_organization_id=demand.organization_id
+                AND exemption.demand_batch_id=demand.id
+                AND exemption.used_at IS NULL
+                AND exemption.valid_until>?
+            )
           )
       `).bind(
         reservationId,
@@ -318,6 +348,7 @@ export async function submitReservation(
         command.actor.buyerCustomerId,
         demandBatchId,
         command.actor.marketplaceCode,
+        now,
         now,
         now,
         now,
@@ -390,7 +421,6 @@ export async function submitReservation(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,
@@ -412,7 +442,36 @@ export async function submitReservation(
         database,
         acquired.claim,
       ),
-    ];
+    );
+    if (participationException) {
+      // Consume the one-time exception inside the same D1 transaction and
+      // prove the consumption in the batch; an already-used or raced
+      // exception makes the UPDATE touch zero rows and the assertion fail.
+      // It must run after the reservation INSERT: the INSERT's eligibility
+      // branch still observes the exception as unused.
+      statements.push(
+        database.prepare(`
+          UPDATE reservation_participation_exceptions
+          SET used_at=?, used_by_reservation_id=?
+          WHERE id=? AND used_at IS NULL
+        `).bind(
+          now,
+          reservationId,
+          participationException.id,
+        ),
+        database.prepare(`
+          INSERT INTO transaction_assertions (assertion_value)
+          SELECT CASE WHEN EXISTS (
+            SELECT 1 FROM reservation_participation_exceptions
+            WHERE id=? AND used_at IS NOT NULL
+              AND used_by_reservation_id=?
+          ) THEN 1 ELSE 0 END
+        `).bind(
+          participationException.id,
+          reservationId,
+        ),
+      );
+    }
 
     await batchWithAssignmentRetry(
       database,
@@ -433,6 +492,43 @@ export async function submitReservation(
       }),
       statements,
     );
+    if (command.autoApprove?.enabled) {
+      try {
+        const autoApproval = await autoApproveReservation(
+          database,
+          { reservationId },
+          {
+            config: command.autoApprove,
+            requestId: command.requestId ?? null,
+            idempotencyKey: `${acquired.claim.idempotencyKey}:auto-approve`,
+            now,
+          },
+        );
+        if (autoApproval?.status === 'MANUAL_REVIEW') {
+          // Internal protection reason only; the buyer response remains the
+          // existing PENDING_REVIEW contract without risk details.
+          console.info(
+            '[reservation-auto-approve] protected manual review',
+            {
+              reservationId,
+              reasonCode: autoApproval.reason_code,
+            },
+          );
+        }
+      } catch (error) {
+        // 提交预约批次已经提交；自动通过是独立批次。自动通过失败
+        // （含批次断言失败）不会回滚 PENDING_REVIEW、hold 或待办，
+        // 仍由人工兜底，不让买家看到内部错误。
+        console.warn(
+          '[reservation-auto-approve] fell back to manual review',
+          {
+            reservationId,
+            code: (error as { code?: unknown })?.code,
+            message: (error as { message?: unknown })?.message,
+          },
+        );
+      }
+    }
     return response;
   } catch (error) {
     const normalized = normalizeReservationError(error);
@@ -571,11 +667,11 @@ async function assertNoReservationConflict(
     );
   }
 
-  const activeProduct = await database.prepare(`
+  const activeStore = await database.prepare(`
     SELECT id
     FROM product_reservations
     WHERE buyer_customer_id=?
-      AND product_id=?
+      AND store_id=?
       AND status IN (
         'PENDING_REVIEW',
         'APPROVED'
@@ -583,11 +679,11 @@ async function assertNoReservationConflict(
     LIMIT 1
   `).bind(
     buyerCustomerId,
-    source.product_id,
+    source.store_id,
   ).first<{ id: string }>();
-  if (activeProduct) {
+  if (activeStore) {
     throw new ReservationError(
-      'BUYER_PRODUCT_RESERVATION_CONFLICT',
+      'BUYER_STORE_RESERVATION_CONFLICT',
       409,
     );
   }

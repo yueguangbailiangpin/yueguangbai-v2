@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-31
+skip_specs: true
+goal: 删除经当前 checkout 多路径证据确认无消费者的两个 API 源码残留；不改变产品行为、API 合约或数据库语义。

@@ -15,7 +15,7 @@ import { ProtectedFileButton } from './ProtectedFileButton';
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe('ProtectedFileButton Controller ownership', () => {
-  it('revokes the ready Object URL immediately when provider identity changes and on unmount', async () => {
+  it('keeps provider file URLs alive in the session cache across identity changes and unmounts', async () => {
     let sequence = 0;
     const revoke = vi.fn();
     Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => `blob:provider-${++sequence}`) });
@@ -27,7 +27,7 @@ describe('ProtectedFileButton Controller ownership', () => {
           expires_at: 99, replayed: false }, meta: { request_id: 'provider-request' },
       })),
       http.get(apiUrl('/api/buyer-portal/file-read-intents/:id/content'), () => new Response(Uint8Array.of(1, 2), {
-        headers: { 'Content-Type': 'image/png', 'Content-Length': '2', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' },
+        headers: { 'Content-Type': 'image/png', 'Content-Length': '2', 'Cache-Control': 'private, max-age=300', 'X-Content-Type-Options': 'nosniff' },
       })),
     );
     const make = (id: string) => new GenericBuyerFileReadIntentAdapter({
@@ -38,10 +38,11 @@ describe('ProtectedFileButton Controller ownership', () => {
     await userEvent.click(screen.getByRole('button', { name: '查看文件' }));
     expect(await screen.findByRole('link', { name: '打开文件' })).toHaveAttribute('href', 'blob:provider-1');
     rendered.rerender(<QueryClientProvider client={client}><ProtectedFileButton provider={make('file-2')} /></QueryClientProvider>);
-    expect(revoke).toHaveBeenCalledWith('blob:provider-1');
     await userEvent.click(screen.getByRole('button', { name: '查看文件' }));
     expect(await screen.findByRole('link', { name: '打开文件' })).toHaveAttribute('href', 'blob:provider-2');
     rendered.unmount();
-    expect(revoke).toHaveBeenLastCalledWith('blob:provider-2');
+    // 带版本引用的 provider 文件进入会话缓存：切换与卸载不回收 URL，
+    // 重开同一文件零网络（由会话缓存测试覆盖），仅在淘汰/清空时回收。
+    expect(revoke).not.toHaveBeenCalled();
   });
 });

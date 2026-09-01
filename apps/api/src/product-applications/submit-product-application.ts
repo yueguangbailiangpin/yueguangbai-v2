@@ -18,10 +18,6 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
 import type { FileAuthorizationService } from '../files/authorization';
 import { createExplicitAudienceFileLinkStatements } from '../files/explicit-audience-links';
 import {
@@ -44,7 +40,7 @@ import {
 interface StoreSource {
   store_id: string;
   organization_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   store_status: string;
   organization_status: string;
 }
@@ -63,7 +59,7 @@ export interface SubmitProductApplicationResult {
   application_id: string;
   seller_organization_id: string;
   store_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   asin: string;
   status: 'SUBMITTED';
   version: 1;
@@ -78,6 +74,7 @@ export async function submitProductApplication(
     asin: string;
     product: ProductDescriptiveFields;
     sellerNotes: string | null;
+    orderingGuideExpectedAmountJpy: number;
     imageFiles: readonly ProductApplicationImageFile[];
   },
   command: {
@@ -116,6 +113,15 @@ export async function submitProductApplication(
   const sellerNotes = cleanOptionalSellerNotes(
     input.sellerNotes,
   );
+  const orderingGuideExpectedAmountJpy =
+    input.orderingGuideExpectedAmountJpy;
+  if (!Number.isSafeInteger(orderingGuideExpectedAmountJpy)
+    || orderingGuideExpectedAmountJpy < 1) {
+    throw new ProductApplicationError(
+      'VALIDATION_ERROR',
+      400,
+    );
+  }
   const imageFiles = normalizeImageFiles(input.imageFiles);
   const now = command.now ?? Date.now();
   if (!Number.isSafeInteger(now) || now < 0) {
@@ -133,10 +139,12 @@ export async function submitProductApplication(
     asin,
     product,
     seller_notes: sellerNotes,
+    ordering_guide_expected_amount_jpy:
+      orderingGuideExpectedAmountJpy,
     image_files: imageFiles,
   });
   const targetHash = await hashCanonicalJson({
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     asin,
   });
 
@@ -169,11 +177,11 @@ export async function submitProductApplication(
       command.actor.sellerOrganizationId,
     );
     // The application/product business tables are JP-only today
-    // (marketplaces(code) has a single 'JP' row; product commands type
-    // marketplace_code as 'JP'). A store on any other marketplace exists at
+    // (marketplaces(code) has a single 'AMAZON_JP' row; product commands type
+    // marketplace_code as 'AMAZON_JP'). A store on any other marketplace exists at
     // the catalog level, but its product application cannot be persisted -
     // reject it explicitly instead of failing the FK inside the batch.
-    if (store.marketplace_code !== 'JP') {
+    if (store.marketplace_code !== 'AMAZON_JP') {
       throw new ProductApplicationError(
         'MARKETPLACE_NOT_SUPPORTED',
         409,
@@ -229,24 +237,6 @@ export async function submitProductApplication(
       return prepared;
     }));
 
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `product-application-submitted:${applicationId}`,
-      eventType: 'PRODUCT_APPLICATION_SUBMITTED',
-      aggregateType: 'PRODUCT_APPLICATION',
-      aggregateId: applicationId,
-      payload: {
-        application_id: applicationId,
-        seller_organization_id: store.organization_id,
-        store_id: store.store_id,
-        marketplace_code: store.marketplace_code,
-        asin,
-        product_name: snapshot.product_name,
-        status: 'SUBMITTED',
-        version: 1,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -263,6 +253,7 @@ export async function submitProductApplication(
           product_url,
           buyer_visible_notes,
           seller_notes,
+          ordering_guide_expected_amount_jpy,
           status,
           review_reason,
           reviewed_by_staff_id,
@@ -273,7 +264,7 @@ export async function submitProductApplication(
           reviewed_at,
           withdrawn_at
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
           'SUBMITTED', NULL, NULL, NULL, 1, ?, ?, NULL, NULL
         )
       `).bind(
@@ -289,6 +280,7 @@ export async function submitProductApplication(
         snapshot.product_url,
         snapshot.buyer_visible_notes,
         sellerNotes,
+        orderingGuideExpectedAmountJpy,
         now,
         now,
       ),
@@ -327,7 +319,6 @@ export async function submitProductApplication(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

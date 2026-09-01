@@ -21,11 +21,12 @@ describe('file storage contracts', () => {
       'PRODUCT_IMAGE',
       'ORDER_INSTRUCTION_KEYWORD_IMAGE',
       'ORDER_EVIDENCE',
-      'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+      'ORDER_COMMUNICATION_SCREENSHOT',
       'REVIEW_EVIDENCE',
       'BUYER_REFUND_PROOF',
       'SELLER_SETTLEMENT_PROOF',
       'SUPPORT_ATTACHMENT',
+      'SERVICE_CHANNEL_QR',
     ]);
     expect(FILE_VISIBILITIES).toEqual([
       'INTERNAL_ONLY',
@@ -42,6 +43,7 @@ describe('file storage contracts', () => {
       'BUYER_REFUND',
       'SELLER_SETTLEMENT',
       'SUPPORT_CASE',
+      'SERVICE_CHANNEL',
     ]);
     expect(FILE_LINK_AUTHORIZATION_MODES).toEqual([
       'LEGACY_VISIBILITY',

@@ -1,4 +1,21 @@
 import { z } from 'zod';
+// Stage 7.5R-2: the buyer service channel + SafeFileReference runtime
+// contracts live once in `@ygb/contracts` and are shared with the backend
+// contract tests and the file read controller — no local duplicates. The
+// historic local names stay available as re-exports of the same objects.
+import {
+  buyerServiceChannelSchema,
+  buyerServiceChannelsResponseSchema,
+  safeFileReferenceSchema,
+} from '@ygb/contracts';
+
+export {
+  buyerServiceChannelSchema,
+  buyerServiceChannelsResponseSchema as buyerServiceChannelsSchema,
+  safeFileReferenceSchema,
+};
+export type BuyerServiceChannel =
+  z.output<typeof buyerServiceChannelSchema>;
 
 export const identifierSchema = z.string().min(1).max(120)
   .regex(/^[^\u0000-\u001f\u007f]+$/u);
@@ -14,7 +31,7 @@ export const dateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u)
       && date.toISOString().slice(0, 10) === value;
   });
 
-const marketplace = z.literal('JP');
+const marketplace = z.literal('AMAZON_JP');
 const reviewType = z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']);
 const epoch = nonnegativeIntegerSchema;
 const nullableEpoch = epoch.nullable();
@@ -24,18 +41,36 @@ const page = <T extends z.ZodType>(item: T) => z.object({
 }).strict();
 
 export const buyerMeSchema = z.object({
+  // Stage 7.5 batch 2: stage contact projection (public names only).
+  assigned_contacts: z.object({
+    pre_sales_owner_display_name: z.string().nullable().optional(),
+    refund_owner_display_name: z.string().nullable().optional(),
+  }).strict().optional(),
   buyer: z.object({
     display_name: z.string(),
     marketplace_code: marketplace,
     identity_review_status: z.enum(['CLEAR', 'REVIEW_REQUIRED']),
+    customer_number: z.string().nullable(),
+    refund_account_name: z.string().nullable(),
+    refund_account_identifier: z.string().nullable(),
   }).strict(),
 }).strict();
+
+// Stage 7.5R: QR renders through the controlled read-intent chain
+// (SafeFileReference) instead of a bare internal file id — schema shared
+// from `@ygb/contracts` (see re-exports above).
 
 export const demandSchema = z.object({
   demand_id: identifierSchema,
   demand_version: positiveIntegerSchema,
   marketplace_code: marketplace,
   product_name: z.string(),
+  main_image: z.object({
+    file_object_id: identifierSchema,
+    file_version: positiveIntegerSchema,
+    purpose: z.literal('PRODUCT_IMAGE'),
+    visibility: z.literal('SELLER_VISIBLE'),
+  }).strict().nullable(),
   reference_order_amount_jpy: integerAmountSchema,
   buyer_self_pay_bps: nonnegativeIntegerSchema.max(10_000),
   estimated_buyer_self_pay_jpy: integerAmountSchema,
@@ -48,6 +83,11 @@ export const demandSchema = z.object({
   open_at: epoch,
   reservation_deadline: epoch,
   order_deadline: epoch,
+  reservation_eligibility: z.enum([
+    'ELIGIBLE',
+    'INELIGIBLE_ACTIVE_STORE_RESERVATION',
+  ]),
+  reservation_ineligibility_reason: z.literal('ACTIVE_STORE_RESERVATION').nullable(),
 }).strict();
 export const demandsPageSchema = page(demandSchema);
 export const demandDetailSchema = z.object({ demand: demandSchema }).strict();
@@ -56,6 +96,9 @@ const reservationDemandSchema = demandSchema.omit({
   target_quantity: true,
   remaining_quantity: true,
   open_at: true,
+  main_image: true,
+  reservation_eligibility: true,
+  reservation_ineligibility_reason: true,
 });
 export const reservationSchema = z.object({
   reservation_id: identifierSchema,
@@ -93,7 +136,7 @@ export const instructionStateSchema = z.object({
   initial_deadline_at: nullableEpoch,
   resubmission_deadline_at: nullableEpoch,
   evidence_status: z.enum([
-    'NONE', 'PENDING_VERIFICATION', 'CHANGES_REQUESTED', 'VERIFIED',
+    'NONE', 'NOT_SUBMITTED', 'PENDING_VERIFICATION', 'CHANGES_REQUESTED', 'VERIFIED',
     'WITHDRAWN', 'CONSUMED',
   ]),
   can_submit_evidence: z.boolean(),
@@ -113,22 +156,19 @@ export const instructionMainImageSchema = z.object({
   height: positiveIntegerSchema.nullable(),
   read_intent_path: z.string().regex(new RegExp(`^${instructionReadPathPrefix}main\\/read-intent$`, 'u')),
 }).strict();
-export const instructionKeywordImageSchema = z.object({
-  image_id: identifierSchema,
-  position: positiveIntegerSchema,
-  mime: z.enum(['image/png', 'image/jpeg', 'image/webp']),
-  width: positiveIntegerSchema.nullable(),
-  height: positiveIntegerSchema.nullable(),
-  read_intent_path: z.string().regex(new RegExp(`^${instructionReadPathPrefix}[1-9][0-9]*\\/read-intent$`, 'u')),
-}).strict().superRefine((image, context) => {
-  if (!image.read_intent_path.endsWith(`/images/${image.position}/read-intent`)) {
-    context.addIssue({ code: 'custom', path: ['read_intent_path'], message: 'instruction_image_position_path_mismatch' });
-  }
-});
 export const instructionSchema = z.object({
   status: z.literal('ACTIVE'),
+  instruction_version: positiveIntegerSchema,
+  current_version_no: positiveIntegerSchema,
+  evidence_status: z.enum([
+    'NONE', 'NOT_SUBMITTED', 'PENDING_VERIFICATION', 'CHANGES_REQUESTED', 'VERIFIED',
+    'WITHDRAWN', 'CONSUMED',
+  ]),
+  can_submit_evidence: z.boolean(),
+  can_read_images: z.boolean(),
   product_name: z.string(),
   store_display_name: z.string(),
+  search_keywords: z.array(z.string().trim().min(1).max(200)).min(1).max(20),
   color_spec_mode: z.enum(['MAIN_IMAGE_VARIANT', 'ANY_VARIANT']),
   staff_public_note: z.string().nullable(),
   buyer_visible_notes: z.string().nullable(),
@@ -140,17 +180,7 @@ export const instructionSchema = z.object({
   estimated_buyer_self_pay_jpy: integerAmountSchema,
   estimated_refundable_principal_jpy: integerAmountSchema,
   main_image: instructionMainImageSchema,
-  keyword_images: z.array(instructionKeywordImageSchema),
-}).strict().superRefine((instruction, context) => {
-  let previous = 0;
-  const ids = new Set<string>();
-  instruction.keyword_images.forEach((image, index) => {
-    if (image.position <= previous) context.addIssue({ code: 'custom', path: ['keyword_images', index, 'position'], message: 'instruction_positions_must_strictly_increase' });
-    if (ids.has(image.image_id)) context.addIssue({ code: 'custom', path: ['keyword_images', index, 'image_id'], message: 'duplicate_instruction_image' });
-    previous = image.position;
-    ids.add(image.image_id);
-  });
-});
+}).strict();
 export const instructionResponseSchema = z.object({
   order_instruction: instructionSchema,
 }).strict();

@@ -16,10 +16,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   batchWithAssignmentRetry,
   prepareDirectWorkItem,
 } from '../staff-assignment';
@@ -27,6 +23,8 @@ import {
   cleanDemandIdentifier,
   cleanDemandOptionalNotes,
   demandAuditState,
+  deriveSellerDemandSchedule,
+  SELLER_DEMAND_SCHEDULE_POLICY,
   insertDemandBatchEventStatement,
   normalizeDemandBatchError,
   parseDemandTaskType,
@@ -42,9 +40,12 @@ interface ProductSource {
   product_id: string;
   organization_id: string;
   store_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   product_status: string;
   product_version_no: number;
+  search_keywords_json: string;
+  order_interval_days: number | null;
+  orders_per_run: number | null;
   store_status: string;
   organization_status: string;
 }
@@ -55,7 +56,7 @@ export interface SubmitDemandBatchResult {
   store_id: string;
   product_id: string;
   product_version_no: number;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   task_type: DemandTaskType;
   target_quantity: number;
   status: 'SUBMITTED';
@@ -71,9 +72,9 @@ export async function submitDemandBatch(
     targetQuantity: number;
     buyerVisibleNotes: string | null;
     sellerNotes: string | null;
-    openAt: number;
-    reservationDeadline: number;
-    orderDeadline: number;
+    openAt?: number;
+    reservationDeadline?: number;
+    orderDeadline?: number;
   },
   command: {
     actor: SellerDemandActor;
@@ -97,14 +98,19 @@ export async function submitDemandBatch(
     input.sellerNotes,
     2000,
   );
-  validateDemandSchedule({
-    openAt: input.openAt,
-    reservationDeadline: input.reservationDeadline,
-    orderDeadline: input.orderDeadline,
-  });
-
   const now = command.now ?? Date.now();
   if (!Number.isSafeInteger(now) || now < 0) {
+    throw new DemandBatchError('VALIDATION_ERROR', 400);
+  }
+
+  const suppliedSchedule = input.openAt !== undefined
+    && input.reservationDeadline !== undefined
+    && input.orderDeadline !== undefined;
+  if (!suppliedSchedule && (
+    input.openAt !== undefined
+    || input.reservationDeadline !== undefined
+    || input.orderDeadline !== undefined
+  )) {
     throw new DemandBatchError('VALIDATION_ERROR', 400);
   }
 
@@ -117,9 +123,12 @@ export async function submitDemandBatch(
     target_quantity: targetQuantity,
     buyer_visible_notes: buyerVisibleNotes,
     seller_notes: sellerNotes,
-    open_at: input.openAt,
-    reservation_deadline: input.reservationDeadline,
-    order_deadline: input.orderDeadline,
+    schedule_policy_version: suppliedSchedule
+      ? null
+      : SELLER_DEMAND_SCHEDULE_POLICY.version,
+    open_at: suppliedSchedule ? input.openAt : null,
+    reservation_deadline: suppliedSchedule ? input.reservationDeadline : null,
+    order_deadline: suppliedSchedule ? input.orderDeadline : null,
   });
 
   const acquired =
@@ -157,6 +166,23 @@ export async function submitDemandBatch(
       throw new DemandBatchError('FORBIDDEN', 403);
     }
 
+    const schedule = suppliedSchedule
+      ? {
+          openAt: input.openAt!,
+          reservationDeadline: input.reservationDeadline!,
+          orderDeadline: input.orderDeadline!,
+        }
+      : deriveSellerDemandSchedule({
+          now,
+          targetQuantity,
+          orderIntervalDays: source.order_interval_days,
+          ordersPerRun: source.orders_per_run,
+        });
+    const schedulePolicyVersion = suppliedSchedule
+      ? null
+      : SELLER_DEMAND_SCHEDULE_POLICY.version;
+    validateDemandSchedule(schedule);
+
     const demandBatchId = crypto.randomUUID();
     const response: SubmitDemandBatchResult = {
       demand_batch_id: demandBatchId,
@@ -172,18 +198,6 @@ export async function submitDemandBatch(
       replayed: false,
     };
 
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `demand-batch-submitted:${demandBatchId}`,
-      eventType: 'DEMAND_BATCH_SUBMITTED',
-      aggregateType: 'DEMAND_BATCH',
-      aggregateId: demandBatchId,
-      payload: {
-        ...response,
-        buyer_visible_notes: buyerVisibleNotes,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -231,9 +245,9 @@ export async function submitDemandBatch(
         targetQuantity,
         buyerVisibleNotes,
         sellerNotes,
-        input.openAt,
-        input.reservationDeadline,
-        input.orderDeadline,
+        schedule.openAt,
+        schedule.reservationDeadline,
+        schedule.orderDeadline,
         now,
         now,
       ),
@@ -270,10 +284,10 @@ export async function submitDemandBatch(
             version: 1,
             taskType,
             targetQuantity,
-            openAt: input.openAt,
-            reservationDeadline:
-              input.reservationDeadline,
-            orderDeadline: input.orderDeadline,
+            openAt: schedule.openAt,
+            reservationDeadline: schedule.reservationDeadline,
+            orderDeadline: schedule.orderDeadline,
+            schedulePolicyVersion,
           }),
           demand_batch_id: demandBatchId,
           product_id: source.product_id,
@@ -284,7 +298,6 @@ export async function submitDemandBatch(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,
@@ -352,12 +365,18 @@ async function requireProductSource(
       product.marketplace_code,
       product.status AS product_status,
       product.current_version_no AS product_version_no,
+      version.search_keywords_json,
+      version.order_interval_days,
+      version.orders_per_run,
       store.status AS store_status,
       organization.status AS organization_status
     FROM products product
     JOIN seller_stores store
       ON store.id=product.store_id
       AND store.organization_id=product.organization_id
+    JOIN product_versions version
+      ON version.product_id=product.id
+      AND version.version_no=product.current_version_no
     JOIN seller_organizations organization
       ON organization.id=product.organization_id
     WHERE product.id=?
@@ -374,6 +393,23 @@ async function requireProductSource(
     || row.store_status !== 'ACTIVE'
     || row.organization_status !== 'ACTIVE') {
     throw new DemandBatchError('VALIDATION_ERROR', 409);
+  }
+  // Publish readiness is enforced at submission as well, so the seller learns
+  // about a missing search keyword now instead of at staff review time when
+  // the batch is already pinned to this product version.
+  try {
+    const keywords = JSON.parse(row.search_keywords_json) as unknown;
+    if (!Array.isArray(keywords)
+      || keywords.length < 1
+      || keywords.some((keyword) => typeof keyword !== 'string'
+        || keyword.normalize('NFKC').trim().length < 1)) {
+      throw new Error('invalid keywords');
+    }
+  } catch {
+    throw new DemandBatchError('VALIDATION_ERROR', 409, {
+      field: 'search_keywords',
+      reason: `产品版本 v${row.product_version_no} 缺少有效的搜索关键词，请先在产品资料中补齐后再提交投放。`,
+    });
   }
   return row;
 }

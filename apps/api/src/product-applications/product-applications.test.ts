@@ -5,7 +5,14 @@ import type {
   StaffPermissionCode,
   StaffRoleCode,
 } from '@ygb/contracts';
+import { sha256Hex } from '@ygb/domain';
 import { createMigratedTestDatabase, type SqliteDatabase } from '@ygb/testkit';
+import type {
+  FileAuthorizationResource,
+  FileAuthorizationService,
+} from '../files/authorization';
+import { MockObjectStorage } from '../files/mock-object-storage';
+import type { FileActor } from '@ygb/contracts';
 import { resolveAssignmentStaffAuthorization } from '../staff-assignment';
 import { reviewProductApplication } from './review-product-application';
 import { submitProductApplication as submitProductApplicationImpl } from './submit-product-application';
@@ -20,8 +27,13 @@ let database: SqliteDatabase | null = null;
 
 function submitProductApplication(
   database: SqliteDatabase,
-  input: Omit<Parameters<typeof submitProductApplicationImpl>[2], 'imageFiles'> &
-    Partial<Pick<Parameters<typeof submitProductApplicationImpl>[2], 'imageFiles'>>,
+  input: Omit<
+    Parameters<typeof submitProductApplicationImpl>[2],
+    'imageFiles' | 'orderingGuideExpectedAmountJpy'
+  > & Partial<Pick<
+    Parameters<typeof submitProductApplicationImpl>[2],
+    'imageFiles' | 'orderingGuideExpectedAmountJpy'
+  >>,
   command: Parameters<typeof submitProductApplicationImpl>[3],
 ) {
   return submitProductApplicationImpl(
@@ -29,6 +41,8 @@ function submitProductApplication(
     productApplicationFileAuthorization,
     {
       ...input,
+      orderingGuideExpectedAmountJpy:
+        input.orderingGuideExpectedAmountJpy ?? 1980,
       imageFiles: input.imageFiles ?? [
         {
           fileObjectId:
@@ -49,6 +63,28 @@ afterEach(() => {
   database?.close();
   database = null;
 });
+
+/**
+ * Mirrors the production MainImageLinkAuthorization used by the staff
+ * catalog routes: staff actors linking SELLER_VISIBLE PRODUCT_IMAGE files
+ * to a PRODUCT_VERSION entity.
+ */
+class MainImageCloneAuthorization implements FileAuthorizationService {
+  assertCanCreateUpload(): void {}
+  assertCanUpload(): void {}
+  assertCanCompleteUpload(): void {}
+  assertCanRead(): void {}
+  assertCanLink(_actor: FileActor, resource: FileAuthorizationResource): void {
+    if (resource.purpose !== 'PRODUCT_IMAGE'
+      || resource.visibility !== 'SELLER_VISIBLE'
+      || resource.entityType !== 'PRODUCT_VERSION') {
+      throw Object.assign(new Error('forbidden'), {
+        code: 'FORBIDDEN',
+        status: 403,
+      });
+    }
+  }
+}
 
 describe('seller product applications and staff review', () => {
   it('allows OWNER or scoped OPERATIONS to submit and blocks unscoped roles', async () => {
@@ -112,16 +148,10 @@ describe('seller product applications and staff review', () => {
         (SELECT COUNT(*) FROM audit_events audit
           WHERE audit.aggregate_id=? OR audit.aggregate_id IN (
             SELECT id FROM file_entity_links WHERE entity_type='PRODUCT_APPLICATION' AND entity_id=?
-          )) AS audits,
-        (SELECT COUNT(*) FROM integration_outbox outbox
-          WHERE outbox.aggregate_id=? OR outbox.aggregate_id IN (
-            SELECT id FROM file_entity_links WHERE entity_type='PRODUCT_APPLICATION' AND entity_id=?
-          )) AS outbox_events
+          )) AS audits
     `,
       )
       .bind(
-        submitted.application_id,
-        submitted.application_id,
         submitted.application_id,
         submitted.application_id,
         submitted.application_id,
@@ -133,15 +163,18 @@ describe('seller product applications and staff review', () => {
         grants: number;
         audience_events: number;
         audits: number;
-        outbox_events: number;
       }>();
     expect(committed).toEqual({
       links: 1,
       grants: 2,
       audience_events: 3,
       audits: 2,
-      outbox_events: 2,
     });
+    await expect(database.prepare(`
+      SELECT ordering_guide_expected_amount_jpy AS amount
+      FROM product_applications
+      WHERE id=?
+    `).bind(submitted.application_id).first()).resolves.toEqual({ amount: 1980 });
 
     await expect(
       submitProductApplication(
@@ -198,6 +231,40 @@ describe('seller product applications and staff review', () => {
       },
     );
     expect(ownerSubmission.store_id).toBe('store-1');
+  });
+
+  it('rejects missing, zero, fractional and unsafe Seller amounts before persistence', async () => {
+    database = createMigratedTestDatabase();
+    seedProductApplicationFixture(database);
+    for (const [suffix, amount] of [
+      ['zero', 0],
+      ['fractional', 19.8],
+      ['unsafe', Number.MAX_SAFE_INTEGER + 1],
+    ] as const) {
+      await expect(submitProductApplicationImpl(
+        database,
+        productApplicationFileAuthorization,
+        {
+          storeId: 'store-1',
+          asin: `B0AMT${suffix === 'fractional' ? 'FRAC1' : suffix === 'unsafe' ? 'UNSA1' : 'ZERO1'}`,
+          product: productVersion(`金额校验-${suffix}`),
+          sellerNotes: null,
+          orderingGuideExpectedAmountJpy: amount,
+          imageFiles: [{
+            fileObjectId: 'application-image-owner-1',
+            expectedFileVersion: 1,
+          }],
+        },
+        {
+          actor: ownerActor(),
+          idempotencyKey: `product-application:amount:${suffix}`,
+          now: 1900,
+        },
+      )).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    }
+    await expect(database.prepare(
+      `SELECT COUNT(*) AS count FROM product_applications`,
+    ).first()).resolves.toEqual({ count: 0 });
   });
 
   it('rejects another active submission for the same marketplace ASIN', async () => {
@@ -354,6 +421,222 @@ describe('seller product applications and staff review', () => {
     });
   });
 
+  it('approves with a selected application image cloned as the v1 main image', async () => {
+    database = createMigratedTestDatabase();
+    seedProductApplicationFixture(database);
+    const storage = new MockObjectStorage();
+    const mainImageAuthorization = new MainImageCloneAuthorization();
+    const imageBytes = new TextEncoder().encode('application-main-image');
+    const imageSha = await sha256Hex(imageBytes);
+    await database.prepare(
+      `UPDATE file_objects SET uploaded_sha256=? WHERE id='application-image-owner-1'`,
+    ).bind(imageSha).run();
+    await storage.putObject({
+      objectKey: 'files/v1/application/image-owner-1-000000000000',
+      bytes: imageBytes,
+      contentType: 'image/png',
+      metadata: {},
+    });
+
+    const submitted = await submitProductApplication(
+      database,
+      {
+        storeId: 'store-1',
+        asin: 'B0APPLY101',
+        product: productVersion('带主图产品'),
+        sellerNotes: null,
+        imageFiles: [
+          { fileObjectId: 'application-image-owner-1', expectedFileVersion: 1 },
+        ],
+      },
+      {
+        actor: ownerActor(),
+        idempotencyKey: 'product-application:main-image:submit',
+        now: 2000,
+      },
+    );
+
+    const approved = await reviewProductApplication(
+      database,
+      {
+        applicationId: submitted.application_id,
+        expectedVersion: 1,
+        decision: 'APPROVE',
+        orderingGuideExpectedAmountJpy: 1980,
+        colorSpecMode: 'MAIN_IMAGE_VARIANT',
+        orderIntervalDays: 1,
+        ordersPerRun: 1,
+        mainImageFileObjectId: 'application-image-owner-1',
+      },
+      {
+        actor: reviewerActor(),
+        idempotencyKey: 'product-application:main-image:review',
+        now: 3000,
+        deps: { storage, fileAuthorization: mainImageAuthorization },
+      },
+    );
+
+    expect(approved.status).toBe('APPROVED');
+    expect(approved.main_image_file_object_id).toMatch(
+      /^[0-9a-f-]{36}$/u,
+    );
+    expect(approved.main_image_file_object_id)
+      .not.toBe('application-image-owner-1');
+
+    const mainImage = await database.prepare(`
+      SELECT
+        object.id AS file_object_id,
+        object.purpose,
+        object.status AS object_status,
+        object.object_key,
+        object.uploaded_sha256,
+        intent.status AS intent_status,
+        intent.purpose AS intent_purpose,
+        link.entity_type,
+        link.entity_id,
+        link.authorization_mode,
+        image.created_by_staff_id,
+        (SELECT COUNT(*) FROM file_entity_audience_grants grant
+          WHERE grant.file_entity_link_id=link.id AND grant.revoked_at IS NULL)
+          AS grant_count
+      FROM product_version_main_images image
+      JOIN file_entity_links link ON link.id=image.file_entity_link_id
+      JOIN file_objects object ON object.id=link.file_object_id
+      JOIN file_upload_intents intent ON intent.id=object.upload_intent_id
+      WHERE image.product_version_id=?
+    `).bind(approved.product_version_id).first<{
+      file_object_id: string;
+      purpose: string;
+      object_status: string;
+      object_key: string;
+      uploaded_sha256: string;
+      intent_status: string;
+      intent_purpose: string;
+      entity_type: string;
+      entity_id: string;
+      authorization_mode: string;
+      created_by_staff_id: string;
+      grant_count: number;
+    }>();
+
+    expect(mainImage).toMatchObject({
+      file_object_id: approved.main_image_file_object_id,
+      purpose: 'PRODUCT_IMAGE',
+      object_status: 'VERIFIED',
+      uploaded_sha256: imageSha,
+      intent_status: 'VERIFIED',
+      intent_purpose: 'PRODUCT_IMAGE',
+      entity_type: 'PRODUCT_VERSION',
+      entity_id: approved.product_version_id,
+      authorization_mode: 'EXPLICIT_AUDIENCES',
+      grant_count: 2,
+    });
+    expect(mainImage?.object_key).toMatch(/^files\/v1\//u);
+    expect(mainImage?.object_key)
+      .not.toBe('files/v1/application/image-owner-1-000000000000');
+    const stored = storage.objects.get(mainImage!.object_key);
+    expect(stored).toBeDefined();
+    expect(Array.from(stored!.bytes)).toEqual(
+      Array.from(imageBytes),
+    );
+
+    const sourceLink = await database.prepare(`
+      SELECT link.purpose, link.entity_type, object.purpose AS object_purpose
+      FROM file_entity_links link
+      JOIN file_objects object ON object.id=link.file_object_id
+      WHERE link.file_object_id='application-image-owner-1'
+    `).first<{ purpose: string; entity_type: string; object_purpose: string }>();
+    expect(sourceLink).toEqual({
+      purpose: 'PRODUCT_APPLICATION_IMAGE',
+      entity_type: 'PRODUCT_APPLICATION',
+      object_purpose: 'PRODUCT_APPLICATION_IMAGE',
+    });
+
+    const replay = await reviewProductApplication(
+      database,
+      {
+        applicationId: submitted.application_id,
+        expectedVersion: 1,
+        decision: 'APPROVE',
+        orderingGuideExpectedAmountJpy: 1980,
+        colorSpecMode: 'MAIN_IMAGE_VARIANT',
+        orderIntervalDays: 1,
+        ordersPerRun: 1,
+        mainImageFileObjectId: 'application-image-owner-1',
+      },
+      {
+        actor: reviewerActor(),
+        idempotencyKey: 'product-application:main-image:review',
+        now: 3100,
+        deps: { storage, fileAuthorization: mainImageAuthorization },
+      },
+    );
+    expect(replay).toEqual({ ...approved, replayed: true });
+  });
+
+  it('rejects a main image that does not belong to the application', async () => {
+    database = createMigratedTestDatabase();
+    seedProductApplicationFixture(database);
+
+    const submitted = await submitProductApplication(
+      database,
+      {
+        storeId: 'store-1',
+        asin: 'B0APPLY102',
+        product: productVersion('主图校验产品'),
+        sellerNotes: null,
+      },
+      {
+        actor: ownerActor(),
+        idempotencyKey: 'product-application:main-image-bad:submit',
+        now: 2000,
+      },
+    );
+
+    await expect(
+      reviewProductApplication(
+        database,
+        {
+          applicationId: submitted.application_id,
+          expectedVersion: 1,
+          decision: 'APPROVE',
+          orderingGuideExpectedAmountJpy: 1980,
+          colorSpecMode: 'MAIN_IMAGE_VARIANT',
+          orderIntervalDays: 1,
+          ordersPerRun: 1,
+          mainImageFileObjectId: 'application-image-owner-2',
+        },
+        {
+          actor: reviewerActor(),
+          idempotencyKey: 'product-application:main-image-bad:review',
+          now: 3000,
+          deps: {
+            storage: new MockObjectStorage(),
+            fileAuthorization: new MainImageCloneAuthorization(),
+          },
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
+
+    await expect(
+      reviewProductApplication(
+        database,
+        {
+          applicationId: submitted.application_id,
+          expectedVersion: 1,
+          decision: 'REJECT',
+          rejectionReason: '资料不全',
+          mainImageFileObjectId: 'application-image-owner-1',
+        },
+        {
+          actor: reviewerActor(),
+          idempotencyKey: 'product-application:main-image-bad:reject',
+          now: 3000,
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', status: 400 });
+  });
+
   it('rejects with a reason and prevents a second review', async () => {
     database = createMigratedTestDatabase();
     seedProductApplicationFixture(database);
@@ -394,6 +677,7 @@ describe('seller product applications and staff review', () => {
       application_version: 2,
       product_id: null,
       product_version_id: null,
+      main_image_file_object_id: null,
       review_reason: 'ASIN 与店铺资料不一致',
       replayed: false,
     });
@@ -459,6 +743,12 @@ describe('seller product applications and staff review', () => {
       application_version: 2,
       replayed: false,
     });
+
+    const withdrawnItem = await database.prepare(`
+      SELECT status FROM staff_work_items
+      WHERE work_type='PRODUCT_APPLICATION_REVIEW' AND source_entity_id=?
+    `).bind(submitted.application_id).first<{ status: string }>();
+    expect(withdrawnItem?.status).toBe('CANCELLED');
 
     await expect(
       database
@@ -808,6 +1098,7 @@ describe('seller product applications and staff review', () => {
           productApplicationFileAuthorization,
           {
             ...input,
+            orderingGuideExpectedAmountJpy: 1980,
             imageFiles,
           },
           { actor: ownerActor(), idempotencyKey: `product-application:image:${suffix}`, now: 3000 },
@@ -825,6 +1116,7 @@ describe('seller product applications and staff review', () => {
         productApplicationFileAuthorization,
         {
           ...input,
+          orderingGuideExpectedAmountJpy: 1980,
           imageFiles: [{ fileObjectId: 'application-image-owner-1', expectedFileVersion: 1 }],
         },
         { actor: ownerActor(), idempotencyKey: 'product-application:image:unverified', now: 3100 },
@@ -843,7 +1135,7 @@ describe('seller product applications and staff review', () => {
     seedProductApplicationFixture(database);
     database.exec(`
       CREATE TRIGGER test_reject_product_application_outbox
-      BEFORE INSERT ON integration_outbox
+      BEFORE INSERT ON audit_events
       WHEN NEW.event_type='PRODUCT_APPLICATION_SUBMITTED'
       BEGIN
         SELECT RAISE(ABORT, 'forced_product_application_outbox_failure');
@@ -868,8 +1160,7 @@ describe('seller product applications and staff review', () => {
         (SELECT COUNT(*) FROM product_applications) AS applications,
         (SELECT COUNT(*) FROM file_entity_links) AS links,
         (SELECT COUNT(*) FROM file_entity_audience_grants) AS grants,
-        (SELECT COUNT(*) FROM audit_events) AS audits,
-        (SELECT COUNT(*) FROM integration_outbox) AS outbox_events
+        (SELECT COUNT(*) FROM audit_events) AS audits
     `,
       )
       .first<{
@@ -877,9 +1168,8 @@ describe('seller product applications and staff review', () => {
         links: number;
         grants: number;
         audits: number;
-        outbox_events: number;
       }>();
-    expect(counts).toEqual({ applications: 0, links: 0, grants: 0, audits: 0, outbox_events: 0 });
+    expect(counts).toEqual({ applications: 0, links: 0, grants: 0, audits: 0 });
   });
 });
 
@@ -906,26 +1196,6 @@ function seedProductApplicationFixture(database: SqliteDatabase): void {
     ) VALUES ('scope-product-reviewer-jp','staff-reviewer','seller_ops',
       'AMAZON_JP','ACTIVE','zz-phase3h-test-owner',1000,NULL,
       'TEST_PRIMARY',1000,1000,'PRIMARY');
-    INSERT INTO staff_departments (
-      id, code, name, status, version, created_at, updated_at, disabled_at
-    ) VALUES ('department-product-review','product-review','Product Review',
-      'ACTIVE',1,1000,1000,NULL);
-    INSERT INTO staff_teams (
-      id, department_id, code, name, status, version,
-      created_at, updated_at, disabled_at
-    ) VALUES ('team-product-review','department-product-review','product-review',
-      'Product Review','ACTIVE',1,1000,1000,NULL);
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES ('staff-reviewer','team-product-review','ACTIVE',1000,NULL,1000,1000);
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES ('zz-phase3h-test-owner','team-product-review','ACTIVE',1000,NULL,1000,1000);
-    INSERT INTO staff_team_leaders (
-      staff_id, team_id, status, assigned_by_staff_id,
-      assigned_at, revoked_at, created_at, updated_at
-    ) VALUES ('staff-reviewer','team-product-review','ACTIVE',
-      'zz-phase3h-test-owner',1000,NULL,1000,1000);
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,
@@ -935,19 +1205,31 @@ function seedProductApplicationFixture(database: SqliteDatabase): void {
       activated_at, disabled_at, next_member_number
     ) VALUES
       (
-        'seller-org-1', 'JP', 'ido-mango-7001',
+        'seller-org-1', 'AMAZON_JP', 'ido-mango-7001',
         'seller-channel-ido-mango',
         'seller-channel-ido-mango',
         7001, '申请卖家一', 'ACTIVE',
         1, 1000, 1000, 1000, NULL, 4
       ),
       (
-        'seller-org-2', 'JP', 'ygbceping-7001',
+        'seller-org-2', 'AMAZON_JP', 'ygbceping-7001',
         'seller-channel-ygbceping',
         'seller-channel-ygbceping',
         7001, '申请卖家二', 'ACTIVE',
         1, 1000, 1000, 1000, NULL, 2
       );
+
+    INSERT INTO seller_staff_assignments (
+      id, seller_organization_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason, version,
+      created_at, updated_at, revoked_at
+    ) VALUES
+      ('seller-org-1-manager-binding', 'seller-org-1', 'SELLER_ACCOUNT_MANAGER',
+        'staff-reviewer', 'ACTIVE', 'AUTO_INITIAL', 'STAFF',
+        'zz-phase3h-test-owner', NULL, 1, 1000, 1000, NULL),
+      ('seller-org-2-manager-binding', 'seller-org-2', 'SELLER_ACCOUNT_MANAGER',
+        'staff-reviewer', 'ACTIVE', 'AUTO_INITIAL', 'STAFF',
+        'zz-phase3h-test-owner', NULL, 1, 1000, 1000, NULL);
 
     INSERT INTO customer_identity_subjects (
       id, subject_type, created_at
@@ -994,36 +1276,21 @@ function seedProductApplicationFixture(database: SqliteDatabase): void {
       version, created_at, updated_at, disabled_at
     ) VALUES
       (
-        'store-1', 'seller-org-1', 'JP',
+        'store-1', 'seller-org-1', 'AMAZON_JP',
         '申请店铺一', '申请店铺一', 'ACTIVE',
         1, 1000, 1000, NULL
       ),
       (
-        'store-2', 'seller-org-1', 'JP',
+        'store-2', 'seller-org-1', 'AMAZON_JP',
         '申请店铺二', '申请店铺二', 'ACTIVE',
         1, 1000, 1000, NULL
       ),
       (
-        'store-other-org', 'seller-org-2', 'JP',
+        'store-other-org', 'seller-org-2', 'AMAZON_JP',
         '申请店铺三', '申请店铺三', 'ACTIVE',
         1, 1000, 1000, NULL
       );
 
-    INSERT INTO seller_member_store_scopes (
-      member_id, store_id, organization_id, status,
-      assigned_by_staff_id, assigned_at, revoked_at,
-      created_at, updated_at
-    ) VALUES
-      (
-        'member-ops-1', 'store-2', 'seller-org-1',
-        'ACTIVE', 'staff-reviewer', 1000, NULL,
-        1000, 1000
-      ),
-      (
-        'member-finance-1', 'store-1', 'seller-org-1',
-        'ACTIVE', 'staff-reviewer', 1000, NULL,
-        1000, 1000
-      );
 
     INSERT INTO file_upload_intents (
       id, owner_actor_type, owner_actor_id, purpose, visibility, status,
@@ -1160,12 +1427,10 @@ async function productReviewBusinessCounts(database: SqliteDatabase, application
     (SELECT COUNT(*) FROM products) AS products,
     (SELECT COUNT(*) FROM product_application_events WHERE application_id=?) AS events,
     (SELECT COUNT(*) FROM audit_events
-      WHERE aggregate_type='PRODUCT_APPLICATION' AND aggregate_id=?) AS audits,
-    (SELECT COUNT(*) FROM integration_outbox
-      WHERE aggregate_type='PRODUCT_APPLICATION' AND aggregate_id=?) AS outbox_events
+      WHERE aggregate_type='PRODUCT_APPLICATION' AND aggregate_id=?) AS audits
   `,
     )
-    .bind(applicationId, applicationId, applicationId, applicationId, applicationId)
+    .bind(applicationId, applicationId, applicationId, applicationId)
     .first();
 }
 

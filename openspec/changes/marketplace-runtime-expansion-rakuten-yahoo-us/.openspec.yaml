@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-09-01
+goal: 按 Owner 2026-09-01 裁决把运行时市场从仅 AMAZON_JP 扩展到 RAKUTEN_JP、YAHOO_JP、TEMU_JP、TIKTOK_JP 并启用 AMAZON_US（五平台，Owner 2026-09-01 上午补裁 TEMU/TikTok）；本文件为设计草案，待 2026-09-01 01:40 Codex 只读审查后实现。

@@ -21,6 +21,8 @@ const source = (relative: string) => readFileSync(path.join(root, relative), 'ut
 
 describe('Wave 13 File HTTP contract and architecture', () => {
   it('freezes active purpose-bound intent routes', () => {
+    // D-056 §4.1: the two chat-screenshot entries are unified into the
+    // order-detail ORDER_COMMUNICATION_SCREENSHOT flow.
     expect(Object.values(FILE_HTTP_PURPOSE_ROUTES)).toHaveLength(7);
     expect(FILE_HTTP_PURPOSE_ROUTES).toMatchObject({
       buyerOrderEvidence: {
@@ -43,17 +45,13 @@ describe('Wave 13 File HTTP contract and architecture', () => {
         purpose: 'SELLER_SETTLEMENT_PROOF',
         visibility: 'INTERNAL_ONLY',
       },
-      staffSellerOrderChatScreenshot: {
-        purpose: 'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
-        visibility: 'SELLER_VISIBLE',
-      },
       staffProductImage: {
         purpose: 'PRODUCT_IMAGE',
         visibility: 'SELLER_VISIBLE',
       },
     });
     expect(WAVE13_DEFERRED_FILE_PURPOSES).toEqual([]);
-    expect(JSON.stringify(FILE_HTTP_PURPOSE_ROUTES)).toContain(
+    expect(JSON.stringify(FILE_HTTP_PURPOSE_ROUTES)).not.toContain(
       'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
     );
     for (const route of Object.values(FILE_HTTP_LIFECYCLE_PATHS)) {
@@ -62,12 +60,11 @@ describe('Wave 13 File HTTP contract and architecture', () => {
     }
   });
 
-  it('keeps the historical purpose and registers only the fixed Staff route', () => {
+  it('registers the unified communication purpose on the Staff upload matrix', () => {
     const storage = source('packages/contracts/src/file-storage.ts');
     const routes = source('apps/api/src/files/routes.ts');
-    expect(storage).toContain("'ORDER_EVIDENCE_INTERNAL_COMMUNICATION'");
-    expect(routes).toContain('staffSellerOrderChatScreenshot');
-    expect(routes).toContain('ORDER_EVIDENCE_INTERNAL_COMMUNICATION');
+    expect(storage).toContain("'ORDER_COMMUNICATION_SCREENSHOT'");
+    expect(routes).toContain("'ORDER_COMMUNICATION_SCREENSHOT'");
     expect(routes).toContain('SELLER_VISIBLE');
   });
 
@@ -108,7 +105,7 @@ describe('Wave 13 File HTTP contract and architecture', () => {
       expect(routes).not.toContain(forbidden);
     }
     const read = source('apps/api/src/files/file-read-service.ts');
-    expect(read.match(/\bauthorizeFileRead\(/gu)).toHaveLength(2);
+    expect(read.match(/\bauthorizeFileRead\(/gu)).toHaveLength(3);
     expect(read).toContain('export async function createFileReadIntent');
     expect(read).toContain('export async function consumeFileReadIntent');
     expect(read).toContain('requireDynamicInstructionReadAuthorization');

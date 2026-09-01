@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router';
 import { BuyerReviewFileReadIntentAdapter } from '../../files/file-read-providers';
+import { ProtectedImagePreview } from '../../files/ProtectedImagePreview';
 import {
   Alert,
   Button,
@@ -17,12 +18,13 @@ import { useBuyerMutation } from '../mutations/useBuyerMutation';
 import { buyerQueryKeys } from '../queries/keys';
 import { formatCnyFen, formatDateOnly, formatShanghai } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
-import { BuyerFilePicker } from '../shared/BuyerFilePicker';
+import { FileDropZone } from '../../ui/FileDropZone';
 import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { ProtectedFileButton } from '../shared/ProtectedFileButton';
 import { reviewTypeLabel, statusLabel, statusTone } from '../shared/status';
 import { useFileUpload } from '../shared/useFileUpload';
-import { BuyerJourney } from '../shared/BuyerJourney';
+import { BuyerJourney, reviewJourneyStep } from '../shared/BuyerJourney';
+import { StageContactCard, STAGE_FOR_ROUTE } from '../shared/StageContactCard';
 
 export function BuyerReviewDetailPage(): React.JSX.Element {
   const { reviewCaseId = '' } = useParams();
@@ -49,7 +51,7 @@ export function BuyerReviewDetailPage(): React.JSX.Element {
   const item = query.data;
   return (
     <section className="buyer-page buyer-flow-page buyer-detail-page">
-      <BuyerJourney current="reviews" />
+      <BuyerJourney current={reviewJourneyStep(item.status)} />
       <PageHeader
         eyebrow="评论详情"
         title={item.order.product_name}
@@ -57,6 +59,7 @@ export function BuyerReviewDetailPage(): React.JSX.Element {
       >
         <StatusBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge>
       </PageHeader>
+      <StageContactCard stage={STAGE_FOR_ROUTE['/buyer/reviews']} />
       {item.status === 'CHANGES_REQUESTED' && item.public_change_reason ? (
         <Alert tone="warning">修改说明：{item.public_change_reason}</Alert>
       ) : null}
@@ -79,7 +82,7 @@ export function BuyerReviewDetailPage(): React.JSX.Element {
             <dd>{formatDateOnly(item.order.amazon_order_date)}</dd>
           </div>
           <div>
-            <dt>证据版本</dt>
+            <dt>提交次数</dt>
             <dd>{item.current_evidence_version_no}</dd>
           </div>
           <div>
@@ -109,7 +112,7 @@ export function BuyerReviewDetailPage(): React.JSX.Element {
         </dl>
       </Card>
       <Card className="buyer-support-card">
-        <h2>证据文件</h2>
+        <h2>评论文件</h2>
         {item.files.map((file) => (
           <ReviewFile key={file.file_entity_link_id} reviewId={item.review_case_id} file={file} />
         ))}
@@ -184,7 +187,12 @@ function ReviewFile({
           {file.mime} · {file.byte_size} 字节
         </p>
       </div>
-      <ProtectedFileButton provider={provider} />
+      {file.mime.startsWith('image/') ? <ProtectedImagePreview
+        provider={provider}
+        alt={file.client_file_name}
+        className="protected-evidence-thumbnail"
+        fallback={<span className="protected-image-placeholder">图片加载中</span>}
+      /> : <ProtectedFileButton provider={provider} />}
     </article>
   );
 }
@@ -208,7 +216,7 @@ function ReviewResubmitForm({
       await client.invalidateQueries({ queryKey: buyerQueryKeys.reviewsRoot });
     },
     onError: () => {
-      setMessage('重新提交未完成，页面事实可能已经变化。');
+      setMessage('重新提交未完成，页面信息可能有变化。');
     },
   });
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -250,20 +258,22 @@ function ReviewResubmitForm({
           <TextInput name="review_url" type="url" defaultValue={review.review_url ?? ''} />
         </FormField>
         <FormField
-          label="新的评论证据"
+          label="新的评论文件"
           htmlFor="review-resubmit-files"
           description="必须选择 1–3 个文件"
           required
         >
-          <BuyerFilePicker
-            name="files"
+          <FileDropZone
+            id="review-resubmit-files"
             multiple
             required
             accept="image/jpeg,image/png,image/webp,application/pdf"
-            buttonLabel="选择新的评论证据"
+            maximumFiles={3}
+            maximumBytes={20 * 1024 * 1024}
+            buttonLabel="选择新的评论文件"
             emptyLabel="尚未选择文件"
-            onChange={(event) => {
-              files.current = Array.from(event.currentTarget.files ?? []).slice(0, 4);
+            onFilesChange={(selectedFiles) => {
+              files.current = [...selectedFiles];
             }}
           />
         </FormField>

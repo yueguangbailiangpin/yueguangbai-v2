@@ -1,0 +1,114 @@
+/* ============================================================
+   月光白 V2 · base.css（7F-1 新样式层：reset + 元素默认）
+   作用域：.staff-app 之下只服务新员工端；买家/卖家 legacy 页面
+   不受影响（它们的 reset/base 仍在 portal-compat.css 兼容层）。
+   加载顺序见 main.tsx：tokens → portal-compat → 本文件 → primitives
+   → staff-shell → staff-pages；员工端权威层晚于兼容层且严格作用域化。
+   ============================================================ */
+
+.staff-app {
+  /* 元素默认：正文 15px；员工端使用独立 token，避免 legacy 覆盖。 */
+  font-family: var(--staff-font-family);
+  font-size: var(--staff-font-size-body);
+  font-weight: var(--staff-font-weight-regular);
+  line-height: var(--staff-line-height-body);
+  color: var(--color-text);
+  background: var(--color-canvas);
+  /* 保留系统字形笔画，避免 antialiased 在浅色画布上把中文和英文压得过细。 */
+  -webkit-font-smoothing: subpixel-antialiased;
+  -moz-osx-font-smoothing: auto;
+}
+
+.staff-app *,
+.staff-app *::before,
+.staff-app *::after {
+  box-sizing: border-box;
+}
+
+.staff-app h1,
+.staff-app h2,
+.staff-app h3,
+.staff-app h4 {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-text);
+}
+
+.staff-app h1 {
+  font-size: 1.5rem; /* 24px 页面标题（24~28px 区间） */
+  letter-spacing: -0.01em;
+}
+
+.staff-app h2 {
+  font-size: 1.125rem;
+}
+
+.staff-app h3 {
+  font-size: 1rem;
+}
+
+.staff-app p {
+  margin: 0;
+}
+
+.staff-app ul,
+.staff-app ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.staff-app a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.staff-app a:hover {
+  text-decoration: underline;
+}
+
+.staff-app button {
+  font: inherit;
+  color: inherit;
+}
+
+.staff-app input,
+.staff-app select,
+.staff-app textarea {
+  font: inherit;
+  color: inherit;
+}
+
+.staff-app table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.staff-app:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* 细滚动条（控制台质感） */
+.staff-app ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.staff-app ::-webkit-scrollbar-thumb {
+  background: #c4cad3;
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.staff-app ::-webkit-scrollbar-thumb:hover {
+  background: #a8b0bb;
+  background-clip: content-box;
+  border: 2px solid transparent;
+}
+
+.staff-app ::-webkit-scrollbar-track {
+  background: transparent;
+}

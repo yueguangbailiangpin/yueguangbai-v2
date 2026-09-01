@@ -38,3 +38,25 @@ extends ProductDescriptiveFields {
   orderIntervalDays: number;
   ordersPerRun: number;
 }
+
+/**
+ * D-056 §4.4 product primary contact: at most one current responsible
+ * member per product. It is a responsibility marker only — it never
+ * restricts any other organization member's read visibility.
+ */
+export interface SetProductPrimaryContactRequest {
+  primary_contact_member_id: string | null;
+  expected_version: number;
+  reason: string;
+}
+export interface ProductPrimaryContactDto {
+  product_id: string;
+  seller_organization_id: string;
+  primary_contact_member_id: string | null;
+  primary_contact_member_name: string | null;
+  version: number;
+}
+export interface SetProductPrimaryContactResponse {
+  product: ProductPrimaryContactDto;
+  replayed: boolean;
+}

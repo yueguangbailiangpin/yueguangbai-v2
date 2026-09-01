@@ -29,7 +29,7 @@ interface BuyerRefundPortalRow {
   refund_obligation_id: string;
   buyer_customer_id: string;
   formal_order_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   amazon_order_number_normalized: string;
   product_name_snapshot: string;
   review_type: PricingReviewType;
@@ -225,7 +225,7 @@ function toSummaryDto(
   const dueAmount = safeNonNegativeInteger(row.due_amount_cny_fen);
   const netPaid = safeNonNegativeInteger(row.net_paid_cny_fen);
   const balance = projectBalance(dueAmount, netPaid, row.ledger_status);
-  if (row.marketplace_code !== 'JP'
+  if (row.marketplace_code !== 'AMAZON_JP'
     || !isPricingReviewType(row.review_type)) {
     return dependencyError();
   }

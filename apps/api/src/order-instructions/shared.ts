@@ -41,7 +41,6 @@ export type OrderInstructionErrorCode =
   | 'INSUFFICIENT_ORDER_WINDOW'
   | 'MAIN_IMAGE_REQUIRED'
   | 'KEYWORDS_REQUIRED'
-  | 'KEYWORD_ASSETS_NOT_READY'
   | 'ORDERING_PROFILE_REQUIRED'
   | 'SELF_PAY_ACCEPTANCE_MISMATCH'
   | 'EVIDENCE_ALREADY_EXISTS'
@@ -152,7 +151,7 @@ export async function requireInstructionBuyerScope(
 }
 
 export function validateBuyerActor(actor: BuyerInstructionActor): void {
-  if (actor.marketplaceCode !== 'JP') {
+  if (actor.marketplaceCode !== 'AMAZON_JP') {
     throw new OrderInstructionError('VALIDATION_ERROR', 400);
   }
   if (actor.accessStatus !== 'ACTIVE'
@@ -250,9 +249,6 @@ export function normalizeOrderInstructionError(
   }
   if (message.includes('formal_order_number_claims')) {
     return new OrderInstructionError('ORDER_NUMBER_ALREADY_CLAIMED', 409);
-  }
-  if (message.includes('order_instruction_asset_not_ready')) {
-    return new OrderInstructionError('KEYWORD_ASSETS_NOT_READY', 409);
   }
   return new OrderInstructionError('DEPENDENCY_UNAVAILABLE', 503);
 }

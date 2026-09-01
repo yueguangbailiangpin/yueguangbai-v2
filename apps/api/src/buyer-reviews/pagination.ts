@@ -2,6 +2,7 @@ import {
   BUYER_REVIEW_DEFAULT_PAGE_SIZE,
   BUYER_REVIEW_MAX_PAGE_SIZE,
 } from '@ygb/contracts';
+import { decodeBase64UrlJson, encodeBase64UrlJson } from '../foundation/cursor-codec';
 import { BuyerReviewPortalError } from './errors';
 
 export interface EligibleReviewOrderCursor {
@@ -69,13 +70,7 @@ export function decodeBuyerReviewCursor(
 }
 
 function encodeCursor(value: CursorPayload): string {
-  const bytes = new TextEncoder().encode(JSON.stringify(value));
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary)
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replace(/=+$/u, '');
+  return encodeBase64UrlJson(value);
 }
 
 function decodeCursor(
@@ -85,16 +80,7 @@ function decodeCursor(
   if (value === undefined) return null;
   if (value.length < 1 || value.length > 1000) return validationError();
   try {
-    const base64 = value
-      .replaceAll('-', '+')
-      .replaceAll('_', '/')
-      .padEnd(Math.ceil(value.length / 4) * 4, '=');
-    const binary = atob(base64);
-    const bytes = Uint8Array.from(
-      binary,
-      (character) => character.charCodeAt(0),
-    );
-    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+    const parsed = decodeBase64UrlJson(value);
     if (!isCursorPayload(parsed) || parsed.kind !== kind) {
       return validationError();
     }

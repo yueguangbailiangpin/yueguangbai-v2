@@ -28,33 +28,33 @@ const PURPOSE_POLICIES: Readonly<Record<FilePurpose, FilePurposePolicy>> =
   Object.freeze({
     PRODUCT_APPLICATION_IMAGE: Object.freeze({
       maximumFileCount: 8,
-      maximumByteSize: 10 * MEBIBYTE,
+      maximumByteSize: 5 * MEBIBYTE,
       allowedMimes: IMAGE_MIMES,
       entityType: 'PRODUCT_APPLICATION',
     }),
     PRODUCT_IMAGE: Object.freeze({
       maximumFileCount: 1,
-      maximumByteSize: 10 * MEBIBYTE,
+      maximumByteSize: 5 * MEBIBYTE,
       allowedMimes: IMAGE_MIMES,
       entityType: 'PRODUCT_VERSION',
     }),
     ORDER_INSTRUCTION_KEYWORD_IMAGE: Object.freeze({
       maximumFileCount: 1,
-      maximumByteSize: 10 * MEBIBYTE,
+      maximumByteSize: 5 * MEBIBYTE,
       allowedMimes: IMAGE_MIMES,
       entityType: 'ORDER_INSTRUCTION_VERSION',
     }),
     ORDER_EVIDENCE: Object.freeze({
       maximumFileCount: 1,
-      maximumByteSize: 20 * MEBIBYTE,
+      maximumByteSize: 5 * MEBIBYTE,
       allowedMimes: IMAGE_MIMES,
       entityType: 'ORDER',
     }),
-    ORDER_EVIDENCE_INTERNAL_COMMUNICATION: Object.freeze({
-      maximumFileCount: 1,
-      maximumByteSize: 20 * MEBIBYTE,
+    ORDER_COMMUNICATION_SCREENSHOT: Object.freeze({
+      maximumFileCount: 8,
+      maximumByteSize: 5 * MEBIBYTE,
       allowedMimes: IMAGE_MIMES,
-      entityType: 'ORDER_EVIDENCE_SUBMISSION',
+      entityType: 'ORDER',
     }),
     REVIEW_EVIDENCE: Object.freeze({
       maximumFileCount: 10,
@@ -79,6 +79,12 @@ const PURPOSE_POLICIES: Readonly<Record<FilePurpose, FilePurposePolicy>> =
       maximumByteSize: 25 * MEBIBYTE,
       allowedMimes: EVIDENCE_MIMES,
       entityType: 'SUPPORT_CASE',
+    }),
+    SERVICE_CHANNEL_QR: Object.freeze({
+      maximumFileCount: 1,
+      maximumByteSize: 5 * MEBIBYTE,
+      allowedMimes: IMAGE_MIMES,
+      entityType: 'SERVICE_CHANNEL',
     }),
   });
 

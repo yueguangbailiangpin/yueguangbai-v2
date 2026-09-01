@@ -55,7 +55,7 @@ export function createApprovedInstructionStatements(
   input: {
     reservationId: string;
     buyerCustomerId: string;
-    marketplaceCode: 'JP';
+    marketplaceCode: 'AMAZON_JP';
     now: number;
     instructionId?: string;
     idempotencyKey: string;

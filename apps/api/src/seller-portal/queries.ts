@@ -21,7 +21,7 @@ import {
 
 interface StoreRow {
   id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   canonical_marketplace_code: 'AMAZON_JP' | 'AMAZON_US' | 'COUPANG_KR';
   transaction_currency_code: 'JPY' | 'USD' | 'KRW' | 'CNY';
   transaction_currency_exponent: 0 | 2;
@@ -38,7 +38,7 @@ interface ProductRow {
   id: string;
   store_id: string;
   store_display_name: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   seller_code: string;
   asin: string;
   status: 'ACTIVE' | 'DISABLED';
@@ -55,6 +55,8 @@ interface ProductRow {
   product_url: string | null;
   buyer_visible_notes: string | null;
   product_version_created_at: number;
+  primary_contact_member_id: string | null;
+  primary_contact_member_name: string | null;
 }
 
 interface ProductVersionRow {
@@ -74,13 +76,14 @@ interface ProductApplicationRow {
   id: string;
   store_id: string;
   store_display_name: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   asin: string;
   product_name: string;
   search_keywords_json: string;
   product_url: string | null;
   buyer_visible_notes: string | null;
   seller_notes: string | null;
+  ordering_guide_expected_amount_jpy: number | null;
   status: ProductApplicationStatus;
   review_reason: string | null;
   product_id: string | null;
@@ -101,7 +104,7 @@ interface DemandBatchRow {
   product_name: string;
   search_keywords_json: string;
   product_url: string | null;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   task_type: 'RATING' | 'TEXT' | 'IMAGE' | 'VIDEO';
   target_quantity: number;
   held_quantity: number;
@@ -269,7 +272,9 @@ export async function listSellerPortalProducts(
       image.file_entity_link_id AS main_image_file_entity_link_id,
       current.product_url,
       current.buyer_visible_notes,
-      current.created_at AS product_version_created_at
+      current.created_at AS product_version_created_at,
+      product.primary_contact_member_id,
+      primary_contact.display_name AS primary_contact_member_name
     FROM products product
     JOIN seller_stores store
       ON store.id=product.store_id
@@ -281,6 +286,8 @@ export async function listSellerPortalProducts(
       AND current.version_no=product.current_version_no
     LEFT JOIN product_version_main_images image
       ON image.product_version_id=current.id
+    LEFT JOIN seller_organization_members primary_contact
+      ON primary_contact.id=product.primary_contact_member_id
     WHERE product.organization_id=?
       ${scope.sql}
       ${extra}
@@ -335,7 +342,9 @@ export async function getSellerPortalProduct(
       image.file_entity_link_id AS main_image_file_entity_link_id,
       current.product_url,
       current.buyer_visible_notes,
-      current.created_at AS product_version_created_at
+      current.created_at AS product_version_created_at,
+      product.primary_contact_member_id,
+      primary_contact.display_name AS primary_contact_member_name
     FROM products product
     JOIN seller_stores store
       ON store.id=product.store_id
@@ -347,6 +356,8 @@ export async function getSellerPortalProduct(
       AND current.version_no=product.current_version_no
     LEFT JOIN product_version_main_images image
       ON image.product_version_id=current.id
+    LEFT JOIN seller_organization_members primary_contact
+      ON primary_contact.id=product.primary_contact_member_id
     WHERE product.id=?
       AND product.organization_id=?
       ${scope.sql}
@@ -686,6 +697,7 @@ function productApplicationSelect(): string {
       application.product_url,
       application.buyer_visible_notes,
       application.seller_notes,
+      application.ordering_guide_expected_amount_jpy,
       application.status,
       application.review_reason,
       application.product_id,
@@ -794,6 +806,8 @@ function mapProduct(row: ProductRow): SellerPortalProductDto {
     version: Number(row.version),
     created_at: Number(row.created_at),
     updated_at: Number(row.updated_at),
+    primary_contact_member_id: row.primary_contact_member_id,
+    primary_contact_member_name: row.primary_contact_member_name,
     current_version: mapProductVersion({
       id: row.product_version_id,
       version_no: row.current_version_no,
@@ -855,6 +869,10 @@ function mapProductApplication(
     product_url: row.product_url,
     buyer_visible_notes: row.buyer_visible_notes,
     seller_notes: row.seller_notes,
+    ordering_guide_expected_amount_jpy:
+      row.ordering_guide_expected_amount_jpy === null
+        ? null
+        : Number(row.ordering_guide_expected_amount_jpy),
     status: row.status,
     review_reason: row.review_reason,
     product_id: row.product_id,

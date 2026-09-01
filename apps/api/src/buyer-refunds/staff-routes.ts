@@ -14,12 +14,17 @@ import {
 import {
   chinaBusinessDate,
   chinaBusinessDateStartEpoch,
+  addChinaBusinessDays,
   parseChinaBusinessDate,
 } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
 import type { AppEnv } from '../app';
 import type { FileAuthorizationResource, FileAuthorizationService } from '../files/authorization';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
+import {
+  decodeBase64UrlJson,
+  encodeBase64UrlJson,
+} from '../foundation/cursor-codec';
 import {
   BuyerRefundError,
   recordBuyerRefundPayment,
@@ -32,6 +37,9 @@ const BODY_LIMIT_BYTES = 24 * 1024;
 const CURSOR_MAX_LENGTH = 2048;
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
+// 评论通过时间缺失时（LEFT JOIN 防御位）排组内最后；MAX_SAFE_INTEGER。
+const UNSORTED_REVIEW_TS = 9_007_199_254_740_991;
+const PROMISE_BUSINESS_DAYS = 7;
 
 interface RefundListRow {
   obligation_id: string;
@@ -45,10 +53,11 @@ interface RefundListRow {
   version: number;
   created_at: number;
   updated_at: number;
+  review_approved_at: number | null;
   reminder_count: number;
   last_reminded_at: number | null;
   buyer_customer_no: string | null;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   amazon_order_number_normalized: string;
   product_id: string;
   asin_normalized: string;
@@ -60,6 +69,8 @@ interface RefundListRow {
 interface RefundDetailRow extends RefundListRow {
   source_review_event_id: string;
   review_case_id: string;
+  refund_account_name: string | null;
+  refund_account_identifier: string | null;
 }
 
 interface PaymentRow {
@@ -115,9 +126,12 @@ async function listStaffBuyerRefunds(context: Context<AppEnv>): Promise<Response
   requireBuyerRefundViewPermission(toRefundActor(actor));
   const query = parseListQuery(context);
   const scope = scopeSql(requireStaffDataScope(context));
+  // P7c 超期看板排序：未结清在前，组内按承诺期限（评论通过时间）升序——
+  // 期限是该时间的单调函数，按来源时间排即按期限排；已结清沉底。
   const cursor = query.cursor
-    ? `AND (ledger.created_at>? OR
-      (ledger.created_at=? AND ledger.obligation_id>?))`
+    ? `AND ((ledger.status='PAID')>? OR ((ledger.status='PAID')=? AND
+      (review_approved_at>? OR
+      (review_approved_at=? AND ledger.obligation_id>?))))`
     : '';
   const status = query.status ? 'AND ledger.status=?' : '';
   const from = query.fromStart === undefined
@@ -132,6 +146,7 @@ async function listStaffBuyerRefunds(context: Context<AppEnv>): Promise<Response
       ledger.gross_paid_cny_fen, ledger.reversed_cny_fen,
       ledger.net_paid_cny_fen, ledger.status, ledger.version,
       ledger.created_at, ledger.updated_at,
+      COALESCE(review_event.created_at, ${UNSORTED_REVIEW_TS}) AS review_approved_at,
       (SELECT COUNT(*) FROM buyer_refund_reminders reminder
         WHERE reminder.obligation_id=ledger.obligation_id) AS reminder_count,
       (SELECT MAX(reminded_at) FROM buyer_refund_reminders reminder
@@ -144,6 +159,8 @@ async function listStaffBuyerRefunds(context: Context<AppEnv>): Promise<Response
     FROM buyer_refund_ledger_balances ledger
     JOIN formal_orders formal_order ON formal_order.id=ledger.formal_order_id
     JOIN buyer_customers buyer ON buyer.id=ledger.buyer_customer_id
+    LEFT JOIN review_events review_event
+      ON review_event.id=ledger.source_review_event_id
     LEFT JOIN staff_work_items work
       ON work.work_type='BUYER_REFUND_PROCESSING'
       AND work.source_entity_type='BUYER_REFUND_OBLIGATION'
@@ -154,7 +171,7 @@ async function listStaffBuyerRefunds(context: Context<AppEnv>): Promise<Response
       ${from}
       ${to}
       ${cursor}
-    ORDER BY ledger.created_at, ledger.obligation_id
+    ORDER BY (ledger.status='PAID'), review_approved_at, ledger.obligation_id
     LIMIT ?
   `).bind(
     ...scope.args,
@@ -162,7 +179,13 @@ async function listStaffBuyerRefunds(context: Context<AppEnv>): Promise<Response
     ...(query.fromStart === undefined ? [] : [query.fromStart]),
     ...(query.toExclusive === undefined ? [] : [query.toExclusive]),
     ...(query.cursor
-      ? [query.cursor.createdAt, query.cursor.createdAt, query.cursor.id]
+      ? [
+        query.cursor.settled,
+        query.cursor.settled,
+        query.cursor.reviewApprovedAt,
+        query.cursor.reviewApprovedAt,
+        query.cursor.id,
+      ]
       : []),
     query.limit + 1,
   ).all<RefundListRow>();
@@ -173,7 +196,11 @@ async function listStaffBuyerRefunds(context: Context<AppEnv>): Promise<Response
   return success(context, {
     items,
     next_cursor: hasMore && last
-      ? encodeCursor(Number(last.created_at), last.obligation_id)
+      ? encodeCursor(
+        Number(last.review_approved_at),
+        last.status === 'PAID',
+        last.obligation_id,
+      )
       : null,
   });
 }
@@ -322,6 +349,7 @@ async function readRefundDetail(
       ledger.gross_paid_cny_fen, ledger.reversed_cny_fen,
       ledger.net_paid_cny_fen, ledger.status, ledger.version,
       ledger.created_at, ledger.updated_at,
+      review_event.created_at AS review_approved_at,
       (SELECT COUNT(*) FROM buyer_refund_reminders reminder
         WHERE reminder.obligation_id=ledger.obligation_id) AS reminder_count,
       (SELECT MAX(reminded_at) FROM buyer_refund_reminders reminder
@@ -329,11 +357,14 @@ async function readRefundDetail(
       buyer.buyer_customer_no, formal_order.marketplace_code,
       formal_order.amazon_order_number_normalized,
       formal_order.product_id, formal_order.asin_normalized,
+      buyer.refund_account_name, buyer.refund_account_identifier,
       work.id AS work_item_id, work.assigned_staff_id,
       work.fixed_assignment_id
     FROM buyer_refund_ledger_balances ledger
     JOIN formal_orders formal_order ON formal_order.id=ledger.formal_order_id
     JOIN buyer_customers buyer ON buyer.id=ledger.buyer_customer_id
+    LEFT JOIN review_events review_event
+      ON review_event.id=ledger.source_review_event_id
     LEFT JOIN staff_work_items work
       ON work.work_type='BUYER_REFUND_PROCESSING'
       AND work.source_entity_type='BUYER_REFUND_OBLIGATION'
@@ -391,6 +422,8 @@ async function readRefundDetail(
     ...listItem,
     source_review_event_id: ledger.source_review_event_id,
     review_case_id: ledger.review_case_id,
+    refund_account_name: ledger.refund_account_name,
+    refund_account_identifier: ledger.refund_account_identifier,
     gross_paid_cny_fen: String(ledger.gross_paid_cny_fen),
     reversed_cny_fen: String(ledger.reversed_cny_fen),
     payments: payments.results.map((payment) => ({
@@ -440,6 +473,15 @@ function projectListItem(row: RefundListRow): StaffBuyerRefundListItemDto {
   const reminderCount = Number(row.reminder_count);
   const lastRemindedAt = row.last_reminded_at === null
     ? null : Number(row.last_reminded_at);
+  // P7c：承诺期限 = 评论通过时间 + 7 个工作日（周一至周五，P13-A）；
+  // 来源事件缺失（防御位）时两个期限字段均为 null（“期限未起算”）。
+  const rawReviewApprovedAt = Number(row.review_approved_at);
+  const reviewApprovedAt = row.review_approved_at === null
+    || !Number.isSafeInteger(rawReviewApprovedAt)
+    || rawReviewApprovedAt < 0
+    || rawReviewApprovedAt === UNSORTED_REVIEW_TS
+    ? null
+    : rawReviewApprovedAt;
   if (!Number.isSafeInteger(due) || due < 0
     || !Number.isSafeInteger(gross) || gross < 0
     || !Number.isSafeInteger(reversed) || reversed < 0
@@ -463,6 +505,10 @@ function projectListItem(row: RefundListRow): StaffBuyerRefundListItemDto {
     version: Number(row.version),
     created_at: Number(row.created_at),
     updated_at: Number(row.updated_at),
+    review_approved_at: reviewApprovedAt,
+    promise_deadline_at: reviewApprovedAt === null
+      ? null
+      : addChinaBusinessDays(reviewApprovedAt, PROMISE_BUSINESS_DAYS),
     reminder_count: reminderCount,
     last_reminded_at: lastRemindedAt,
     buyer: {
@@ -565,7 +611,7 @@ function parseListQuery(context: Context<AppEnv>): {
   to?: string;
   fromStart?: number;
   toExclusive?: number;
-  cursor?: { createdAt: number; id: string };
+  cursor?: { settled: number; reviewApprovedAt: number; id: string };
 } {
   const parameters = new URL(context.req.url).searchParams;
   const allowed = new Set(['limit', 'status', 'cursor', 'from', 'to']);
@@ -783,45 +829,41 @@ function parseLimit(value: string): number {
   return number;
 }
 
-function encodeCursor(createdAt: number, id: string): string {
-  return encodeBase64Url(new TextEncoder().encode(JSON.stringify({
-    v: 1,
-    created_at: createdAt,
+export function encodeCursor(
+  reviewApprovedAt: number,
+  settled: boolean,
+  id: string,
+): string {
+  return encodeBase64UrlJson({
+    v: 2,
+    review_approved_at: reviewApprovedAt,
+    settled: settled ? 1 : 0,
     id,
-  })));
+  });
 }
 
-function decodeCursor(value: string): { createdAt: number; id: string } {
+export function decodeCursor(value: string): {
+  settled: number;
+  reviewApprovedAt: number;
+  id: string;
+} {
   if (value.length < 1 || value.length > CURSOR_MAX_LENGTH
     || !/^[A-Za-z0-9_-]+$/u.test(value)) return validationError();
   try {
-    const parsed = (
-      JSON.parse(new TextDecoder().decode(decodeBase64Url(value)))
-    ) as Record<string, unknown>;
+    const parsed = decodeBase64UrlJson(value) as Record<string, unknown>;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)
-      || Object.keys(parsed).sort().join(',') !== 'created_at,id,v'
-      || parsed['v'] !== 1
-      || !Number.isSafeInteger(parsed['created_at'])
-      || Number(parsed['created_at']) < 0) return validationError();
+      || Object.keys(parsed).sort().join(',')
+        !== 'id,review_approved_at,settled,v'
+      || parsed['v'] !== 2
+      || (parsed['settled'] !== 0 && parsed['settled'] !== 1)
+      || !Number.isSafeInteger(parsed['review_approved_at'])
+      || Number(parsed['review_approved_at']) < 0) return validationError();
     return {
-      createdAt: Number(parsed['created_at']),
+      settled: Number(parsed['settled']),
+      reviewApprovedAt: Number(parsed['review_approved_at']),
       id: requireIdentifier(parsed['id']),
     };
   } catch { return validationError(); }
-}
-
-function encodeBase64Url(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_')
-    .replace(/=+$/u, '');
-}
-
-function decodeBase64Url(value: string): Uint8Array {
-  const base64 = value.replaceAll('-', '+').replaceAll('_', '/')
-    + '='.repeat((4 - value.length % 4) % 4);
-  const binary = atob(base64);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
 class BuyerRefundHttpError extends Error {

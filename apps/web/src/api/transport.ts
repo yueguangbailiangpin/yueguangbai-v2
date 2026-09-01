@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { approvedApiPath } from '../config/runtime-config';
-import { demoApiRequest } from '../review/demo-api';
 import { isReviewRuntime } from '../review/runtime';
 import { failureEnvelope, retryAfterMilliseconds } from './envelopes';
 import { FrontendApiError, categoryForStatus, projectSafeDetails } from './errors';
@@ -77,6 +76,8 @@ export async function apiRequest<T extends z.ZodType>(request: ApiRequest<T>): P
     throw new FrontendApiError('INVALID_PATH', 0, null, 'CONTRACT');
   }
   if (isReviewRuntime()) {
+    // 演示运行时才加载 demo 数据（约 75KB 源码），生产首屏不打包进主链路。
+    const { demoApiRequest } = await import('../review/demo-api');
     return demoApiRequest(request);
   }
   try {

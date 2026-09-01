@@ -12,7 +12,8 @@ import {
 } from '../formal-order-policy';
 import { prepareAdvancePrincipalSettlementStatements } from '../buyer-refunds/advance-principal-settlement';
 import { reconcileUnlinkedFileRetention } from '../files/retention';
-import { readFinancialReportingProjection } from '../admin-business-dashboard/financial-projection';
+// D-056: the dashboard financial projection read model is retired; the
+// equivalent cash-flow semantics live in internal-finance and its tests.
 
 let database: SqliteDatabase | null = null;
 afterEach(() => {
@@ -184,59 +185,7 @@ describe('Wave 15 architecture finalization — real behavior', () => {
     expect(storage.deleted).toEqual([]);
   });
 
-  it('financial projection counts real buyer cash once when advance principal later becomes a refund ledger payment', async () => {
-    database = new SqliteDatabase(':memory:');
-    seedFinancialProjectionSchema(database);
-    const at = Date.UTC(2026, 7, 1, 4, 0, 0);
-    database.exec(`
-      INSERT INTO seller_payments VALUES('seller-payment-1',100000,${at});
-      INSERT INTO buyer_refund_payment_entries VALUES
-        ('refund-normal','PAYMENT',50000,${at},NULL),
-        ('refund-from-advance','PAYMENT',50000,${at},NULL);
-      INSERT INTO buyer_advance_principal_entries VALUES('advance-1','PAYMENT',60000,${at},NULL);
-      INSERT INTO buyer_advance_principal_settlements VALUES('advance-1','refund-from-advance');
-      INSERT INTO seller_payable_balances VALUES(200000,100000,100000,${at});
-      INSERT INTO buyer_refund_ledger_balances VALUES(50000,50000,${at});
-      INSERT INTO internal_order_finance_positions VALUES('COMPLETED','2026-08-01','2026-08-01',30000,20000,${at},${at});
-      INSERT INTO formal_order_financial_adjustments VALUES('PROJECTED_GROSS_PROFIT',-5000,${at});
-      INSERT INTO formal_order_financial_adjustments VALUES('COMPLETED_GROSS_PROFIT',2000,${at});
-    `);
-    const projection = await readFinancialReportingProjection(
-      database,
-      { fromDate: '2026-08-01', toDate: '2026-08-01' },
-      at + 1000,
-    );
-    expect(projection.seller_cash_in_cny_fen).toBe('100000');
-    expect(projection.buyer_cash_out_cny_fen).toBe('110000');
-    expect(projection.net_cash_flow_cny_fen).toBe('-10000');
-    expect(projection.projected_profit_cny_fen).toBe('25000');
-    expect(projection.completed_profit_cny_fen).toBe('22000');
-    expect(projection.seller_payable_outstanding_cny_fen).toBe('100000');
-    expect(projection.buyer_refund_outstanding_cny_fen).toBe('0');
-  });
 
-  it('seller cash flow records payment on payment day and reversal on reversal day instead of rewriting history', async () => {
-    database = new SqliteDatabase(':memory:');
-    seedFinancialProjectionSchema(database);
-    const paidAt = Date.UTC(2026, 7, 1, 4, 0, 0),
-      reversedAt = Date.UTC(2026, 7, 2, 4, 0, 0);
-    database.exec(`
-      INSERT INTO seller_payments VALUES('seller-payment-reversed',100000,${paidAt});
-      INSERT INTO seller_payment_reversals VALUES('seller-payment-reversed',100000,${reversedAt});
-    `);
-    const paymentDay = await readFinancialReportingProjection(
-      database,
-      { fromDate: '2026-08-01', toDate: '2026-08-01' },
-      reversedAt + 1000,
-    );
-    const reversalDay = await readFinancialReportingProjection(
-      database,
-      { fromDate: '2026-08-02', toDate: '2026-08-02' },
-      reversedAt + 1000,
-    );
-    expect(paymentDay.seller_cash_in_cny_fen).toBe('100000');
-    expect(reversalDay.seller_cash_in_cny_fen).toBe('-100000');
-  });
 });
 
 function seedRetentionSchema(db: SqliteDatabase): void {
@@ -273,19 +222,6 @@ function seedVerifiedRetentionFile(
     .run();
 }
 
-function seedFinancialProjectionSchema(db: SqliteDatabase): void {
-  db.exec(`
-    CREATE TABLE seller_payments(id TEXT PRIMARY KEY,amount_cny_fen INTEGER,paid_at INTEGER);
-    CREATE TABLE seller_payment_reversals(payment_id TEXT PRIMARY KEY,amount_cny_fen INTEGER,reversed_at INTEGER);
-    CREATE TABLE buyer_refund_payment_entries(id TEXT PRIMARY KEY,entry_type TEXT,amount_cny_fen INTEGER,paid_at INTEGER,reversed_at INTEGER);
-    CREATE TABLE buyer_advance_principal_settlements(advance_payment_entry_id TEXT,buyer_refund_payment_entry_id TEXT);
-    CREATE TABLE buyer_advance_principal_entries(id TEXT PRIMARY KEY,entry_type TEXT,amount_cny_fen INTEGER,paid_at INTEGER,reversed_at INTEGER);
-    CREATE TABLE seller_payable_balances(amount_cny_fen INTEGER,paid_amount_cny_fen INTEGER,outstanding_amount_cny_fen INTEGER,due_at INTEGER);
-    CREATE TABLE buyer_refund_ledger_balances(due_amount_cny_fen INTEGER,net_paid_cny_fen INTEGER,created_at INTEGER);
-    CREATE TABLE internal_order_finance_positions(finance_status TEXT,confirmed_business_date TEXT,review_approved_business_date TEXT,projected_gross_profit_cny_fen INTEGER,completed_gross_profit_cny_fen INTEGER,review_approved_at INTEGER,confirmed_at INTEGER);
-    CREATE TABLE formal_order_financial_adjustments(adjustment_scope TEXT,amount_cny_fen INTEGER,created_at INTEGER);
-  `);
-}
 
 class RecordingStorage implements ObjectStorageAdapter {
   readonly deleted: string[] = [];

@@ -30,11 +30,20 @@ export interface StaffProductListItemDto {
   product_name: string;
   cadence: OrderCadenceDto | null;
   updated_at: number;
+  /** Stage 7.5 batch 2: responsibility marker only (never narrows visibility). */
+  primary_contact_member_id: string | null;
+  primary_contact_member_name: string | null;
 }
 export interface StaffProductPageDto {
   items: readonly StaffProductListItemDto[];
   next_cursor: string | null;
   data_as_of: number;
+}
+export interface StaffProductVersionMainImageDto {
+  file_object_id: string;
+  file_version: number;
+  client_file_name: string;
+  bound_at: number;
 }
 export interface StaffProductVersionDto {
   product_version_id: string;
@@ -48,6 +57,7 @@ export interface StaffProductVersionDto {
   buyer_visible_notes: string | null;
   internal_notes: string | null;
   cadence: OrderCadenceDto | null;
+  main_image: StaffProductVersionMainImageDto | null;
   created_at: number;
 }
 export interface StaffProductDemandDto {
@@ -66,6 +76,11 @@ export interface StaffProductDetailDto extends StaffProductListItemDto {
   timezone: ProductScheduleTimezone;
   data_as_of: number;
 }
+export interface DemandReviewMainImageDto {
+  file_object_id: string;
+  file_version: number;
+  client_file_name: string;
+}
 export interface DemandReviewContextDto {
   demand_batch_id: string;
   demand_version: number;
@@ -80,6 +95,10 @@ export interface DemandReviewContextDto {
   reservation_deadline: number;
   order_deadline: number;
   cadence: OrderCadenceDto | null;
+  main_image: DemandReviewMainImageDto | null;
+  ordering_guide_expected_amount_jpy: number | null;
+  color_spec_mode: 'MAIN_IMAGE_VARIANT' | 'ANY_VARIANT' | null;
+  buyer_self_pay_bps_snapshot: number | null;
   can_publish: boolean;
   timezone: ProductScheduleTimezone;
   data_as_of: number;
@@ -99,6 +118,8 @@ export interface DemandOrderScheduleVersionDto extends OrderCadenceDto {
 export interface StaffReservationScheduleItemDto {
   reservation_id: string;
   status: ReservationStatus;
+  decision_source: 'AUTO' | 'STAFF' | null;
+  version: number;
   submitted_at: number;
   rank: number | null;
   planned_order_date: string | null;
@@ -117,6 +138,8 @@ export interface StaffReservationSchedulePageDto {
     effective_reservation_count: number;
     order_deadline: number;
     demand_version: number;
+    status: DemandBatchStatus;
+    can_close: boolean;
     schedule: DemandOrderScheduleVersionDto | null;
   };
   items: readonly StaffReservationScheduleItemDto[];

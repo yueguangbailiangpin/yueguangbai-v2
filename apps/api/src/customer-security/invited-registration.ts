@@ -29,6 +29,10 @@ interface InvitationRow {
   status: string;
   version: number;
   expires_at: number;
+  buyer_customer_id: string | null;
+  buyer_customer_no: string | null;
+  buyer_access_status: string | null;
+  buyer_version: number | null;
 }
 
 interface IdentityRow {
@@ -39,6 +43,7 @@ interface IdentityRow {
   buyer_access_status: string | null;
   buyer_identity_review_status: string | null;
   buyer_customer_no: string | null;
+  buyer_sequence: number | null;
   buyer_marketplace_code: string | null;
   account_id: string | null;
   account_status: string | null;
@@ -104,7 +109,6 @@ export async function registerInvitedBuyer(
     marketplaceCode: BuyerSupportedMarketplaceCode;
     password: string;
     passwordConfirmation: string;
-    buyerChannelId: string;
   },
   command: {
     idempotencyKey: string;
@@ -123,9 +127,16 @@ export async function registerInvitedBuyer(
   const tokenHash = await hashOneTimeToken(input.invitationToken);
   const wechat = normalizeWechatId(input.wechatId);
   const invitation = await database.prepare(`
-    SELECT id, token_hash, normalized_wechat, wechat_display,
-      marketplace_code, status, version, expires_at
-    FROM customer_buyer_invitations WHERE token_hash=?
+    SELECT invitation.id, invitation.token_hash, invitation.normalized_wechat,
+      invitation.wechat_display, invitation.marketplace_code,
+      invitation.status, invitation.version, invitation.expires_at,
+      invitation.buyer_customer_id,
+      buyer.buyer_customer_no, buyer.access_status AS buyer_access_status,
+      buyer.version AS buyer_version
+    FROM customer_buyer_invitations invitation
+    LEFT JOIN buyer_customers buyer
+      ON buyer.id=invitation.buyer_customer_id
+    WHERE invitation.token_hash=?
   `).bind(tokenHash).first<InvitationRow>();
   if (!invitation) {
     throw new CustomerSecurityError('CONFLICT', 409);
@@ -156,6 +167,18 @@ export async function registerInvitedBuyer(
     throw new CustomerSecurityError('CONFLICT', 409);
   }
 
+  // Stage 6.6E: invitations are always bound to a pre-created buyer profile.
+  // An unbound legacy invitation cannot be mapped safely, so registration
+  // fails closed instead of creating a second profile or a new number.
+  if (!invitation.buyer_customer_id || !invitation.buyer_customer_no
+    || invitation.buyer_access_status !== 'DISABLED'
+    || !Number.isSafeInteger(invitation.buyer_version)) {
+    await rejectRegistration(database, invitation, acquired.claim, command,
+      'INVITATION_BUYER_BINDING_UNAVAILABLE', tokenHash, now);
+    throw new CustomerSecurityError('CONFLICT', 409);
+  }
+  const boundBuyerCustomerId = invitation.buyer_customer_id;
+
   let identity: IdentityRow | null;
   try {
     identity = await loadIdentity(database, wechat.normalized);
@@ -169,17 +192,27 @@ export async function registerInvitedBuyer(
       'IDENTITY_CONFLICT', tokenHash, now);
     throw new CustomerSecurityError('CONFLICT', 409);
   }
-  if (identity?.buyer_customer_id
-    && (identity.buyer_identity_review_status !== 'CLEAR'
-      || (identity.buyer_marketplace_code !== invitation.marketplace_code))) {
+  // The identity behind the submitted WeChat id must be exactly the buyer the
+  // invitation was issued for — never a second profile.
+  if (!identity || identity.buyer_customer_id !== boundBuyerCustomerId) {
+    await rejectRegistration(database, invitation, acquired.claim, command,
+      'INVITATION_BUYER_MISMATCH', tokenHash, now);
+    throw new CustomerSecurityError('CONFLICT', 409);
+  }
+  if (identity.buyer_identity_review_status !== 'CLEAR'
+    || identity.buyer_marketplace_code !== invitation.marketplace_code) {
     await rejectRegistration(database, invitation, acquired.claim, command,
       'BUYER_PERSONA_CONFLICT', tokenHash, now);
     throw new CustomerSecurityError('CONFLICT', 409);
   }
-  if (identity?.buyer_customer_id
-    && identity.buyer_access_status !== 'ACTIVE') {
+  if (identity.buyer_access_status !== 'DISABLED') {
     await rejectRegistration(database, invitation, acquired.claim, command,
       'BUYER_PERSONA_NOT_ACTIVE', tokenHash, now);
+    throw new CustomerSecurityError('CONFLICT', 409);
+  }
+  if (identity.buyer_customer_no !== invitation.buyer_customer_no) {
+    await rejectRegistration(database, invitation, acquired.claim, command,
+      'BUYER_NUMBER_MISMATCH', tokenHash, now);
     throw new CustomerSecurityError('CONFLICT', 409);
   }
   if (identity?.account_id && identity.account_status !== 'ACTIVE') {
@@ -187,11 +220,9 @@ export async function registerInvitedBuyer(
       'ACCOUNT_NOT_ACTIVE', tokenHash, now);
     throw new CustomerSecurityError('CONFLICT', 409);
   }
-  if (identity?.account_id && identity.buyer_customer_id) {
-    await rejectRegistration(database, invitation, acquired.claim, command,
-      'BUYER_PERSONA_ALREADY_EXISTS', tokenHash, now);
-    throw new CustomerSecurityError('CONFLICT', 409);
-  }
+  // When the identity already has a login account (e.g. a Seller member), the
+  // BUYER persona was attached at staff buyer-creation time; registration then
+  // only verifies the password and activates the buyer below.
   if (identity?.account_id) {
     if (!identity.algorithm || !identity.iterations || !identity.salt_base64url
       || !identity.hash_base64url) {
@@ -211,17 +242,12 @@ export async function registerInvitedBuyer(
       throw new CustomerSecurityError('CONFLICT', 409);
     }
   }
-  if (identity && !identity.account_id && !identity.buyer_customer_id) {
-    await rejectRegistration(database, invitation, acquired.claim, command,
-      'IDENTITY_CONFLICT', tokenHash, now);
-    throw new CustomerSecurityError('CONFLICT', 409);
-  }
 
-  const needsSubject = identity === null;
-  const needsBuyer = !identity?.buyer_customer_id;
+  // The buyer profile and number already exist (staff creation); registration
+  // only claims and activates them. No buyer insert, no number allocation.
   const needsAccount = !identity?.account_id;
-  const identitySubjectId = identity?.identity_subject_id ?? crypto.randomUUID();
-  const buyerCustomerId = identity?.buyer_customer_id ?? crypto.randomUUID();
+  const identitySubjectId = identity.identity_subject_id;
+  const buyerCustomerId = boundBuyerCustomerId;
   const accountId = identity?.account_id ?? crypto.randomUUID();
   const credential = needsAccount
     ? await hashCustomerPassword(input.password)
@@ -234,19 +260,12 @@ export async function registerInvitedBuyer(
       ? ['SELLER_MEMBER' as const]
       : []),
   ];
-  const addsSecondPersona = Boolean(identity?.account_id && needsBuyer
-    && await database.prepare(`
-      SELECT 1 AS present FROM customer_account_personas
-      WHERE account_id=? AND persona_type<>'BUYER' LIMIT 1
-    `).bind(accountId).first<{ present: number }>());
-  // Migration 0062 revokes older devices in the same transaction when this
-  // Buyer persona is inserted. The current registration response and issuance
-  // must use that committed version, otherwise the newly issued cookie is
-  // invalid before it reaches the browser.
-  const sessionVersion = Number(identity?.account_session_version ?? 1)
-    + (addsSecondPersona ? 1 : 0);
+  // The BUYER persona is attached when the staff creates the buyer profile,
+  // so registration never inserts a persona and never bumps the session
+  // version — the account's committed version is already authoritative.
+  const sessionVersion = Number(identity?.account_session_version ?? 1);
   const safeResult = {
-    buyerNumber: identity?.buyer_customer_no ?? null,
+    buyerNumber: identity.buyer_customer_no,
     wechatDisplay: wechat.display,
     authenticated: {
       accountId,
@@ -257,51 +276,16 @@ export async function registerInvitedBuyer(
       passwordChangeRequired: false as const,
     },
   };
-  const statements: SqlStatement[] = [];
-  if (needsSubject) {
-    const claimId = crypto.randomUUID();
-    statements.push(
-      database.prepare(`
-        INSERT INTO customer_identity_subjects (id, subject_type, created_at)
-        VALUES (?, 'BUYER_CUSTOMER', ?)
-      `).bind(identitySubjectId, now),
-      database.prepare(`
-        INSERT INTO wechat_identity_claims (
-          id, identity_subject_id, display_wechat, normalized_wechat,
-          status, version, acquired_at, reserved_at, released_at,
-          created_at, updated_at, identity_subject_type
-        ) VALUES (?, ?, ?, ?, 'ACTIVE', 1, ?, NULL, NULL, ?, ?, 'BUYER_CUSTOMER')
-      `).bind(claimId, identitySubjectId, wechat.display,
-        wechat.normalized, now, now, now),
-      database.prepare(`
-        INSERT INTO customer_identity_claim_events (
-          id, claim_id, identity_subject_id, event_type, previous_status,
-          next_status, actor_type, actor_id, reason, idempotency_key, created_at
-        ) VALUES (?, ?, ?, 'CLAIMED', NULL, 'ACTIVE',
-          'CUSTOMER_INVITATION', NULL, NULL, ?, ?)
-      `).bind(crypto.randomUUID(), claimId, identitySubjectId,
-        command.idempotencyKey, now),
-    );
-  }
-  if (needsBuyer) {
-    statements.push(
-      database.prepare(`
-        INSERT INTO buyer_customers (
-          id, identity_subject_id, marketplace_code, buyer_channel_id,
-          buyer_customer_no, buyer_sequence, first_valid_order_business_date,
-          display_name, access_status, identity_review_status,
-          version, created_at, updated_at, activated_at, disabled_at
-        ) VALUES (?, ?, 'JP', ?, NULL, NULL, NULL, ?, 'ACTIVE', 'CLEAR',
-          1, ?, ?, ?, NULL)
-      `).bind(buyerCustomerId, identitySubjectId, input.buyerChannelId,
-        wechat.display.slice(0, 100), now, now, now),
-      database.prepare(`
-        UPDATE buyer_marketplace_assignments
-        SET marketplace_code=?, version=version+1, updated_at=?
-        WHERE buyer_customer_id=? AND marketplace_code='AMAZON_JP'
-      `).bind(invitation.marketplace_code, now, buyerCustomerId),
-    );
-  }
+  const statements: SqlStatement[] = [
+    database.prepare(`
+      UPDATE buyer_customers
+      SET access_status='ACTIVE', activated_at=?, disabled_at=NULL,
+        version=version+1, updated_at=?
+      WHERE id=? AND access_status='DISABLED' AND identity_review_status='CLEAR'
+        AND version=? AND buyer_customer_no=?
+    `).bind(now, now, buyerCustomerId, invitation.buyer_version,
+      invitation.buyer_customer_no),
+  ];
   if (needsAccount && credential) {
     statements.push(
       database.prepare(`
@@ -356,8 +340,8 @@ export async function registerInvitedBuyer(
       aggregateId: buyerCustomerId, eventType: 'INVITED_BUYER_REGISTERED',
       actor: { type: 'CUSTOMER_INVITATION', id: invitation.id, roles: [] },
       requestId: command.requestId, idempotencyKey: command.idempotencyKey,
-      previousState: needsBuyer ? null : { buyer_access_status:
-        identity?.buyer_access_status },
+      previousState: { buyer_access_status: 'DISABLED',
+        buyer_customer_no: invitation.buyer_customer_no },
       nextState: { account_id: accountId, identity_subject_id: identitySubjectId,
         marketplace_code: invitation.marketplace_code,
         available_personas: availablePersonas,
@@ -430,6 +414,7 @@ async function loadIdentity(
       buyer.access_status AS buyer_access_status,
       buyer.identity_review_status AS buyer_identity_review_status,
       buyer.buyer_customer_no,
+      buyer.buyer_sequence,
       assignment.marketplace_code AS buyer_marketplace_code,
       account.id AS account_id, account.status AS account_status,
       account.session_version AS account_session_version,
@@ -466,3 +451,4 @@ function maskWechat(value: string): string {
 function validation() {
   return new CustomerSecurityError('VALIDATION_ERROR', 400);
 }
+

@@ -7,7 +7,7 @@ import { OrderEvidenceError } from './order-evidence-shared';
 export interface ReservationForOrderEvidence {
   reservation_id: string;
   buyer_customer_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   status: string;
   organization_id: string;
   store_id: string;
@@ -19,7 +19,7 @@ export interface OrderEvidenceSubmissionRow {
   submission_id: string;
   reservation_id: string;
   buyer_customer_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   status: OrderEvidenceStatus;
   current_version_no: number;
   aggregate_version: number;

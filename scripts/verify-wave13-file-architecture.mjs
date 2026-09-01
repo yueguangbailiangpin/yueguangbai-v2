@@ -24,12 +24,10 @@ for (const purpose of [
 ]) assertContains(contract, purpose, 'active File HTTP purpose contract');
 assertContains(
   globalPurposes,
-  'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
+  'ORDER_COMMUNICATION_SCREENSHOT',
   'historical global FilePurpose',
 );
-assertContains(routes, 'staffSellerOrderChatScreenshot', 'active Seller chat screenshot upload route');
-assertContains(routes, "['ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE']", 'Staff upload mapping');
-assertContains(contract, '/api/staff/file-uploads/seller-order-chat-screenshots/intents', 'File HTTP path contract');
+assertContains(routes, "['ORDER_COMMUNICATION_SCREENSHOT', 'SELLER_VISIBLE']", 'Staff upload mapping');
 for (const authorityField of [
   'purpose?:', 'visibility?:', 'owner_id:', 'staff_id:',
   'buyer_id:', 'seller_id:', 'object_key:', 'permanent_url:',

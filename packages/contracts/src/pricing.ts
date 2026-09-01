@@ -1,16 +1,4 @@
-import {
-  DEMAND_TASK_TYPES,
-  type DemandTaskType,
-} from './demand';
-
-export const PRICING_RULE_STATUSES = [
-  'SUBMITTED',
-  'CONFIRMED',
-  'REJECTED',
-] as const;
-
-export type PricingRuleStatus =
-  typeof PRICING_RULE_STATUSES[number];
+import { DEMAND_TASK_TYPES, type DemandTaskType } from './demand';
 
 export const PRICING_REVIEW_TYPES = DEMAND_TASK_TYPES;
 export type PricingReviewType = DemandTaskType;
@@ -21,36 +9,36 @@ export type PricingReviewType = DemandTaskType;
  */
 export type FixedIntegerString = string;
 
+/**
+ * Stage 6.6 (D-056): one save immediately forms a new effective, immutable
+ * version of the order-date base rate. There is no submit/confirm dual
+ * approval any more; `effective_from` always equals the version's creation
+ * time.
+ */
 export interface BuyerDailyExchangeRateVersion {
-  rate_id: string;
+  rate_version_id: string;
   business_date: string;
   version_no: number;
-  decision_version: number;
-  status: PricingRuleStatus;
-  cny_per_jpy_e8: FixedIntegerString;
-  rejection_reason: string | null;
-  confirmed_at: number | null;
+  rate_value: FixedIntegerString;
+  rate_scale: FixedIntegerString;
+  created_by_staff_id: string;
+  created_at: number;
 }
 
-export interface SellerServiceFeeVersion {
-  fee_version_id: string;
-  seller_organization_id: string;
-  review_type: PricingReviewType;
-  version_no: number;
-  decision_version: number;
-  status: PricingRuleStatus;
-  fee_cny_fen: FixedIntegerString;
-  effective_from: number;
-  rejection_reason: string | null;
-  confirmed_at: number | null;
+export interface BuyerDailyExchangeRateReadDto {
+  business_date: string;
+  versions: readonly BuyerDailyExchangeRateVersion[];
+  active_version: BuyerDailyExchangeRateVersion | null;
+  next_version: number;
 }
 
 export interface ResolvedBuyerDailyExchangeRate {
   rate_id: string;
   business_date: string;
   version_no: number;
-  cny_per_jpy_e8: FixedIntegerString;
-  confirmed_at: number;
+  rate_value: FixedIntegerString;
+  rate_scale: FixedIntegerString;
+  created_at: number;
 }
 
 export interface ResolvedSellerServiceFee {
@@ -60,12 +48,9 @@ export interface ResolvedSellerServiceFee {
   version_no: number;
   fee_cny_fen: FixedIntegerString;
   effective_from: number;
-  confirmed_at: number;
+  created_at: number;
 }
 
-export function isPricingReviewType(
-  value: unknown,
-): value is PricingReviewType {
-  return typeof value === 'string'
-    && (PRICING_REVIEW_TYPES as readonly string[]).includes(value);
+export function isPricingReviewType(value: unknown): value is PricingReviewType {
+  return typeof value === 'string' && (PRICING_REVIEW_TYPES as readonly string[]).includes(value);
 }

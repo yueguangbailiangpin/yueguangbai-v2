@@ -53,9 +53,33 @@ export async function authorizeExplicitAudienceRead(
     deny();
   const linkId = cleanFileIdentifier(resource.fileEntityLinkId, 120);
   if (principal.type === 'BUYER_SESSION') {
-    if (actor.type !== 'BUYER_CUSTOMER' || resource.visibility !== 'BUYER_VISIBLE') deny();
-    if (!(await activeBuyerGrantExists(database, linkId, principal, now))) deny();
-    return;
+    if (actor.type !== 'BUYER_CUSTOMER') deny();
+    if (resource.visibility === 'BUYER_VISIBLE'
+      && await activeBuyerGrantExists(database, linkId, principal, now)) {
+      return;
+    }
+    // Stage 7.5R: company service-channel QR codes are public to every
+    // ACTIVE buyer — the channel config is organization-independent and
+    // buyer-scoped grants would need one row per buyer. Same dynamic-public
+    // precedent as the product catalog image window above.
+    if (resource.purpose === 'SERVICE_CHANNEL_QR'
+      && resource.visibility === 'BUYER_VISIBLE'
+      && resource.entityType === 'SERVICE_CHANNEL') {
+      return;
+    }
+    if (resource.purpose === 'PRODUCT_IMAGE'
+      && resource.visibility === 'SELLER_VISIBLE'
+      && resource.entityType === 'PRODUCT_VERSION'
+      && await activeBuyerCatalogImageAccessExists(
+        database,
+        linkId,
+        principal,
+        actor.id,
+        now,
+      )) {
+      return;
+    }
+    deny();
   }
   if (principal.type === 'SELLER_SESSION') {
     if (actor.type !== 'SELLER_MEMBER' || resource.visibility !== 'SELLER_VISIBLE') deny();
@@ -65,6 +89,117 @@ export async function authorizeExplicitAudienceRead(
   }
   if (actor.type !== 'STAFF' || actor.id !== principal.staffId) deny();
   await authorizeStaff(database, linkId, principal.staffId, resource, now);
+}
+
+/**
+ * Product-version main images are uploaded by Staff as SELLER_VISIBLE facts,
+ * while the catalog itself is dynamically public only to an eligible Buyer.
+ * Keep that dynamic catalog boundary here instead of issuing permanent grants
+ * to every Buyer or exposing the storage object address.
+ *
+ * A Buyer who already holds an active reservation on the demand keeps read
+ * access to its main image for the whole order journey, even after the
+ * catalog window closes or the batch sells out.
+ */
+async function activeBuyerCatalogImageAccessExists(
+  database: SqlDatabase,
+  linkId: string,
+  principal: Extract<FileReadPrincipal, { type: 'BUYER_SESSION' }>,
+  buyerCustomerId: string,
+  now: number,
+): Promise<boolean> {
+  const row = await database.prepare(`
+    SELECT 1 AS allowed
+    FROM customer_login_accounts account
+    JOIN customer_account_personas persona
+      ON persona.account_id=account.id
+      AND persona.persona_type='BUYER'
+    JOIN buyer_customers buyer
+      ON buyer.id=persona.buyer_customer_id
+      AND buyer.identity_subject_id=account.identity_subject_id
+    JOIN buyer_marketplace_assignments assignment
+      ON assignment.buyer_customer_id=buyer.id
+    JOIN file_entity_links link
+      ON link.id=?
+      AND link.entity_type='PRODUCT_VERSION'
+      AND link.purpose='PRODUCT_IMAGE'
+      AND link.visibility='SELLER_VISIBLE'
+      AND link.authorization_mode='EXPLICIT_AUDIENCES'
+      AND link.revoked_at IS NULL
+      AND (link.expires_at IS NULL OR link.expires_at>?)
+    JOIN product_version_main_images image
+      ON image.file_entity_link_id=link.id
+      AND image.product_version_id=link.entity_id
+    JOIN product_versions version
+      ON version.id=image.product_version_id
+    JOIN products product
+      ON product.id=version.product_id
+      AND product.status='ACTIVE'
+    JOIN seller_stores store
+      ON store.id=product.store_id
+      AND store.organization_id=product.organization_id
+      AND store.status='ACTIVE'
+    JOIN seller_organizations organization
+      ON organization.id=product.organization_id
+      AND organization.status='ACTIVE'
+    JOIN demand_batches demand
+      ON demand.product_id=product.id
+      AND demand.product_version_no=version.version_no
+      AND demand.organization_id=product.organization_id
+      AND demand.store_id=product.store_id
+      AND demand.marketplace_code=product.marketplace_code
+    WHERE account.id=?
+      AND account.identity_subject_id=?
+      AND account.status='ACTIVE'
+      AND buyer.id=?
+      AND buyer.access_status='ACTIVE'
+      AND buyer.identity_review_status='CLEAR'
+      AND CASE assignment.marketplace_code
+        WHEN 'AMAZON_JP' THEN 'AMAZON_JP'
+        ELSE assignment.marketplace_code
+      END=demand.marketplace_code
+      AND (
+        EXISTS (
+          SELECT 1
+          FROM product_reservations owned
+          WHERE owned.demand_batch_id=demand.id
+            AND owned.buyer_customer_id=buyer.id
+            AND owned.status IN ('PENDING_REVIEW', 'APPROVED')
+        )
+        OR (
+          demand.status='PUBLISHED'
+          AND demand.open_at<=?
+          AND demand.reservation_deadline>?
+          AND demand.order_deadline>?
+          AND (demand.held_reservation_count + demand.approved_reservation_count)
+            < demand.target_quantity
+          AND NOT EXISTS (
+            SELECT 1
+            FROM product_reservations existing
+            WHERE existing.demand_batch_id=demand.id
+              AND existing.buyer_customer_id=buyer.id
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM product_reservations active
+            WHERE active.buyer_customer_id=buyer.id
+              AND active.product_id=demand.product_id
+              AND active.status IN ('PENDING_REVIEW', 'APPROVED')
+          )
+        )
+      )
+    LIMIT 1
+  `).bind(
+    linkId,
+    now,
+    principal.accountId,
+    principal.identitySubjectId,
+    buyerCustomerId,
+    now,
+    now,
+    now,
+  ).first<{ allowed: number }>();
+  return Number(row?.allowed) === 1;
 }
 
 async function activeBuyerGrantExists(
@@ -171,7 +306,7 @@ async function resolveResourceMarketplace(
       (
         await database
           .prepare(
-            `SELECT COALESCE(canonical_marketplace_code,marketplace_code) AS market FROM formal_orders WHERE id=?`,
+            `SELECT marketplace_code AS market FROM formal_orders WHERE id=?`,
           )
           .bind(id)
           .first<{ market: string }>()
@@ -182,17 +317,13 @@ async function resolveResourceMarketplace(
         await database
           .prepare(
             `
-    SELECT COALESCE(formal_order.canonical_marketplace_code,submission.marketplace_code) AS market
+    SELECT formal_order.marketplace_code AS market
     FROM order_evidence_submissions submission
     LEFT JOIN formal_orders formal_order ON formal_order.order_evidence_submission_id=submission.id
     WHERE submission.id=?
-    UNION ALL
-    SELECT evidence.marketplace_code AS market
-    FROM platform_order_evidence_records evidence
-    WHERE evidence.id=? AND evidence.status='VERIFIED'
     LIMIT 1`,
           )
-          .bind(id, id)
+          .bind(id)
           .first<{ market: string }>()
       )?.market ?? null;
   else if (resource.entityType === 'REVIEW')
@@ -200,7 +331,7 @@ async function resolveResourceMarketplace(
       (
         await database
           .prepare(
-            `SELECT formal_order.canonical_marketplace_code AS market FROM review_cases review_case JOIN formal_orders formal_order ON formal_order.id=review_case.formal_order_id WHERE review_case.id=?`,
+            `SELECT formal_order.marketplace_code AS market FROM review_cases review_case JOIN formal_orders formal_order ON formal_order.id=review_case.formal_order_id WHERE review_case.id=?`,
           )
           .bind(id)
           .first<{ market: string }>()
@@ -211,9 +342,9 @@ async function resolveResourceMarketplace(
         await database
           .prepare(
             `
-    SELECT formal_order.canonical_marketplace_code AS market FROM buyer_refund_obligations obligation JOIN formal_orders formal_order ON formal_order.id=obligation.formal_order_id WHERE obligation.id=?
-    UNION ALL SELECT formal_order.canonical_marketplace_code AS market FROM buyer_refund_payment_entries payment JOIN buyer_refund_obligations obligation ON obligation.id=payment.obligation_id JOIN formal_orders formal_order ON formal_order.id=obligation.formal_order_id WHERE payment.id=?
-    UNION ALL SELECT formal_order.canonical_marketplace_code AS market FROM buyer_advance_principal_entries advance JOIN formal_orders formal_order ON formal_order.id=advance.formal_order_id WHERE advance.id=? LIMIT 1`,
+    SELECT formal_order.marketplace_code AS market FROM buyer_refund_obligations obligation JOIN formal_orders formal_order ON formal_order.id=obligation.formal_order_id WHERE obligation.id=?
+    UNION ALL SELECT formal_order.marketplace_code AS market FROM buyer_refund_payment_entries payment JOIN buyer_refund_obligations obligation ON obligation.id=payment.obligation_id JOIN formal_orders formal_order ON formal_order.id=obligation.formal_order_id WHERE payment.id=?
+    UNION ALL SELECT formal_order.marketplace_code AS market FROM buyer_advance_principal_entries advance JOIN formal_orders formal_order ON formal_order.id=advance.formal_order_id WHERE advance.id=? LIMIT 1`,
           )
           .bind(id, id, id)
           .first<{ market: string }>()
@@ -253,7 +384,7 @@ async function resolveResourceMarketplace(
       (
         await database
           .prepare(
-            `SELECT formal_order.canonical_marketplace_code AS market FROM formal_orders formal_order WHERE formal_order.order_instruction_version_id=? LIMIT 1`,
+            `SELECT formal_order.marketplace_code AS market FROM formal_orders formal_order WHERE formal_order.order_instruction_version_id=? LIMIT 1`,
           )
           .bind(id)
           .first<{ market: string }>()
@@ -309,16 +440,9 @@ async function resolveSellerEntityScope(
     JOIN seller_organizations organization ON organization.id=formal_order.seller_organization_id AND organization.status='ACTIVE'
     JOIN seller_stores store ON store.id=formal_order.store_id AND store.organization_id=formal_order.seller_organization_id AND store.status='ACTIVE'
     WHERE formal_order.order_evidence_submission_id=?
-    UNION ALL
-    SELECT evidence.seller_organization_id AS organizationId,evidence.seller_store_id AS storeId
-    FROM platform_order_evidence_records evidence
-    JOIN seller_organizations organization ON organization.id=evidence.seller_organization_id AND organization.status='ACTIVE'
-    JOIN seller_stores store ON store.id=evidence.seller_store_id AND store.organization_id=evidence.seller_organization_id AND store.status='ACTIVE'
-    JOIN seller_store_marketplaces market ON market.store_id=evidence.seller_store_id AND market.seller_organization_id=evidence.seller_organization_id AND market.marketplace_code=evidence.marketplace_code
-    WHERE evidence.id=? AND evidence.status='VERIFIED'
     LIMIT 1`,
       )
-      .bind(id, id)
+      .bind(id)
       .first<SellerScope>();
   return null;
 }

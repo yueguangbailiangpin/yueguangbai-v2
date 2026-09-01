@@ -1,0 +1,11 @@
+Material Symbols Rounded SVG assets
+
+Source: https://github.com/google/material-design-icons/tree/84ccef280841abfac506afc4ad4a2782f6d0a1d0/symbols/web
+Style: Material Symbols Rounded; 24px outline and fill1 variants.
+
+The official 960-unit path data is kept intact; the local wrappers normalize
+the assets to a 24x24 viewBox and currentColor for inline SVG rendering.
+
+These Google Material Symbols assets are available under the Apache License,
+Version 2.0. See the complete license at:
+https://www.apache.org/licenses/LICENSE-2.0

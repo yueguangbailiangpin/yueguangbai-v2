@@ -85,6 +85,7 @@ describe('Wave 13 default application runtime boundary', () => {
     );
     expect(content.status).toBe(200);
     expect(content.headers.get('content-type')).toBe('image/png');
+    expect(content.headers.get('cache-control')).toBe('private, max-age=300');
     expect(new Uint8Array(await content.arrayBuffer())).toEqual(onePixelPng());
     expect((await request(
       owner,

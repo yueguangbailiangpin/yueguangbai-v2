@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-31
+goal: Keep release governance truthful and fail-closed while preserving manual
+  diagnostics and production NO-GO.

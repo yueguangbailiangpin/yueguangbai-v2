@@ -1,24 +1,20 @@
 import {
-  ChevronLeft,
-  ChevronRight,
-  Copy,
-  Search,
-  X,
-} from 'lucide-react';
-import {
   Children,
   cloneElement,
   isValidElement,
   useEffect,
   useId,
   useRef,
+  useState,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type PropsWithChildren,
   type ReactNode,
   type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
 } from 'react';
 import { NavLink } from 'react-router';
+import { MoonwhiteIcon } from './MoonwhiteIcon';
 
 function classes(...values: (string | false | null | undefined)[]): string {
   return values.filter(Boolean).join(' ');
@@ -105,7 +101,7 @@ export function SearchInput({
   label?: string;
 }): React.JSX.Element {
   return <span className={classes('search-input', className)}>
-    <Search aria-hidden="true" size={18} />
+    <MoonwhiteIcon name="search" size={20} />
     <input {...props} type="search" aria-label={props['aria-label'] ?? label} />
   </span>;
 }
@@ -167,12 +163,18 @@ export function Card({
   children,
   className = '',
   as = 'section',
+  id,
 }: PropsWithChildren<{
   className?: string;
   as?: 'article' | 'section' | 'div';
+  id?: string;
 }>): React.JSX.Element {
   const Element = as;
-  return <Element className={classes('card', className)}>{children}</Element>;
+  return (
+    <Element id={id} className={classes('card', className)}>
+      {children}
+    </Element>
+  );
 }
 
 export function MetricCard({
@@ -237,7 +239,7 @@ export function Sidebar({
         label={collapsed ? '展开侧边栏' : '收起侧边栏'}
         aria-expanded={!collapsed}
         onClick={() => onCollapsedChange(!collapsed)}
-      >{collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronLeft aria-hidden="true" />}</IconButton> : null}
+      >{collapsed ? <MoonwhiteIcon name="chevron_right" size={20} /> : <MoonwhiteIcon name="chevron_left" size={20} />}</IconButton> : null}
     </div>
     <nav aria-label={label}>{items.map((item) => <NavLink
       key={item.id}
@@ -370,7 +372,7 @@ export function Drawer({
       <header><div><h2 id={titleId}>{title}</h2>
         {description ? <p id={descriptionId}>{description}</p> : null}</div>
         <IconButton label="关闭详情" onClick={onClose}>
-          <X aria-hidden="true" />
+          <MoonwhiteIcon name="close" size={20} />
         </IconButton>
       </header>
       <div className="overlay-content">{children}</div>
@@ -484,7 +486,7 @@ export function Pagination({
   const pages = Array.from({ length: Math.max(0, totalPages) }, (_, index) => index + 1);
   return <nav className="pagination" aria-label="分页">
     <IconButton label="上一页" disabled={currentPage <= 1} onClick={() => onChange(currentPage - 1)}>
-      <ChevronLeft aria-hidden="true" />
+      <MoonwhiteIcon name="chevron_left" size={20} />
     </IconButton>
     {pages.map((page) => <button
       type="button"
@@ -494,7 +496,7 @@ export function Pagination({
       onClick={() => onChange(page)}
     >{page}</button>)}
     <IconButton label="下一页" disabled={currentPage >= totalPages} onClick={() => onChange(currentPage + 1)}>
-      <ChevronRight aria-hidden="true" />
+      <MoonwhiteIcon name="chevron_right" size={20} />
     </IconButton>
   </nav>;
 }
@@ -584,7 +586,7 @@ export function Toast({
     role={tone === 'danger' ? 'alert' : 'status'}
     aria-live={tone === 'danger' ? 'assertive' : 'polite'}
   ><span>{message}</span>{onClose ? <IconButton label="关闭通知" onClick={onClose}>
-    <X aria-hidden="true" />
+    <MoonwhiteIcon name="close" size={20} />
   </IconButton> : null}</div>;
 }
 
@@ -637,7 +639,7 @@ export function RequestIdDisplay({
     {copyable && typeof navigator.clipboard?.writeText === 'function'
       ? <IconButton label="复制请求编号" onClick={() => {
         void navigator.clipboard.writeText(requestId);
-      }}><Copy aria-hidden="true" /></IconButton>
+      }}><MoonwhiteIcon name="more_horiz" size={20} /></IconButton>
       : null}</p>;
 }
 
@@ -705,3 +707,151 @@ export function Skeleton({
     />)}
   </div>;
 }
+
+/* ============================================================
+   阶段 7A-1 新增基础组件
+   ============================================================ */
+
+export function Textarea({
+  className,
+  ...props
+}: TextareaHTMLAttributes<HTMLTextAreaElement>): React.JSX.Element {
+  return <textarea {...props} className={classes('text-input textarea', className)} />;
+}
+
+export function Radio({
+  label,
+  stateLabel,
+  className,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & {
+  label: string;
+  stateLabel?: string;
+}): React.JSX.Element {
+  return <label className={classes('radio', className)}>
+    <input {...props} type="radio" />
+    <span>{label}</span>
+    {stateLabel ? <small>{stateLabel}</small> : null}
+  </label>;
+}
+
+export function SectionHeader({
+  title,
+  description,
+  children,
+}: PropsWithChildren<{
+  title: string;
+  description?: string;
+}>): React.JSX.Element {
+  return <header className="section-header">
+    <div>
+      <h2>{title}</h2>
+      {description ? <p>{description}</p> : null}
+    </div>
+    {children ? <div className="section-header-actions">{children}</div> : null}
+  </header>;
+}
+
+/* ---- DropdownMenu ---- */
+
+export type DropdownMenuItem = Readonly<{
+  id: string;
+  label: string;
+  icon?: ReactNode;
+  danger?: boolean;
+  disabled?: boolean;
+  onSelect: () => void;
+}>;
+
+export function DropdownMenu({
+  label,
+  items,
+  children,
+  align = 'end',
+}: {
+  label: string;
+  items: readonly DropdownMenuItem[];
+  children?: ReactNode;
+  align?: 'start' | 'end';
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (event: MouseEvent): void => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+  return <div className="dropdown-menu" ref={containerRef}>
+    <Button
+      type="button"
+      className="secondary dropdown-trigger"
+      aria-haspopup="menu"
+      aria-expanded={open}
+      aria-controls={menuId}
+      onClick={() => setOpen((v) => !v)}
+    >
+      {children ?? label}
+    </Button>
+    {open ? <div
+      id={menuId}
+      className={classes('dropdown-panel', align === 'end' && 'dropdown-align-end')}
+      role="menu"
+      aria-label={label}
+    >
+      {items.map((item) => <button
+        key={item.id}
+        type="button"
+        role="menuitem"
+        className={classes('dropdown-item', item.danger && 'dropdown-item-danger')}
+        disabled={item.disabled}
+        onClick={() => { item.onSelect(); setOpen(false); }}
+      >
+        {item.icon ? <span aria-hidden="true">{item.icon}</span> : null}
+        <span>{item.label}</span>
+      </button>)}
+    </div> : null}
+  </div>;
+}
+
+/* ---- Tooltip ---- */
+
+export function Tooltip({
+  label,
+  children,
+  side = 'top',
+}: PropsWithChildren<{
+  label: string;
+  side?: 'top' | 'bottom' | 'left' | 'right';
+}>): React.JSX.Element {
+  const [visible, setVisible] = useState(false);
+  const id = useId();
+  return <span
+    className="tooltip-wrapper"
+    onMouseEnter={() => setVisible(true)}
+    onMouseLeave={() => setVisible(false)}
+    onFocus={() => setVisible(true)}
+    onBlur={() => setVisible(false)}
+  >
+    <span aria-describedby={visible ? id : undefined}>{children}</span>
+    {visible ? <span
+      id={id}
+      className={classes('tooltip', `tooltip-${side}`)}
+      role="tooltip"
+    >{label}</span> : null}
+  </span>;
+}
+
+/* ---- CursorControls：独立模块 `./CursorPagination`，避免循环依赖 ---- */

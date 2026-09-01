@@ -51,7 +51,6 @@ class IntegrityError extends Error {
 type ProofInput = { fileObjectId: string; expectedFileVersion: number };
 
 export function registerOperatingIntegrityRoutes(app: Hono<AppEnv>): void {
-  app.get('/api/staff/order-integrity/:id', wrap(readOrderIntegrity));
   app.post(
     '/api/staff/order-integrity/:id/events',
     customerAuthOriginGuard(),
@@ -81,40 +80,6 @@ export function registerOperatingIntegrityRoutes(app: Hono<AppEnv>): void {
   );
 }
 
-async function readOrderIntegrity(context: Context<AppEnv>) {
-  const actor = staff(context);
-  const order = await orderRow(context.env.DB, id(context.req.param('id') ?? ''));
-  await market(context.env.DB, actor, order.market);
-  const canViewFinancialAdjustments = canViewOrderFinancialAdjustments(actor);
-  const [events, adjustments, state] = await Promise.all([
-    context.env.DB.prepare(
-      `SELECT id AS event_id,formal_order_id,event_type,reason,actor_staff_id,created_at FROM formal_order_operational_events WHERE formal_order_id=? ORDER BY created_at,id`,
-    )
-      .bind(order.id)
-      .all<any>(),
-    canViewFinancialAdjustments
-      ? context.env.DB.prepare(
-          `SELECT id AS adjustment_id,formal_order_id,source_operational_event_id,adjustment_scope,CAST(amount_cny_fen AS TEXT) AS amount_cny_fen,reason,actor_staff_id,created_at FROM formal_order_financial_adjustments WHERE formal_order_id=? ORDER BY created_at,id`,
-        )
-          .bind(order.id)
-          .all<any>()
-      : Promise.resolve({ results: [] }),
-    context.env.DB.prepare(
-      `SELECT operational_state FROM formal_order_effective_operational_state WHERE formal_order_id=?`,
-    )
-      .bind(order.id)
-      .first<{ operational_state: string }>(),
-  ]);
-  return ok(context, {
-    order_integrity: {
-      formal_order_id: order.id,
-      canonical_marketplace_code: order.market,
-      operational_state: state?.operational_state ?? 'NORMAL',
-      events: events.results,
-      adjustments: adjustments.results,
-    },
-  });
-}
 
 export function canViewOrderFinancialAdjustments(
   actor: Pick<AssignmentStaffAuthorization, 'roles' | 'permissions'>,
@@ -781,7 +746,7 @@ function parseProofFiles(value: unknown): ProofInput[] {
 async function orderRow(database: SqlDatabase, orderId: string) {
   const row = await database
     .prepare(
-      `SELECT id,buyer_customer_id,canonical_marketplace_code AS market FROM formal_orders WHERE id=?`,
+      `SELECT id,buyer_customer_id,marketplace_code AS market FROM formal_orders WHERE id=?`,
     )
     .bind(orderId)
     .first<{ id: string; buyer_customer_id: string; market: string }>();
@@ -805,7 +770,7 @@ export async function authoritativeAdvanceAmount(
 async function reviewRow(database: SqlDatabase, reviewId: string) {
   const row = await database
     .prepare(
-      `SELECT review_case.id,review_case.formal_order_id,formal_order.canonical_marketplace_code AS market FROM review_cases review_case JOIN formal_orders formal_order ON formal_order.id=review_case.formal_order_id WHERE review_case.id=?`,
+      `SELECT review_case.id,review_case.formal_order_id,formal_order.marketplace_code AS market FROM review_cases review_case JOIN formal_orders formal_order ON formal_order.id=review_case.formal_order_id WHERE review_case.id=?`,
     )
     .bind(reviewId)
     .first<{ id: string; formal_order_id: string; market: string }>();

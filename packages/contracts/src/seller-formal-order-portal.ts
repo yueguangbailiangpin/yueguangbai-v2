@@ -9,7 +9,7 @@ import type {
 } from './customer';
 import type { CurrencyCode, CurrencyExponent } from './marketplace-money';
 import type { SellerPortalPage } from './seller-portal';
-import type { SellerOrderChatScreenshotStatusDto } from './seller-order-chat-screenshot';
+import type { OrderCommunicationScreenshotReferenceDto } from './order-communication-screenshot';
 import type { SellerPrincipalRateSnapshotDto } from './seller-principal-rate-policy';
 
 export const SELLER_FORMAL_ORDER_PORTAL_HTTP_PATHS = Object.freeze({
@@ -33,7 +33,7 @@ export interface LockedSellerServiceFeeSnapshotDto {
   review_type: PricingReviewType;
   service_fee_cny_fen: FixedIntegerString;
   effective_from: number;
-  confirmed_at: number;
+  created_at: number;
   marketplace_code: CanonicalMarketplaceCode;
   currency_code: 'CNY';
   currency_exponent: 2;
@@ -51,6 +51,17 @@ export interface SellerBusinessCompletionDto {
   seller_service_fee: SellerBusinessCompletionComponentStatus;
 }
 
+export interface SellerFormalOrderMainImageDto {
+  file_object_id: string;
+  file_version: number;
+  client_file_name: string;
+}
+
+export interface SellerFormalOrderScreenshotDto {
+  file_object_id: string;
+  file_version: number;
+}
+
 interface SellerFormalOrderPortalBaseDto {
   formal_order_id: string;
   status: FormalOrderStatus;
@@ -58,18 +69,14 @@ interface SellerFormalOrderPortalBaseDto {
   store: SellerFormalOrderStoreSummaryDto;
   platform_product_identifier: string;
   product_name: string;
-  chat_screenshot: SellerOrderChatScreenshotStatusDto;
+  main_image: SellerFormalOrderMainImageDto | null;
+  order_screenshot: SellerFormalOrderScreenshotDto | null;
+  communication_screenshots: readonly OrderCommunicationScreenshotReferenceDto[];
   confirmed_at: number;
 }
 
-export type SellerFormalOrderPortalDto = SellerFormalOrderPortalBaseDto & (
-  | {
-  legacy_projection: 'AMAZON';
-  canonical_marketplace_code: Extract<
-    CanonicalMarketplaceCode,
-    'AMAZON_JP' | 'AMAZON_US'
-  >;
-  marketplace_code: 'JP';
+export interface SellerFormalOrderPortalDto extends SellerFormalOrderPortalBaseDto {
+  marketplace_code: 'AMAZON_JP';
   amazon_order_number: string;
   asin: string;
   product_version: SellerFormalOrderProductVersionSummaryDto;
@@ -85,27 +92,7 @@ export type SellerFormalOrderPortalDto = SellerFormalOrderPortalBaseDto & (
   locked_service_fee_snapshot: LockedSellerServiceFeeSnapshotDto;
   business_completion: SellerBusinessCompletionDto;
   confirmed_business_date: string;
-  }
-  | {
-  legacy_projection: 'NONE';
-  canonical_marketplace_code: Extract<
-    CanonicalMarketplaceCode,
-    'RAKUTEN_JP' | 'TIKTOK_JP'
-  >;
-  marketplace_code: null;
-  amazon_order_number: null;
-  asin: null;
-  product_version: null;
-  review_type: PricingReviewType | null;
-  final_paid_jpy: null;
-  payment: null;
-  seller_expected_principal_cny_fen: null;
-  seller_principal_rate_snapshot: null;
-  locked_service_fee_snapshot: null;
-  business_completion: null;
-  confirmed_business_date: string | null;
-  }
-);
+}
 
 export type SellerFormalOrderPortalPage =
   SellerPortalPage<SellerFormalOrderPortalDto>;

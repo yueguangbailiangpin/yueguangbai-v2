@@ -6,8 +6,8 @@ import { runScheduledOperations } from './scheduled-operations';
 import { reconcileUnlinkedFileRetention } from './files/retention';
 import { hashCanonicalJson } from '@ygb/domain';
 import { evaluatePersistedScheduledJobSignals } from './scheduled-operations/signals';
-import { driveArchiveRuntime } from './cold-image-archive/runtime';
-import { runAcquisitionMaintenance } from './acquisition/maintenance';
+import { archiveRuntime } from './cold-image-archive/runtime';
+import { processArchiveQueueMessage } from './cold-image-archive/queue-consumer';
 import {
   isAllowedSameOriginApiRequest,
   isApiRequestPath,
@@ -65,19 +65,20 @@ export default {
       (async () => {
         const startedAt = Date.now();
         const deadlineReached = () => Date.now() - startedAt >= SCHEDULED_HANDLER_TIME_BUDGET_MS;
-        const drive = driveArchiveRuntime(bindings);
+        const archive = archiveRuntime(bindings);
         const sink = configuredAlertSink(bindings);
         const runs = await runScheduledOperations(bindings.DB, {
           enabled: true,
           disabledJobs,
           storage: bindings.FILE_OBJECT_STORAGE ?? null,
-          outboxDeliveryEnabled: bindings.OUTBOX_DELIVERY_ENABLED === 'true',
-          outboxAdapter: bindings.OUTBOX_DELIVERY_ADAPTER ?? null,
-          driveAdapter: drive.adapter,
-          driveArchiveEnabled: drive.enabled,
-          driveArchiveCopyEnabled: drive.copyEnabled,
-          driveArchiveProxyReadEnabled: drive.proxyReadEnabled,
-          driveArchiveR2DeleteEnabled: drive.r2DeleteEnabled,
+          archive: {
+            client: archive.client,
+            queue: archive.queue,
+            selectorEnabled: archive.selectorEnabled,
+            driveUploadEnabled: archive.driveUploadEnabled,
+            hotDeleteEnabled: archive.hotDeleteEnabled,
+            restoreWorkerEnabled: archive.restoreWorkerEnabled,
+          },
           now,
           deadlineReached,
         });
@@ -116,12 +117,6 @@ export default {
             throw error;
           }
         }
-        if (bindings.ACQUISITION_MAINTENANCE_ENABLED === 'true') {
-          await runAcquisitionMaintenance(bindings.DB, {
-            identitySecret: String(bindings.CUSTOMER_SECURITY_TOKEN_SECRET ?? ''),
-            now,
-          });
-        }
         const evaluationId = await hashCanonicalJson({
           kind: 'SCHEDULED_OPERATIONS_EVALUATION',
           scheduled_time: now,
@@ -134,6 +129,75 @@ export default {
         });
       })(),
     );
+  },
+  /**
+   * Cloudflare Queues push consumer (template wiring lives commented in
+   * wrangler.example.jsonc; no real queue exists in this stage). Per-message
+   * ack/retry with exponential backoff + jitter; the D1 archive_jobs lease
+   * makes duplicate delivery a no-op. No floating promises: every message is
+   * resolved before the handler returns.
+   */
+  async queue(
+    batch: {
+      queue: string;
+      messages: readonly {
+        id: string;
+        body: unknown;
+        attempts: number;
+        ack(): void;
+        retry(options?: { delaySeconds?: number }): void;
+      }[];
+    },
+    env: CloudflareWorkerBindings,
+    _ctx: ExecutionContext,
+  ): Promise<void> {
+    const runtime = await resolveCloudflareRuntime(env);
+    if (!runtime) {
+      batch.messages.forEach((message) => message.retry());
+      return;
+    }
+    const bindings = runtime.appBindings;
+    const archive = archiveRuntime(bindings);
+    const storage = bindings.FILE_OBJECT_STORAGE ?? null;
+    const client = archive.client;
+    if (!storage || !client) {
+      batch.messages.forEach((message) => message.retry());
+      return;
+    }
+    const now = Date.now();
+    const controls = await bindings.DB
+      .prepare(
+        `SELECT drive_upload_enabled,hot_delete_enabled,restore_worker_enabled,shadow_copy_only
+       FROM archive_runtime_controls WHERE singleton_id=1`,
+      )
+      .first<{
+        drive_upload_enabled: number; hot_delete_enabled: number;
+        restore_worker_enabled: number; shadow_copy_only: number;
+      }>()
+      .catch(() => null);
+    for (const message of batch.messages) {
+      const disposition = await processArchiveQueueMessage(
+        bindings.DB,
+        message.body,
+        { now, queueMessageId: message.id },
+        { storage, drive: client },
+        {
+          driveUploadEnabled: archive.driveUploadEnabled && controls?.drive_upload_enabled === 1,
+          hotDeleteEnabled: archive.hotDeleteEnabled && controls?.hot_delete_enabled === 1,
+          shadowCopyOnly: controls?.shadow_copy_only === 1,
+          restoreWorkerEnabled: archive.restoreWorkerEnabled && controls?.restore_worker_enabled === 1,
+        },
+      ).catch(() => null);
+      if (!disposition) {
+        message.retry({ delaySeconds: 60 });
+        continue;
+      }
+      if (disposition.action === 'RETRY') {
+        message.retry(disposition.delaySeconds === undefined ? undefined : { delaySeconds: disposition.delaySeconds });
+      } else {
+        message.ack();
+      }
+    }
   },
 };
 

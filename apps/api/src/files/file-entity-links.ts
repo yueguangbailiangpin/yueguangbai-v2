@@ -16,10 +16,6 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
 import type { FileAuthorizationService } from './authorization';
 import { createFileEventStatement } from './file-events';
 import {
@@ -109,21 +105,6 @@ export async function linkVerifiedFileToEntity(
       visibility: source.visibility,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `file-object-linked:${requestHash.slice(0, 64)}`,
-      eventType: 'FILE_OBJECT_LINKED',
-      aggregateType: 'FILE_OBJECT',
-      aggregateId: fileObjectId,
-      payload: {
-        file_object_id: fileObjectId,
-        entity_type: input.entityType,
-        entity_id: entityId,
-        purpose: source.purpose,
-        visibility: source.visibility,
-      },
-      createdAt: now,
-    });
 
     await database.batch([
       database.prepare(`
@@ -184,7 +165,6 @@ export async function linkVerifiedFileToEntity(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

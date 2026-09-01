@@ -12,7 +12,7 @@ test.use({
 const screenshotDirectory = process.env['SELLER_VISUAL_SCREENSHOT_DIR'];
 const fixedNow = Date.parse('2026-08-09T04:00:00.000Z');
 const pageInfo = { limit: 100, next_cursor: null };
-const navigationLabels = ['首页', '商品', '需求', '订单', '评论', '结算', '我的'] as const;
+const navigationLabels = ['首页', '产品', '需求', '订单与沟通', '评论', '结算', '成员与组织设置'] as const;
 const primaryViewports = [
   { width: 390, height: 844 },
   { width: 1440, height: 900 },
@@ -30,8 +30,10 @@ const me = {
     id: 'org-visual',
     seller_code: 'YG-26001',
     name: '月白生活株式会社',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     status: 'ACTIVE',
+    settlement_account_name: null,
+    settlement_account_identifier: null,
   },
   access: {
     read_scope: 'ORGANIZATION',
@@ -44,7 +46,7 @@ const me = {
 const stores = [
   {
     id: 'store-jp',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     canonical_marketplace_code: 'AMAZON_JP',
     transaction_currency_code: 'JPY',
     transaction_currency_exponent: 0,
@@ -58,7 +60,7 @@ const stores = [
   },
   {
     id: 'store-us',
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     canonical_marketplace_code: 'AMAZON_US',
     transaction_currency_code: 'USD',
     transaction_currency_exponent: 2,
@@ -76,7 +78,7 @@ const products = [
   {
     id: 'product-rice',
     store: { id: 'store-jp', display_name: '东京一号店' },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     seller_code: 'YG-26001',
     asin: 'B07W5DMQ3R',
     status: 'ACTIVE',
@@ -100,7 +102,7 @@ const products = [
   {
     id: 'product-kettle',
     store: { id: 'store-us', display_name: '北美精品店' },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     seller_code: 'YG-26001',
     asin: 'B08J7H2K5L',
     status: 'ACTIVE',
@@ -127,10 +129,11 @@ const applications = [
   {
     id: 'application-serum',
     store: { id: 'store-jp', display_name: '东京一号店' },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     asin: 'B00XQJG2Z4',
     product_name: '资生堂 HAKU 美白精华 45g',
     search_keywords: ['美白精华'],
+    ordering_guide_expected_amount_jpy: 4580,
     product_url: null,
     buyer_visible_notes: '请核对规格',
     seller_notes: null,
@@ -146,10 +149,11 @@ const applications = [
   {
     id: 'application-mask',
     store: { id: 'store-us', display_name: '北美精品店' },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     asin: 'B00E3N4H7C',
     product_name: '肌美精 3D 面膜 4 枚入',
     search_keywords: ['面膜'],
+    ordering_guide_expected_amount_jpy: 680,
     product_url: null,
     buyer_visible_notes: null,
     seller_notes: null,
@@ -176,7 +180,7 @@ const demands = [
       search_keywords: ['电饭煲'],
       product_url: null,
     },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     task_type: 'IMAGE',
     target_quantity: 20,
     held_quantity: 6,
@@ -209,7 +213,7 @@ const demands = [
       search_keywords: ['电热水壶'],
       product_url: null,
     },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     task_type: 'TEXT',
     target_quantity: 12,
     held_quantity: 0,
@@ -237,8 +241,7 @@ const orders = [
   {
     formal_order_id: 'order-rice',
     status: 'CONFIRMED',
-    marketplace_code: 'JP',
-    canonical_marketplace_code: 'AMAZON_JP',
+    marketplace_code: 'AMAZON_JP',
     amazon_order_number: '503-1234567-1234567',
     platform_order_identifier: '503-1234567-1234567',
     store: { id: 'store-jp', display_name: '东京一号店' },
@@ -246,6 +249,22 @@ const orders = [
     platform_product_identifier: 'B07W5DMQ3R',
     product_name: '象印 IH 电饭煲 5.5 合',
     product_version: { id: 'version-rice', version_no: 2 },
+    main_image: null,
+    order_screenshot: null,
+    communication_screenshots: [
+      {
+        file_object_id: 'seller-comm-1', file_version: 2,
+        purpose: 'ORDER_COMMUNICATION_SCREENSHOT', visibility: 'SELLER_VISIBLE',
+        uploaded_at: fixedNow - 6_000_000, uploaded_by_staff_id: 'visual-staff-1',
+        uploaded_by_staff_name: '陈 staff',
+      },
+      {
+        file_object_id: 'seller-comm-2', file_version: 1,
+        purpose: 'ORDER_COMMUNICATION_SCREENSHOT', visibility: 'SELLER_VISIBLE',
+        uploaded_at: fixedNow - 5_000_000, uploaded_by_staff_id: null,
+        uploaded_by_staff_name: null,
+      },
+    ],
     review_type: 'IMAGE',
     final_paid_jpy: '22800',
     payment: { amount_minor: '22800', currency_code: 'JPY', currency_exponent: 0 },
@@ -256,7 +275,7 @@ const orders = [
       payment_currency_code: 'JPY',
       base_rate_version_id: 'base-rate-jp',
       base_rate_business_date: '2026-08-09',
-      base_rate_confirmed_at: fixedNow - 8_000_000,
+      base_rate_created_at: fixedNow - 8_000_000,
       base_rate_value: '3800000',
       base_rate_scale: '100000000',
       policy_version_id: 'policy-jp',
@@ -264,7 +283,7 @@ const orders = [
       policy_seller_organization_id: 'seller-org',
       policy_version_no: 8,
       policy_effective_from: fixedNow - 10_000_000,
-      policy_confirmed_at: fixedNow - 8_000_000,
+      policy_created_at: fixedNow - 8_000_000,
       markup_rate_value: '200000',
       markup_rate_scale: '100000000',
       final_rate_value: '4000000',
@@ -278,7 +297,7 @@ const orders = [
       review_type: 'IMAGE',
       service_fee_cny_fen: '3200',
       effective_from: fixedNow - 10_000_000,
-      confirmed_at: fixedNow - 8_000_000,
+      created_at: fixedNow - 8_000_000,
       marketplace_code: 'AMAZON_JP',
       currency_code: 'CNY',
       currency_exponent: 2,
@@ -295,8 +314,7 @@ const orders = [
   {
     formal_order_id: 'order-kettle',
     status: 'CONFIRMED',
-    marketplace_code: 'JP',
-    canonical_marketplace_code: 'AMAZON_US',
+    marketplace_code: 'AMAZON_JP',
     amazon_order_number: '113-7654321-7654321',
     platform_order_identifier: '113-7654321-7654321',
     store: { id: 'store-us', display_name: '北美精品店' },
@@ -304,6 +322,9 @@ const orders = [
     platform_product_identifier: 'B08J7H2K5L',
     product_name: '山善电热水壶 0.8L',
     product_version: { id: 'version-kettle', version_no: 1 },
+    main_image: null,
+    order_screenshot: null,
+    communication_screenshots: [],
     review_type: 'TEXT',
     final_paid_jpy: '4599',
     payment: { amount_minor: '4599', currency_code: 'USD', currency_exponent: 2 },
@@ -314,7 +335,7 @@ const orders = [
       payment_currency_code: 'USD',
       base_rate_version_id: 'base-rate-us',
       base_rate_business_date: '2026-08-08',
-      base_rate_confirmed_at: fixedNow - 9_000_000,
+      base_rate_created_at: fixedNow - 9_000_000,
       base_rate_value: '700000000',
       base_rate_scale: '100000000',
       policy_version_id: 'policy-us',
@@ -322,7 +343,7 @@ const orders = [
       policy_seller_organization_id: 'seller-org',
       policy_version_no: 2,
       policy_effective_from: fixedNow - 10_000_000,
-      policy_confirmed_at: fixedNow - 9_000_000,
+      policy_created_at: fixedNow - 9_000_000,
       markup_rate_value: '20000000',
       markup_rate_scale: '100000000',
       final_rate_value: '720000000',
@@ -336,7 +357,7 @@ const orders = [
       review_type: 'TEXT',
       service_fee_cny_fen: '1800',
       effective_from: fixedNow - 10_000_000,
-      confirmed_at: fixedNow - 9_000_000,
+      created_at: fixedNow - 9_000_000,
       marketplace_code: 'AMAZON_US',
       currency_code: 'CNY',
       currency_exponent: 2,
@@ -357,7 +378,7 @@ const reviews = [
     review_case_id: 'review-rice',
     formal_order: { id: 'order-rice', amazon_order_number: '503-1234567-1234567' },
     store: { id: 'store-jp', display_name: '东京一号店' },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     asin: 'B07W5DMQ3R',
     product_name: '象印 IH 电饭煲 5.5 合',
     review_type: 'IMAGE',
@@ -387,7 +408,7 @@ const reviews = [
     review_case_id: 'review-kettle',
     formal_order: { id: 'order-kettle', amazon_order_number: '113-7654321-7654321' },
     store: { id: 'store-us', display_name: '北美精品店' },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     asin: 'B08J7H2K5L',
     product_name: '山善电热水壶 0.8L',
     review_type: 'TEXT',
@@ -547,15 +568,15 @@ async function capture(page: Page, name: string): Promise<void> {
 }
 
 const surfaces = [
-  ['dashboard', '/seller', '业务进度'],
+  ['dashboard', '/seller', '月白生活株式会社'],
   ['products', '/seller/products', '商品与申请'],
-  ['application-form', '/seller/products/new', '提交产品申请'],
+  ['application-form', '/seller/products/new', '商品与数量计划'],
   ['application-detail', '/seller/products/application-serum', '产品申请'],
-  ['demands', '/seller/demands', '需求批次'],
-  ['demand-form', '/seller/demands/new', '提交需求'],
+  ['demands', '/seller/demands', '数量计划'],
+  ['demand-form', '/seller/demands/new', '商品与数量计划'],
   ['orders', '/seller/orders', '订单与业务完成'],
   ['reviews', '/seller/reviews', '评论'],
-  ['settlements', '/seller/settlements', '本金与服务费'],
+  ['settlements', '/seller/settlements', '卖家结算'],
   ['account', '/seller/settings', '账户与团队'],
 ] as const;
 
@@ -598,16 +619,13 @@ test('Seller shell keeps context, navigation, entries, and disclosure boundaries
   await installSellerFixture(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/seller');
-  await expect(page.getByText(me.organization.name, { exact: true })).toBeVisible();
-  await expect(page.getByText(me.organization.seller_code, { exact: true })).toBeVisible();
-  await expect(
-    page.getByLabel('组织和店铺').getByText(me.member.display_name, { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: me.organization.name, exact: true })).toBeVisible();
+  await expect(page.locator('.mws-appbar').getByText(me.member.display_name, { exact: true })).toBeVisible();
   await expect(page.getByLabel('店铺', { exact: true })).toBeVisible();
   const navigation = page.getByRole('navigation', { name: '卖家导航' });
   for (const label of navigationLabels)
     await expect(navigation.getByRole('link', { name: label, exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: '提交需求', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '提交数量计划', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: '提交产品申请', exact: true })).toBeVisible();
   await expect(page.locator('body')).not.toContainText(
     /卖家工作台|卖家首页|韩国站能力|状态来自服务器业务事实|结算确认由员工控制|Buyer Refund|内部利润|object_key|drive_file_id/u,
@@ -627,12 +645,12 @@ test('Seller permission-projected entries disappear without access', async ({ pa
     can_submit_demand_batches: false,
   });
   await page.goto('/seller');
-  await expect(page.getByRole('link', { name: '提交需求' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '提交数量计划' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: '提交产品申请' })).toHaveCount(0);
   await page.goto('/seller/products/new');
-  await expect(page.getByText('当前账号没有提交产品申请的权限。')).toBeVisible();
+  await expect(page.getByText('当前账号可以添加店铺，但没有提交产品申请的权限。')).toBeVisible();
   await page.goto('/seller/demands/new');
-  await expect(page.getByText('当前账号没有提交需求的权限。')).toBeVisible();
+  await expect(page.getByText('当前账号没有提交数量计划的权限。')).toBeVisible();
 });
 
 test('Seller pages preserve keyboard, zoom, reduced motion, targets, and overflow', async ({

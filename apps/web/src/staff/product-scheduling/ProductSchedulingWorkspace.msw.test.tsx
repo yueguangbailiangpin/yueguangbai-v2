@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Route, Routes } from 'react-router';
 import '../../test/msw/lifecycle';
 import { StaffSessionBoundary } from '../../auth/staff/StaffSessionBoundary';
@@ -14,6 +14,13 @@ import { server } from '../../test/msw/server';
 import { ProductSchedulingWorkspace } from './ProductSchedulingWorkspace';
 
 afterEach(cleanup);
+beforeEach(() => {
+  Object.defineProperty(URL, 'createObjectURL', {
+    configurable: true,
+    value: vi.fn(() => 'blob:staff-main-image'),
+  });
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+});
 
 describe('产品预约排期工作区', () => {
   it('labels the reset-cursor action as returning to the first page', async () => {
@@ -62,6 +69,146 @@ describe('产品预约排期工作区', () => {
     expect(await screen.findByText(/排期新版本已确认/u)).toBeVisible();
   });
 
+  it('shows a close entry for a published demand that the backend says is closable', async () => {
+    server.use(http.get(apiUrl('/api/staff/demand-batches/demand-1/reservation-schedule'), () =>
+      HttpResponse.json({ data: { page: schedulePage() }, meta: { request_id: 'page' } })));
+    renderWorkspace(owner(), '/staff/demands/demand-1/reservations');
+    expect(await screen.findByRole('table', { name: '预约排名与预计下单日期' })).toBeVisible();
+    expect(await screen.findByRole('button', { name: '关闭需求' })).toBeVisible();
+  });
+
+  it('submits close with exact ambiguous retry and refreshes the closed status', async () => {
+    const calls: Array<{ body: unknown; key: string|null }> = [];
+    let closeCalls = 0;
+    let pageCalls = 0;
+    server.use(
+      http.get(apiUrl('/api/staff/demand-batches/demand-1/reservation-schedule'), () => {
+        pageCalls += 1;
+        const base = schedulePage();
+        return HttpResponse.json({ data: { page: {
+          ...base,
+          demand: {
+            ...base.demand,
+            demand_version: closeCalls > 1 ? 5 : 4,
+            status: closeCalls > 1 ? 'CLOSED' : 'PUBLISHED',
+            can_close: closeCalls <= 1,
+          },
+        } }, meta: { request_id: `page-${pageCalls}` } });
+      }),
+      http.post(apiUrl('/api/staff/demand-batches/demand-1/close'), async ({ request }) => {
+        calls.push({ body: await request.json(), key: request.headers.get('Idempotency-Key') });
+        closeCalls += 1;
+        if (closeCalls === 1) return HttpResponse.error();
+        return HttpResponse.json({ data: { demand_close: {
+          demand_batch_id: 'demand-1', status: 'CLOSED', version: 5,
+          close_reason: '提前结束活动', replayed: false,
+        } }, meta: { request_id: 'close-success' } });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWorkspace(owner(), '/staff/demands/demand-1/reservations');
+    await screen.findByRole('table', { name: '预约排名与预计下单日期' });
+    await user.click(screen.getByRole('button', { name: '关闭需求' }));
+    await user.click(screen.getByLabelText('我确认关闭该已发布需求'));
+    await user.type(screen.getByLabelText('关闭原因'), '提前结束活动');
+    await user.click(screen.getByRole('button', { name: '确认关闭需求' }));
+    expect(await screen.findByRole('button', { name: '重试原请求' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '重试原请求' }));
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1]).toEqual(calls[0]);
+    expect(calls[0]).toMatchObject({
+      body: { expected_version: 4, close_reason: '提前结束活动' },
+    });
+    expect(calls[0]!.key).toMatch(/\S/u);
+    expect(await screen.findByText('已关闭')).toBeVisible();
+    expect(screen.queryByRole('button', { name: '关闭需求' })).not.toBeInTheDocument();
+    expect(pageCalls).toBeGreaterThan(1);
+  });
+
+  it('starts a new close request when the reason changes after an ambiguous failure', async () => {
+    const calls: Array<{ body: unknown; key: string|null }> = [];
+    server.use(
+      http.get(apiUrl('/api/staff/demand-batches/demand-1/reservation-schedule'), () =>
+        HttpResponse.json({ data: { page: schedulePage() }, meta: { request_id: 'page' } })),
+      http.post(apiUrl('/api/staff/demand-batches/demand-1/close'), async ({ request }) => {
+        calls.push({ body: await request.json(), key: request.headers.get('Idempotency-Key') });
+        if (calls.length === 1) return HttpResponse.error();
+        return HttpResponse.json({ data: { demand_close: {
+          demand_batch_id: 'demand-1', status: 'CLOSED', version: 5,
+          close_reason: '改后的关闭原因', replayed: false,
+        } }, meta: { request_id: 'close-new-request' } });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWorkspace(owner(), '/staff/demands/demand-1/reservations');
+    await screen.findByRole('table', { name: '预约排名与预计下单日期' });
+    await user.click(screen.getByRole('button', { name: '关闭需求' }));
+    await user.click(screen.getByLabelText('我确认关闭该已发布需求'));
+    const reason = screen.getByLabelText('关闭原因');
+    await user.type(reason, '原关闭原因');
+    await user.click(screen.getByRole('button', { name: '确认关闭需求' }));
+    expect(await screen.findByRole('button', { name: '重试原请求' })).toBeVisible();
+    await user.clear(reason);
+    await user.type(reason, '改后的关闭原因');
+    expect(screen.queryByRole('button', { name: '重试原请求' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '确认关闭需求' }));
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1]!.key).not.toBe(calls[0]!.key);
+    expect(calls[0]!.body).toMatchObject({ close_reason: '原关闭原因' });
+    expect(calls[1]!.body).toMatchObject({ close_reason: '改后的关闭原因' });
+  });
+
+  it('hides the close entry when the backend capability is false or the demand is closed', async () => {
+    let closed = false;
+    server.use(http.get(apiUrl('/api/staff/demand-batches/demand-1/reservation-schedule'), () => {
+      const base = schedulePage();
+      return HttpResponse.json({ data: { page: {
+        ...base,
+        demand: { ...base.demand, status: closed ? 'CLOSED' : 'PUBLISHED', can_close: false },
+      } }, meta: { request_id: 'page-hidden' } });
+    }));
+    renderWorkspace(owner(), '/staff/demands/demand-1/reservations');
+    await screen.findByRole('table', { name: '预约排名与预计下单日期' });
+    expect(screen.queryByRole('button', { name: '关闭需求' })).not.toBeInTheDocument();
+    cleanup();
+    closed = true;
+    renderWorkspace(owner(), '/staff/demands/demand-1/reservations');
+    await screen.findByRole('table', { name: '预约排名与预计下单日期' });
+    expect(screen.queryByRole('button', { name: '关闭需求' })).not.toBeInTheDocument();
+  });
+
+  it('deduplicates a close submit while the first request is in flight', async () => {
+    let calls = 0;
+    const releaseRef: { current: (() => void) | null } = { current: null };
+    server.use(
+      http.get(apiUrl('/api/staff/demand-batches/demand-1/reservation-schedule'), () =>
+        HttpResponse.json({ data: { page: schedulePage() }, meta: { request_id: 'page' } })),
+      http.post(apiUrl('/api/staff/demand-batches/demand-1/close'), () => {
+        calls += 1;
+        return new Promise<Response>((resolve) => {
+          releaseRef.current = () => resolve(HttpResponse.json({ data: { demand_close: {
+            demand_batch_id: 'demand-1', status: 'CLOSED', version: 5,
+            close_reason: '并发点击保护', replayed: false,
+          } }, meta: { request_id: 'close' } }));
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWorkspace(owner(), '/staff/demands/demand-1/reservations');
+    await screen.findByRole('table', { name: '预约排名与预计下单日期' });
+    await user.click(screen.getByRole('button', { name: '关闭需求' }));
+    await user.click(screen.getByLabelText('我确认关闭该已发布需求'));
+    await user.type(screen.getByLabelText('关闭原因'), '并发点击保护');
+    await user.click(screen.getByRole('button', { name: '确认关闭需求' }));
+    await waitFor(() => expect(calls).toBe(1));
+    const submit = screen.getByRole('button', { name: '关闭中…' });
+    expect(submit).toBeDisabled();
+    await user.click(submit);
+    expect(calls).toBe(1);
+    releaseRef.current?.();
+    await waitFor(() => expect(screen.getByText('需求已关闭。')).toBeVisible());
+  });
+
   it('does not request or expose schedule controls to buyer_refund', async () => {
     let requested = false;
     server.use(http.get(apiUrl('/api/staff/demand-batches/demand-1/reservation-schedule'), () => {
@@ -75,7 +222,7 @@ describe('产品预约排期工作区', () => {
   });
 
   it('shows product cadence controls only to owner or seller_ops with both permissions', async () => {
-    server.use(http.get(apiUrl('/api/staff/catalog/products/product-1'), () =>
+    server.use(...mainImageReadHandlers(), http.get(apiUrl('/api/staff/catalog/products/product-1'), () =>
       HttpResponse.json({ data: { product: productDetail() }, meta: { request_id: 'product' } })));
     const cases = [
       { value: staffSession('buyer_refund', ['PRODUCT_VIEW', 'PRODUCT_REVIEW', 'DEMAND_PUBLISH']), visible: false },
@@ -181,6 +328,111 @@ describe('产品预约排期工作区', () => {
     expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
   });
 
+  it('shows the bound main image with a protected view entry', async () => {
+    server.use(
+      ...mainImageReadHandlers(),
+      http.get(apiUrl('/api/staff/catalog/products/product-1'), () =>
+      HttpResponse.json({
+        data: { product: productDetail({
+          file_object_id: 'product-image-1', file_version: 2,
+          client_file_name: 'main.webp', bound_at: 1_786_161_600_000,
+        }) },
+        meta: { request_id: 'product' },
+      })),
+    );
+    renderWorkspace(owner(), '/staff/products/product-1');
+    expect(await screen.findByRole('heading', { name: /当前版本主图/u })).toBeVisible();
+    expect(screen.getByText('main.webp')).toBeVisible();
+    expect(await screen.findByRole('button', { name: /查看大图：测试产品 主图/u })).toBeVisible();
+    expect(screen.queryByRole('button', { name: '选择主图' })).not.toBeInTheDocument();
+    expect(screen.getByText(/不可改写/u)).toBeVisible();
+  });
+
+  it('uploads and binds a main image for the unbound current version', async () => {
+    const calls: Array<{ body: unknown; key: string | null }> = [];
+    let bound = false;
+    server.use(
+      ...mainImageReadHandlers(),
+      http.get(apiUrl('/api/staff/catalog/products/product-1'), () =>
+        HttpResponse.json({
+          data: { product: productDetail(bound ? {
+            file_object_id: 'product-image-1', file_version: 2,
+            client_file_name: 'main.png', bound_at: 1_786_161_600_001,
+          } : null) },
+          meta: { request_id: 'product' },
+        })),
+      http.post(apiUrl('/api/staff/file-uploads/product-images/intents'), () =>
+        HttpResponse.json({
+          data: {
+            upload_intent_id: 'product-image-intent-1',
+            purpose: 'PRODUCT_IMAGE', visibility: 'SELLER_VISIBLE',
+            status: 'ISSUED', version: 1, expires_at: 1_900_000_000_000,
+            uploads: [{
+              file_object_id: 'product-image-1', slot_no: 1,
+              upload_token: 'x'.repeat(40), upload_token_available: true,
+              expires_at: 1_900_000_000_000,
+            }],
+            replayed: false,
+          },
+          meta: { request_id: 'image-intent' },
+        })),
+      http.put(apiUrl('/api/staff/file-uploads/product-image-1/content'), () =>
+        HttpResponse.json({
+          data: {
+            file_object_id: 'product-image-1',
+            upload_intent_id: 'product-image-intent-1', status: 'UPLOADED',
+            detected_mime: 'image/png', byte_size: 5, sha256: 'a'.repeat(64),
+            version: 2, replayed: false,
+          },
+          meta: { request_id: 'image-content' },
+        })),
+      http.post(apiUrl('/api/staff/file-upload-intents/product-image-intent-1/complete'), () =>
+        HttpResponse.json({
+          data: {
+            upload_intent_id: 'product-image-intent-1', status: 'VERIFIED',
+            version: 2,
+            files: [{
+              file_object_id: 'product-image-1', purpose: 'PRODUCT_IMAGE',
+              visibility: 'SELLER_VISIBLE', detected_mime: 'image/png',
+              byte_size: 5, sha256: 'a'.repeat(64), version: 3,
+            }],
+            replayed: false,
+          },
+          meta: { request_id: 'image-complete' },
+        })),
+      http.post(apiUrl('/api/staff/catalog/product-versions/version-2/main-image'), async ({ request }) => {
+        calls.push({ body: await request.json(), key: request.headers.get('Idempotency-Key') });
+        bound = true;
+        return HttpResponse.json({
+          data: { main_image: {
+            product_id: 'product-1', product_version_id: 'version-2',
+            product_version_no: 2, file_entity_link_id: 'link-1',
+            file_object_id: 'product-image-1', seller_organization_id: 'seller-1',
+            store_id: 'store-1', authorization_mode: 'EXPLICIT_AUDIENCES',
+            replayed: false,
+          } },
+          meta: { request_id: 'main-image-linked' },
+        }, { status: 201 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWorkspace(owner(), '/staff/products/product-1');
+    expect(await screen.findByText(/尚未绑定主图/u)).toBeVisible();
+    await user.upload(await screen.findByLabelText('产品主图'),
+      new File(['image'], 'main.png', { type: 'image/png' }));
+    expect(await screen.findByText('上传状态：VERIFIED')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '绑定为主图' }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]!.body).toEqual({
+      file_object_id: 'product-image-1',
+      expected_file_version: 3,
+    });
+    expect(calls[0]!.key).toMatch(/\S/u);
+    expect(await screen.findByRole('button', { name: /查看大图：测试产品 主图/u })).toBeVisible();
+    await userEvent.setup().click(screen.getByRole('heading', { name: /版本历史（/u }));
+    expect(screen.getByText(/已绑定主图/u)).toBeVisible();
+  });
+
   it('retries schedule confirmation from the main button with the exact original body and key', async () => {
     const calls: Array<{ body: unknown; key: string|null }> = [];
     server.use(
@@ -259,10 +511,15 @@ function renderWorkspace(value: StaffSession, route: string): void {
   </Routes></StaffSessionBoundary>, { route });
 }
 
-function productDetail() {
+function productDetail(mainImage: {
+  file_object_id: string;
+  file_version: number;
+  client_file_name: string;
+  bound_at: number;
+} | null = null) {
   return {
     product_id: 'product-1', seller_organization_id: 'seller-1', store_id: 'store-1',
-    store_name: '测试店铺', marketplace_code: 'JP', asin: 'B0TEST0001',
+    store_name: '测试店铺', marketplace_code: 'AMAZON_JP', asin: 'B0TEST0001',
     status: 'ACTIVE', aggregate_version: 2, current_version_no: 2,
     product_name: '测试产品', cadence: { order_interval_days: 2, orders_per_run: 5 },
     updated_at: 1_786_161_600_000,
@@ -271,7 +528,8 @@ function productDetail() {
       search_keywords: ['测试'], ordering_guide_expected_amount_jpy: 1980,
       color_spec_mode: 'MAIN_IMAGE_VARIANT', default_buyer_self_pay_bps: 0,
       product_url: null, buyer_visible_notes: null, internal_notes: null,
-      cadence: { order_interval_days: 2, orders_per_run: 5 }, created_at: 1_786_161_600_000,
+      cadence: { order_interval_days: 2, orders_per_run: 5 }, main_image: mainImage,
+      created_at: 1_786_161_600_000,
     }],
     demands: [], timezone: 'Asia/Shanghai', data_as_of: 1_786_161_600_000,
   };
@@ -281,6 +539,7 @@ function productVersionResult(versionNo: number) {
   return {
     product_id: 'product-1', product_version_id: `version-${versionNo}`,
     version_no: versionNo, aggregate_version: versionNo,
+    main_image_file_object_id: null,
     product_version: {
       productName: '测试产品', searchKeywords: ['测试'],
       orderingGuideExpectedAmountJpy: 1980, colorSpecMode: 'MAIN_IMAGE_VARIANT',
@@ -299,13 +558,16 @@ function schedulePage() {
   return {
     demand: { demand_batch_id: 'demand-1', product_id: 'product-1',
       product_name: '测试产品', target_quantity: 20, effective_reservation_count: 2,
-      order_deadline: 1_786_838_400_000, demand_version: 4, schedule: schedule() },
+      order_deadline: 1_786_838_400_000, demand_version: 4,
+      status: 'PUBLISHED', can_close: true, schedule: schedule() },
     items: [
       { reservation_id: 'reservation-1', status: 'APPROVED', submitted_at: 1000,
+        decision_source: 'STAFF', version: 2,
         rank: 1, planned_order_date: '2026-08-10', buyer_reference: 'B0001',
         buyer_customer_id: 'buyer-1', buyer_display_name: '买家一',
         actual_order_status: null, actual_order_date: null },
       { reservation_id: 'reservation-2', status: 'PENDING_REVIEW', submitted_at: 1001,
+        decision_source: null, version: 1,
         rank: 2, planned_order_date: '2026-08-10', buyer_reference: 'B0002',
         buyer_customer_id: null, buyer_display_name: null,
         actual_order_status: null, actual_order_date: null },
@@ -333,6 +595,31 @@ function preview() {
     before_theoretical_last_order_date: '2026-08-18',
     preview_hash: 'a'.repeat(64), timezone: 'Asia/Shanghai',
     data_as_of: 1_786_161_600_000 };
+}
+
+function mainImageReadHandlers() {
+  return [
+    http.post(apiUrl('/api/staff/files/product-image-1/read-intents'), () => HttpResponse.json({
+      data: {
+        read_intent_id: 'staff-main-image-intent',
+        file_object_id: 'product-image-1',
+        access_token: 'staff-image-token'.padEnd(40, 'x'),
+        access_token_available: true,
+        expires_at: 99,
+        replayed: false,
+      },
+      meta: { request_id: 'staff-main-image-read' },
+    })),
+    http.get(apiUrl('/api/staff/file-read-intents/staff-main-image-intent/content'), () => new Response(
+      Uint8Array.of(1, 2),
+      { headers: {
+        'Content-Type': 'image/png',
+        'Content-Length': '2',
+        'Cache-Control': 'private, max-age=300',
+        'X-Content-Type-Options': 'nosniff',
+      } },
+    )),
+  ];
 }
 
 function adapter(value: StaffSession): StaffAuthApiAdapter {

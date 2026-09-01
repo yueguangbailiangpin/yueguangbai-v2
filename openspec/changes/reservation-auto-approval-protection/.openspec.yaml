@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-08-30
+goal: 仅在自动批准前复用正式订单责任模型做买家全局风险阻断；保持 PENDING_REVIEW、hold、人工审核、永久参与限制和现有事务边界不变。

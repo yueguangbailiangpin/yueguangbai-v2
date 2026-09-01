@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, screen, waitFor } from '@testing-library/react';
 import { delay, http, HttpResponse } from 'msw';
+import { focusManager } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '../../test/msw/lifecycle';
 import { queryKeys } from '../../api/query-client';
@@ -117,6 +118,28 @@ describe('Cloudflare Access Staff bootstrap and Session formal MSW chain', () =>
 
     releaseSession();
     expect(await screen.findByText('STAFF SHELL')).toBeVisible();
+  });
+
+  it('keeps the mounted Staff shell visible when the browser window regains focus', async () => {
+    let requests = 0;
+    server.use(http.get(apiUrl('/api/staff-auth/session'), () => {
+      requests += 1;
+      return HttpResponse.json(staffSessionEnvelopeFixture(
+        staffSessionFixture,
+        `request-staff-focus-${requests}`,
+      ));
+    }));
+    const client = createMswQueryClient();
+    renderWithMsw(<StaffProtectedProbe client={client} />, { client });
+
+    expect(await screen.findByText('STAFF SHELL')).toBeVisible();
+    expect(requests).toBe(1);
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    await waitFor(() => expect(screen.getByText('STAFF SHELL')).toBeVisible());
+    expect(requests).toBe(1);
   });
 
   it('awaits Staff-only cache clearing for Session 401 and leaves every Customer key intact', async () => {

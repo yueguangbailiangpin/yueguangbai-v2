@@ -19,10 +19,6 @@ import {
   assertIdempotencyCompletionStatement,
   completeIdempotencyStatement,
 } from './idempotency';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from './outbox';
 
 let database: SqliteDatabase | null = null;
 
@@ -32,7 +28,7 @@ afterEach(() => {
 });
 
 describe('foundation command batch', () => {
-  it('commits response, audit, and outbox as one atomic batch', async () => {
+  it('commits response and audit as one atomic batch', async () => {
     database = createMigratedTestDatabase();
     const requestHash = await hashCanonicalJson({
       action: 'TEST_COMMAND',
@@ -49,15 +45,6 @@ describe('foundation command batch', () => {
     }, { now: 1000 });
     if (acquired.kind !== 'ACQUIRED') throw new Error('expected_claim');
 
-    const outbox = await prepareOutboxEvent({
-      id: 'outbox-command-1',
-      dedupKey: 'test:command:aggregate-1',
-      eventType: 'TEST_CHANGED',
-      aggregateType: 'TEST',
-      aggregateId: 'aggregate-1',
-      payload: { version: 1 },
-      createdAt: 1100,
-    });
 
     await database.batch([
       createAuditEventStatement(database, {
@@ -74,7 +61,6 @@ describe('foundation command batch', () => {
         idempotencyKey: acquired.claim.idempotencyKey,
         createdAt: 1100,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,
@@ -87,18 +73,15 @@ describe('foundation command batch', () => {
     const counts = await database.prepare(`
       SELECT
         (SELECT COUNT(*) FROM audit_events) AS audits,
-        (SELECT COUNT(*) FROM integration_outbox) AS outbox,
         (SELECT COUNT(*) FROM command_idempotency_records
           WHERE status='COMMITTED') AS committed
     `).first<{
       audits: number;
-      outbox: number;
       committed: number;
     }>();
 
     expect(counts).toEqual({
       audits: 1,
-      outbox: 1,
       committed: 1,
     });
   });

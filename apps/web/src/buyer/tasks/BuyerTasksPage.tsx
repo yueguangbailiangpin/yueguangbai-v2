@@ -1,7 +1,7 @@
 import { useQueries, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowRight, CheckCircle2, Clock3, RefreshCw } from 'lucide-react';
 import { Link } from 'react-router';
 import { Alert, Card, EmptyState, PageHeader, StatusBadge } from '../../ui/primitives';
+import { MoonwhiteIcon } from '../../ui/MoonwhiteIcon';
 import { buyerApi } from '../api/client';
 import { buyerQueryKeys, cursorQuery } from '../queries/keys';
 import { reviewTypeLabel } from '../shared/status';
@@ -187,7 +187,7 @@ export function BuyerTasksPage(): React.JSX.Element {
       />
       {pending ? (
         <Card className="buyer-task-loading">
-          <RefreshCw aria-hidden="true" />
+          <MoonwhiteIcon name="event_available" size={20} />
           <span>正在整理您的任务…</span>
         </Card>
       ) : null}
@@ -204,19 +204,19 @@ export function BuyerTasksPage(): React.JSX.Element {
       ) : (
         <div className="buyer-task-sections">
           {urgent.length > 0 ? (
-            <TaskSection title="紧急" icon={<AlertTriangle aria-hidden="true" />} items={urgent} />
+            <TaskSection title="紧急" icon={<MoonwhiteIcon name="warning" size={20} />} items={urgent} />
           ) : null}
           {action.length > 0 ? (
             <TaskSection
               title="今天 / 接下来"
-              icon={<CheckCircle2 aria-hidden="true" />}
+              icon={<MoonwhiteIcon name="task_alt" size={20} />}
               items={action}
             />
           ) : null}
           {system.length > 0 ? (
             <TaskSection
               title="系统处理中"
-              icon={<Clock3 aria-hidden="true" />}
+              icon={<MoonwhiteIcon name="event_available" size={20} />}
               items={system}
               system
             />
@@ -254,7 +254,7 @@ function TaskSection({
               <strong>{item.title}</strong>
               <p>{item.detail}</p>
             </div>
-            <ArrowRight aria-hidden="true" />
+            <MoonwhiteIcon name="chevron_right" size={20} />
           </Link>
         ))}
       </div>

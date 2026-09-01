@@ -34,6 +34,10 @@ export interface StaffBuyerRefundListItemDto {
   version: number;
   created_at: number;
   updated_at: number;
+  /** 评论通过时间（承诺期限起点）；来源事件缺失时为 null。 */
+  review_approved_at: number | null;
+  /** 承诺期限 = 评论通过 + 7 个工作日（P13-A，仅排序提醒口径）；未起算为 null。 */
+  promise_deadline_at: number | null;
   reminder_count: number;
   last_reminded_at: number | null;
   buyer: StaffBuyerRefundBuyerSummaryDto;
@@ -48,7 +52,7 @@ export interface StaffBuyerRefundBuyerSummaryDto {
 
 export interface StaffBuyerRefundOrderSummaryDto {
   formal_order_id: string;
-  marketplace: 'JP';
+  marketplace: 'AMAZON_JP';
   amazon_order_number_normalized: string;
   product_id: string;
   asin: string;
@@ -87,6 +91,10 @@ export interface StaffBuyerRefundDetailDto
   extends StaffBuyerRefundListItemDto {
   source_review_event_id: string;
   review_case_id: string;
+  /** 买家返款收款人姓名（P7a；null = 未填写，处理视图标红提示补录）。仅详情，列表不带。 */
+  refund_account_name: string | null;
+  /** 买家返款收款支付宝账号（P7a；null = 未填写）。仅详情，列表不带。 */
+  refund_account_identifier: string | null;
   payments: readonly StaffBuyerRefundPaymentDto[];
   reversals: readonly StaffBuyerRefundReversalDto[];
 }

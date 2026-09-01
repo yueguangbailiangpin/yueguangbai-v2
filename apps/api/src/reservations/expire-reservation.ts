@@ -15,10 +15,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   assertReleasedStatement,
   releaseCapacityStatement,
 } from './cancel-reservation';
@@ -105,7 +101,7 @@ export async function expireReservation(
       database,
       reservationId,
     );
-    if (source.version !== input.expectedVersion) {
+    if (Number(source.version) !== Number(input.expectedVersion)) {
       throw new ReservationError(
         'VERSION_CONFLICT',
         409,
@@ -137,16 +133,6 @@ export async function expireReservation(
       version: nextVersion,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey:
-        `reservation-expired:${reservationId}:${nextVersion}`,
-      eventType: 'RESERVATION_EXPIRED',
-      aggregateType: 'RESERVATION',
-      aggregateId: reservationId,
-      payload: response,
-      createdAt: now,
-    });
 
     const statements = [
       database.prepare(`
@@ -203,7 +189,6 @@ export async function expireReservation(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

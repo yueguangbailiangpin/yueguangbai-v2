@@ -11,6 +11,7 @@ import {
   type ObjectStorageAdapter,
   type StaffDataScope,
 } from '@ygb/contracts';
+import { canWriteSellerOperations, readBoundedJson } from '@ygb/domain';
 import type { Context, Hono, MiddlewareHandler } from 'hono';
 import type { AppEnv } from '../app';
 import type { CustomerSessionContext } from '../customer-auth/authenticate-customer';
@@ -20,11 +21,11 @@ import {
 } from '../middleware/customer-auth';
 import { resolveSellerPortalActor } from '../seller-portal/actor';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
-import { driveArchiveRuntime } from '../cold-image-archive/runtime';
 import {
   completeFileUploadIntent,
   consumeFileReadIntent,
   createFileReadIntent,
+  createFileReadIntentsBatch,
   createFileUploadIntent,
   FileStorageError,
   normalizeFileStorageError,
@@ -43,8 +44,9 @@ const NO_UPLOADS = new Map<FilePurpose, FileVisibility>();
 const STAFF_UPLOADS = new Map<FilePurpose, FileVisibility>([
   ['BUYER_REFUND_PROOF', 'INTERNAL_ONLY'],
   ['SELLER_SETTLEMENT_PROOF', 'INTERNAL_ONLY'],
-  ['ORDER_EVIDENCE_INTERNAL_COMMUNICATION', 'SELLER_VISIBLE'],
+  ['ORDER_COMMUNICATION_SCREENSHOT', 'SELLER_VISIBLE'],
   ['PRODUCT_IMAGE', 'SELLER_VISIBLE'],
+  ['SERVICE_CHANNEL_QR', 'BUYER_VISIBLE'],
 ]);
 const JSON_BODY_MAX_BYTES = 16 * 1024;
 const MULTIPART_BODY_MAX_BYTES = 26 * 1024 * 1024;
@@ -94,19 +96,19 @@ export function registerFileHttpRoutes(app: Hono<AppEnv>): void {
   );
   registerIntentRoute(
     app,
-    FILE_HTTP_PURPOSE_ROUTES.staffSellerOrderChatScreenshot.path,
-    undefined,
-    'STAFF',
-    'ORDER_EVIDENCE_INTERNAL_COMMUNICATION',
-    'SELLER_VISIBLE',
-  );
-  registerIntentRoute(
-    app,
     FILE_HTTP_PURPOSE_ROUTES.staffProductImage.path,
     undefined,
     'STAFF',
     'PRODUCT_IMAGE',
     'SELLER_VISIBLE',
+  );
+  registerIntentRoute(
+    app,
+    FILE_HTTP_PURPOSE_ROUTES.staffServiceChannelQr.path,
+    undefined,
+    'STAFF',
+    'SERVICE_CHANNEL_QR',
+    'BUYER_VISIBLE',
   );
 
   registerLifecycleRoutes(app, 'BUYER', '/api/buyer-portal', customerSession);
@@ -265,7 +267,6 @@ function registerLifecycleRoutes(
 
   const readContent = withFileErrors(async (context) => {
     const authority = await resolveRouteAuthority(context, domain);
-    const driveRuntime=driveArchiveRuntime(context.env);
     const result = await consumeFileReadIntent(
       context.env.DB,
       requireObjectStorage(context),
@@ -280,17 +281,20 @@ function registerLifecycleRoutes(
         ),
       },
       { actor: authority.actor, principal: authority.principal },
-      {
-        adapter: driveRuntime.adapter,
-        proxyReadEnabled: driveRuntime.enabled && driveRuntime.proxyReadEnabled,
-      },
     );
-    return new Response(result.bytes, {
+    // The URL carries a single-use token (use_count 0->1, replay 410), so a
+    // 300s private browser cache cannot weaken one-time semantics: a second
+    // GET is served from cache precisely because the token is already
+    // consumed and would be rejected at the edge anyway.  No shared cache is
+    // allowed ("private") and these responses never carry cookies.
+    const body: ReadableStream<Uint8Array> | Uint8Array<ArrayBuffer>
+      = result.stream ?? result.bytes!;
+    return new Response(body, {
       status: 200,
       headers: {
         'Content-Type': result.contentType,
-        'Content-Length': String(result.bytes.byteLength),
-        'Cache-Control': 'no-store',
+        'Content-Length': String(result.byteSize),
+        'Cache-Control': 'private, max-age=300',
         'Content-Disposition': 'inline',
         'X-Content-Type-Options': 'nosniff',
       },
@@ -301,6 +305,78 @@ function registerLifecycleRoutes(
   addRoute(app, 'post', `${prefix}/file-upload-intents/:id/complete`, middleware, complete);
   addRoute(app, 'post', `${prefix}/files/:fileObjectId/read-intents`, middleware, readIntent);
   addRoute(app, 'get', `${prefix}/file-read-intents/:id/content`, middleware, readContent);
+  // Batch read intents exist only where screens render many protected images
+  // at once (staff review panels, buyer demand lists, seller order lists).
+  if (domain === 'STAFF' || domain === 'BUYER' || domain === 'SELLER') {
+    addRoute(
+      app,
+      'post',
+      `${prefix}/file-read-intents/batch`,
+      middleware,
+      withFileErrors(async (context) => {
+        const authority = await resolveRouteAuthority(context, domain);
+        const body = await readBoundedJson(context.req.raw, 16 * 1024);
+        const requests = readBatchRequests(body);
+        const batchKey = requireIdempotencyKey(context);
+        const result = await createFileReadIntentsBatch(
+          context.env.DB,
+          authorization(context, authority),
+          {
+            requests,
+            idempotencyKeys: requests.map((_, index) =>
+              `${batchKey}#${index}`),
+          },
+          {
+            actor: authority.actor,
+            principal: authority.principal,
+            requestId: requestId(context),
+          },
+        );
+        return context.json(apiSuccess({
+          intents: result.intents.map((intent) => ({
+            read_intent_id: intent.readIntentId,
+            file_object_id: intent.fileObjectId,
+            access_token: intent.accessToken,
+            access_token_available: intent.accessTokenAvailable,
+            expires_at: intent.expiresAt,
+            replayed: intent.replayed,
+          })),
+        }, requestId(context)));
+      }, { concealCustomerRead: domain !== 'STAFF' }),
+    );
+  }
+}
+
+function readBatchRequests(body: unknown): {
+  fileObjectId: string;
+  expectedFileVersion: number;
+}[] {
+  if (typeof body !== 'object' || body === null) {
+    throw new FileStorageError('VALIDATION_ERROR', 400);
+  }
+  const requests = (body as Record<string, unknown>)['requests'];
+  if (!Array.isArray(requests) || requests.length < 1 || requests.length > 25) {
+    throw new FileStorageError('VALIDATION_ERROR', 400);
+  }
+  return requests.map((request) => {
+    if (typeof request !== 'object' || request === null) {
+      throw new FileStorageError('VALIDATION_ERROR', 400);
+    }
+    const record = request as Record<string, unknown>;
+    const fileObjectId = record['file_object_id'];
+    const expectedFileVersion = record['expected_file_version'];
+    if (typeof fileObjectId !== 'string' || fileObjectId.length < 1
+      || fileObjectId.length > 120
+      || typeof expectedFileVersion !== 'number'
+      || !Number.isSafeInteger(expectedFileVersion)
+      || expectedFileVersion < 1) {
+      throw new FileStorageError('VALIDATION_ERROR', 400);
+    }
+    return {
+      fileObjectId,
+      expectedFileVersion,
+    };
+  });
 }
 
 type ActorDomain = 'BUYER' | 'SELLER' | 'STAFF';
@@ -366,7 +442,7 @@ async function resolveRouteAuthority(
       accountId: seller.accountId,
       identitySubjectId: seller.identitySubjectId,
     },
-    allowedUploads: seller.role === 'OWNER' || seller.role === 'OPERATIONS'
+    allowedUploads: canWriteSellerOperations(seller.role)
       ? SELLER_UPLOADS
       : NO_UPLOADS,
   };
@@ -537,8 +613,11 @@ function withFileErrors(
         ? new FileStorageError('NOT_FOUND', 404)
         : source;
       const code = toApiCode(normalized.code);
+      const message = code === 'FILE_ARCHIVED'
+        ? '文件已归档，请联系工作人员恢复'
+        : code;
       return context.json(
-        apiFailure(code, code, requestId(context)),
+        apiFailure(code, message, requestId(context)),
         normalized.status,
       );
     }

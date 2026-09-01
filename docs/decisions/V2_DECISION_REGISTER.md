@@ -225,7 +225,7 @@ Staff 身份继续与 Customer 身份严格分离。一个规范化微信身份�
 
 产品库为每个产品版本保存默认“下单节奏”，由总管理员或卖家对接维护，格式为“每隔 N 个自然日、每次 M 单”。`N`、`M` 都是正整数：每隔 1 天每次 1 单表示每天 1 单；每隔 1 天每次 2 单表示每天 2 单；每隔 2 天每次 1 单表示每两天 1 单。产品默认节奏后续可通过新增产品版本修改，不覆盖旧版本，默认只用于以后新发布的需求。
 
-卖家对接每次发布产品需求时必须填写“首个下单日期”，并把当时产品版本的默认节奏锁定为本次需求的排期快照。已经发布的需求不得因产品库默认值后来变化而静默改期；总管理员或卖家对接可对本次需求单独发起受控排期修改，系统必须先展示受影响人数与修改前后日期，再以幂等、版本、原因和审计确认。实际订单日期和已经提交的订单资料不得被预计排期覆盖。
+卖家不再填写开放、预约或下单截止时间，也不直接填写首个下单日期。服务端按版本化排期策略生成合法窗口并保存，策略版本写入提交审计；Staff 发布审核时确认首个下单日期，页面必须预览预约截止、下单截止和理论最后下单日期，冲突时不得提交。已经发布的需求不得因产品库默认值后来变化而静默改期；总管理员或卖家对接可对本次需求单独发起受控排期修改，系统必须先展示受影响人数与修改前后日期，再以幂等、版本、原因和审计确认。Seller API 拒绝时间窗口字段；任何特殊 override 仅允许具备排期权限的 Staff 携原因提交。实际订单日期和已经提交的订单资料不得被预计排期覆盖。
 
 预约详情按有效预约的 `submitted_at` 升序排列，相同时间以不可变预约 ID 升序稳定排序。待审核和已批准预约都占用顺序；被拒绝、取消或过期的预约退出有效队列，后续未下单买家的排名和预计日期自动前移，历史预约及调整记录继续保留。第 `r` 名的批次序号为 `floor((r-1)/M)`，预计下单日期为首个下单日期加该批次序号乘 `N` 个自然日。
 
@@ -396,6 +396,159 @@ D-031 的卖家本金公式继续有效：正式订单只使用平台下单日�
 仅前向 Migration 0070 将本地候选从 Schema 69 推进到 Schema 70；Migration 0001–0069 与 D-001–D-045 永久保持原文。本 Decision 不授权 production/staging 部署、远程 D1/R2、Secrets、Access、DNS 或真实业务数据操作。
 
 状态：Accepted by business owner；Formalizes the T7 buyer-initiated refund reminder (archived OpenSpec `2026-08-15-buyer-refund-reminders`) as the Schema 70 decision, previously recorded only as a 2026-08-17 non-decision status note in this Register
+
+### D-047 卖家与员工创建授权店铺
+
+卖家组织内所有 ACTIVE 员工和内部员工都可以创建授权店铺。Seller Portal 允许当前 ACTIVE Seller Organization 的全部成员为本组织创建店铺，组织 ID 必须由可信 Session 推导，客户端不得指定或跨组织创建；Staff 入口只允许 ACTIVE `owner` 或 `seller_ops` 且有效权限仍包含 `SELLER_MANAGE`，并继续执行 Personal DENY、Marketplace Scope 和 Seller Organization Scope。
+
+店铺创建继续使用权威 Marketplace Registry、规范化名称、同组织同站点防重、幂等键、不可变 Audit、Outbox 和事务最终断言。当前业务写路径仍为 `AMAZON_JP`，其他站点继续由 `MARKETPLACE_NOT_SUPPORTED` 失败关闭。新卖家没有店铺时，产品申请页先提供建店入口；只有一个可用店铺时自动选中。内部员工可从卖家客户目录为具体卖家创建店铺。
+
+本 Decision 不增加 Migration，不修改 Seller 财务或 Buyer 数据权限，不授权 production、远程 Migration、远程 SQL、真实数据导入或 GitHub 写入。
+
+状态：Accepted by business owner；Closes the first-Seller-store onboarding gap without changing Schema 70
+
+### D-048 全站图片入口统一支持选择、拖拽和粘贴
+
+所有 Buyer、Seller 与 Staff 的文件证据入口统一使用同一个前端选择控件。控件必须支持点击文件选择器、拖拽文件、从系统剪贴板粘贴图片、已选文件预览和逐个删除；多文件入口必须继续执行各自业务张数上限，单文件入口不得因拖拽或粘贴变成多文件入口。
+
+该交互增强不得绕过既有上传意图、MIME/扩展名/内容签名校验、文件大小与数量限制、R2 验证、权限、最终提交校验和失败补偿。PDF 只在原本允许 PDF 的证据入口继续允许；仅图片入口不得因统一控件扩大格式范围。
+
+本 Decision 不增加 Migration，不修改 D1/R2 数据、文件可见性或保存期限，也不授权 production、staging 部署、真实文件上传或 GitHub 写入。
+
+状态：Accepted by business owner；Unifies all current image and evidence entry interactions without changing storage semantics
+
+### D-049 Staging 首任 Owner 同时承担显式审核兜底
+
+D-041 的隔离、身份、无密码和生产禁止边界继续有效。全新 staging D1 的一次性首任 Owner bootstrap 必须在同一参数化原子 batch 中，把该唯一 ACTIVE Owner 明确配置为 `JP` 的 Staff assignment fallback。该 fallback 是 staging 测试环境的显式任务兜底事实，不新增 Staff Marketplace Scope、不扩张角色权限，也不允许从数据库中任意猜测一个 Owner。
+
+这样，在重建 staging 后尚未创建其他内部员工或 Marketplace Scope 时，卖家产品申请、需求、预约等需要 Staff work item 的正式事务仍可把任务分配给明确配置的首任 Owner，而不会因为 `OWNER_FALLBACK_NOT_CONFIGURED` 回滚业务提交。bootstrap 的最终断言、审计摘要、幂等重放和失败全回滚测试必须同时覆盖该 fallback；既有 staging 数据只能通过单独授权的受控远程修复补入，不由前端绕过任务完整性。
+
+本 Decision 不增加 Migration，不开放已冻结的 fallback 管理 HTTP，不修改 production 初始化，不授权 production、staging 部署、远程 SQL、真实数据导入或 GitHub 写入。
+
+状态：Accepted by business owner；Closes the rebuilt-staging assignment gap without changing Schema 70 or runtime authorization
+
+### D-050 产品申请金额与预约需求衔接（Migration 0071）
+
+卖家提交新产品申请时必须填写正整数日元参考金额。该金额以 `ordering_guide_expected_amount_jpy` 保存于产品申请事实，进入幂等请求哈希、Seller 只读投影和分配后的 Staff 审核上下文；审核页默认带出卖家金额，授权审核人员仍可核对并调整最终产品版本金额。历史申请保持可读，缺失金额时明确标为历史未填写，不回填或猜测。
+
+产品批准只创建正式产品，不自动制造预约数量和时间。没有已发布需求批次的产品继续不进入 Buyer 当前可预约投影；Seller 商品列表和已批准申请详情提供“创建预约需求”入口并自动选中产品，仍必须提交任务类型、目标数量、开放时间、预约截止和下单截止，再由既有审核发布流程决定 Buyer 可见性。
+
+前向 Migration 0071 只为 `product_applications` 增加可空、正整数、JavaScript-safe 的申请金额列，并将本地候选推进到 Schema 71。该 Decision 不授权 production/staging 部署、远程 Migration、远程 SQL、真实业务数据修改或 GitHub 写入；生产继续保持 NO-GO。
+
+状态：Accepted by business owner；Closes the product-amount and approved-product-to-demand handoff gaps
+
+### D-051 下单指引直接发布文字搜索信息
+
+下单指引不再要求 Staff 先生成关键词图片。预约批准后创建的指引仍为 `UNPUBLISHED`；有权 Staff 核对后直接发布已有产品版本的搜索关键词文字、店铺名称、商品主图、规格、金额和可见备注。只有指引进入 `ACTIVE` 后，买家任务和指引页才能读取这些信息；买家按文字关键词在指定店铺直接搜索下单。
+
+指引版本继续引用不可变的产品版本，并把有序关键词纳入内容哈希；发布仍必须保留 Staff 权限、负责人分配、买家范围、状态机、`expected_version`、幂等键、请求哈希、Audit、Outbox 和工作项完成断言。既有关键词图片表、生成服务和历史版本仅作兼容与审计保留，新发布流程不再调用它们，也不因此删除历史文件或绕过主图授权。
+
+本 Decision 不增加 Migration，不修改财务快照，不授权 production/staging 部署、远程 SQL、真实数据修改或 GitHub 写入。
+
+状态：Accepted by business owner；Supersedes the keyword-image publication requirement for new instruction versions
+
+### D-052 店铺级预约互斥与买家指引只读投影
+
+同一买家在同一店铺最多保有一条进行中的 `PENDING_REVIEW` 或 `APPROVED` 预约，不因产品、ASIN 或需求批次不同而例外。买家产品投影返回稳定的预约资格与原因，供界面禁用并说明；提交命令在预检和最终条件写入处都执行相同店铺级规则，以保证并发请求也不会留下两条有效预约。拒绝、取消和过期是终态，立即释放该店铺限制。
+
+买家下单指引的状态和内容由内容端点作为主要读取链路一次返回，状态端点只保留旧客户端兼容。买家 GET 绝不执行过期、状态迁移、工作项创建或重新打开；到期处理只经既有受控 expiry/reconciliation 作业。发布（包括内容未变化的幂等分支）在同一事务内确保 `ACTIVE` 指引、发布记录和对应 Staff 工作项完成。关键词面向买家以醒目文字卡片展示，不生成或复制关键词图片；主图读取失败仅返回安全、可重试的状态，不泄漏对象路径、存储键或内部诊断。
+
+本 Decision 不授权 staging/production 部署、远程 SQL、真实数据修改或 GitHub 写入。
+
+状态：Accepted by business owner；Closes store-level reservation conflict and buyer instruction read-side-effect gaps
+
+### D-053 统一订单日基础汇率中心（Migration 0072）
+
+每笔 Amazon 正式订单只使用其 `amazon_order_date` 当天、交易币种 → CNY 的一条已确认基础汇率。该同一版本和值同时是买家返款和卖家本金的共同基础；不得使用审核/确认当天、前一天或最近可用日期替代。卖家本金最终汇率以整数 E8 表示：`final_rate_e8 = base_rate_e8 + seller_markup_e8`；JPY 本金 CNY 分以 `HALF_UP(final_paid_jpy × final_rate_e8 × 100 / 100000000)` 得出。金额、汇率和取整均不得使用浮点数。
+
+Staff 汇率中心是唯一维护入口：同时拥有 GLOBAL Scope、`SELLER_MANAGE` 和 `FINANCIAL_CORRECT` 的 Owner 可填写并确认订单日基础汇率及默认卖家加点；`seller_ops` 只有同时拥有 `SELLER_MANAGE`、且是该组织 ACTIVE canonical `SELLER_ACCOUNT_MANAGER` 时，才能提交该组织的专属加点草案；任何默认或组织专属加点都只由 Owner + `FINANCIAL_CORRECT` 确认/拒绝。组织专属覆盖优先于默认，显式 `0` 为有效覆盖，不能当作缺失。员工管理维护这条 canonical 卖家组织对接分配，页面必须按可见卖家名称选择，不能要求手填组织 UUID。
+
+订单资料确认先执行只读 preflight。基础订单日汇率、卖家加点或服务费缺项时，返回具体订单日期、币种对、可读权限说明和汇率中心深链；命令失败时不得产生部分正式订单、快照、财务、Audit、Outbox 或工作项完成事实。确认成功后冻结订单日、基础汇率版本和值、加点范围/版本/值、最终汇率、服务费规则和 `HALF_UP` 结果；之后任何新策略、汇率或分配均不回写历史。
+
+Migration 0072 仅前向替换 formal-order snapshot source guards，使买家与卖家快照共同证明同一 Amazon 订单日基础汇率；不修改 0001–0071、既有正式订单、快照或财务历史。本 Decision 不授权 production/staging 部署、远程 Migration、远程 SQL、真实数据修改或 GitHub 写入。
+
+状态：Accepted by business owner；Supersedes the remaining confirmation-day buyer-rate dependency and prior separate buyer/seller base-rate interpretation
+
+### D-054 无生产数据阶段的干净基线重建
+
+业务所有者 2026-08-25 确认：当前系统没有生产数据库、生产订单、生产图片或线上用户；约 20,000 单是真实历史业务数据，但当前未进入本项目生产数据库。所有外部订单源、图片源和导入源必须保留；新 baseline 必须证明可无损导入这些历史业务数据。据此授权本次后端重构可以：删除旧 Migration 链并建立单一干净 baseline schema，后续变更从新 baseline 前向追加；删除并重建代码、API、数据库表、测试、配置与无用文档；不为兼容旧前端保留旧 API 或旧 DTO；清理历史兼容层、冻结实现、demo、旧路由与废弃 Migration。
+
+Git 历史、旧仓库固定 Commit、外部历史订单源文件、远程 Cloudflare/GitHub/Google Drive 资源与真实数据继续禁止触碰；远程写入、部署、Queue 创建、D1/R2 远程操作继续禁止。新 baseline 必须保留 D-011/D-016 财务不可变与整数金额、D-017 身份隔离、D-032/D-034 员工权限模型、审计、幂等、版本冲突、冲正与 Personal DENY 边界；必须以可复核证据证明可无损导入约 20,000 真实历史订单，本地空数据库一次初始化成功，且 Migration verifier 与测试同步重建。服务费配置继续按 `seller_organization + marketplace + review_type + effective_version` 版本化，显式 0 不等于缺失。
+
+执行门槛（2026-08-25 业务所有者补充，属于本 Decision 的硬性前置条件）：
+
+1. `verify-phase3*`、`verify-wave11/12/13*`、`verify-module1*` 等旧验证脚本不得直接删除。必须先逐个列出它们保护的业务断言，把仍然有效的断言迁移到新 baseline 测试和新命名 verifier；只有等价测试真实执行通过后，才允许删除对应旧脚本。
+2. 建立 `backend-clean-baseline-rebuild` Change 之前，必须先完成 `openspec/changes/` 下全部非归档变更的 completed / superseded / merge-into-rebuild / unrelated-keep 分类，每项写明理由、涉及源码和处置方式；未完成分类前不得开始新的源码写入阶段。
+
+本 Decision 取代 AGENTS.md 第 2 节及既有 Decision 中“不得重写迁移历史、Migration 链永久保持原文”对当前无生产数据阶段本地工作树的约束；被取代条款的历史正文与 Git 历史不改写。
+
+状态：Accepted by business owner；Supersedes the migration-chain immutability clauses only for the pre-production rebuild window, without rewriting their historical text
+
+### D-055 冷归档与后台执行重建（Queues + ZIP Bundle）
+
+D-019 的滚动冷归档业务语义保留，归档实现按 2026-08-25 授权重建：R2 保留前 6 个上海自然月热副本，业务全部关闭满 6 个上海自然月后归档。归档单元为 ORDER（订单、评论、买家聊天、卖家聊天四类证据，必须包含 `ORDER_EVIDENCE_INTERNAL_COMMUNICATION`）、BUYER_REFUND_PAYMENT、SELLER_SETTLEMENT_PAYMENT。为控制 Google Drive 文件数量，每单元生成一个 ZIP Bundle 与 manifest.json，不采用每张图一个 Drive 文件；ZIP 不重新压缩 JPEG，Worker 内不得一次性缓冲整个包，先流式生成临时 R2 bundle，再 resumable upload 到 Drive；上传后必须回读并校验 size、MIME、SHA-256，成功后才允许删除 R2 热副本。
+
+后台执行改用 Cloudflare Queues 或等效可重试异步消费者：Scheduled 扫描器只发现到期任务；Queue 消息仅含 opaque `bundle_id`、`version`、`trace_id`，不含图片、微信号、姓名或财务内容；初始批次 1–5，Drive 并发初始限制 3 且可配置，每条消息独立确认与重试，配置 DLQ，403/429 使用延迟和指数退避；D1 保存归档状态、失败事实与可重试记录；重复投递不得产生重复文件或重复删除。首次历史归档只 shadow-copy，不删除 R2。
+
+归档访问规则：只有 Staff 可以触发 Drive 归档图片恢复。Buyer/Seller 对已归档文件只看到已归档占位状态与”联系工作人员”提示，不获得任何 Drive 读取路径。恢复成功后仍按照原 file audience 与资源归属授权访问临时 R2 副本；恢复不得扩大可见范围，也不得绕过既有 Buyer/Seller/Staff DTO 隔离。临时 R2 副本保留 7 天后自动清理；Drive 原归档包永久保留。员工不直接读取 Google Drive；归档态不再实时代理 Drive 读取。返款和结算凭证不设置自动永久删除。本阶段只写代码、本地模板与测试，不创建真实 Queue、不执行远程操作。
+
+状态：Accepted by business owner；Supersedes D-019/D-023's per-file Drive archive model and scheduled-runner-only execution for the rebuilt baseline, without rewriting their historical text
+
+### D-056 业务模型去重、权限收敛与后端最终验收（阶段 6.6）
+
+业务所有者 2026-08-26 授权在无生产数据阶段执行阶段 6.6 收敛。本 Decision 记录以下已确认裁决；D-054 的远程边界、财务不可变、身份隔离与 fail-closed 约束继续有效。
+
+**岗位与分配**：员工端角色收敛为四个 canonical 角色 `owner`、`pre_sales`（买家运营）、`buyer_refund`（评论与买家返款）、`seller_ops`（卖家运营）；`acquisition` 角色随获客 CRM 退役。公共池、抢任务、round-robin 轮转、fallback 自动接管、availability 排班、自动重新分配与部门/团队/组长/角色合并映射组织架构全部退役。保留最小固定分配事实：买家分别绑定售前负责人与返款负责人，卖家组织绑定卖家运营负责人，owner 拥有全局查看与处理能力；不再产生公共池任务。Personal DENY、Marketplace scope、concealed 404、审计、幂等与 expected version 边界不变。
+
+**订单沟通截图统一**：买家聊天截图与卖家订单沟通截图是同一种业务图片，统一为 `ORDER_COMMUNICATION_SCREENSHOT`——挂在正式订单上、员工上传、一单多张、对应卖家组织全部有效成员可见、买家不可见、其他卖家 concealed 404；保留上传人、时间、哈希、审计与原始 audience；订单完整关闭满六个月冷归档，恢复不扩大权限；上传入口属于员工订单详情。`buyer-chat-screenshots`、`seller-order-chat-screenshots` 两套模块与 `order_evidence_internal_files.slot=1` 一单一张限制退役。
+
+**订单付款截图单一化**：付款截图由买家提交订单资料时上传，必须可见订单号与金额，每个订单资料版本严格一张；`order_evidence_versions.evidence_file_object_id` 双指针退役，通用文件关联（`order_evidence_version_files`）是唯一来源，数据库层保证每版本恰好一张。
+
+**买家编号重建**：编号在第一次录入系统建立买家档案时立即生成，格式保持 `YYYYMMDD + 渠道码 B/C + 渠道独立流水号`；日期为录入时的中国业务日期；B/C 各自独立递增并从全部历史号码的最大序号继续；已有编号永久保留、一经生成不可修改；B/C 渠道使用 `buyer_channels` 配置表；邀请注册只认领已有买家身份。`buyer_preorder_number_allocations`、注册预分配、首单转正、审核补分配与休眠的 allocate 命令退役；`first_valid_order_business_date` 无独立报表依赖，随之退役。无邀请自助注册死实现一并退役，买家不能绕过员工建档和邀请创建未知客户。
+
+**卖家成员可见范围**：同一卖家组织全部有效成员可见全部店铺、产品、订单、订单沟通截图、服务费、汇率、结算金额与凭证；仅组织 OWNER 可管理成员、邀请、停用成员和修改组织设置。`seller_member_portal_store_grants`、`seller_member_store_scopes`、店铺授权事件与 `assign-member-store` 退役。新增"产品主要对接人"：每产品唯一当前主要对接人（须为该组织有效成员），只是责任标记不限制查看，变更有历史事件和审计。
+
+**Marketplace 单一来源**：统一 `AMAZON_JP`、`AMAZON_US`、`COUPANG_KR`；`marketplace_registry` 是唯一权威；无运行消费者的 `marketplace_runtime_config` 退役，仍需的时区/币种精度/门户状态收敛进 Registry；残余 JP 短码投影别名退役。首批业务仍为 AMAZON_JP，未开通市场 fail-closed，不恢复 Rakuten/TikTok。
+
+**汇率与服务费单一来源**：旧 `buyer_daily_exchange_rates`、`seller_service_fee_versions` 及镜像触发器退役；只保留通用可版本化模型（`buyer_daily_currency_rate_versions`、`seller_service_fee_rule_versions` 与卖家本金加点策略），以订单业务日期解析唯一有效版本；owner 与 seller_ops 拥有相同维护权限；一次保存直接形成新的有效版本，历史版本不可修改；正式订单保留不可变汇率/加点/服务费快照，旧订单快照禁止更新；`SUBMITTED → CONFIRMED/REJECTED` 双人审批状态与对应接口退役；审计、幂等与版本冲突检查保留。本条取代 D-053 中"基础汇率与加点仅 Owner 填写确认、seller_ops 仅提交草案"的权限分工；D-053 的订单日基准、整数刻度、快照不可变与 preflight fail-closed 语义不变。
+
+**正式订单财务快照单一化**：日本站专用 `formal_order_financial_snapshots` 与通用 `formal_order_marketplace_money_snapshots` 合并为一份不可变快照（含 Marketplace、平台订单号、产品标识、订单日期、支付金额与币种、买家基础汇率版本和值、服务费规则版本和值、买家应返本金、卖家应收本金、买家自付比例与金额、预计利润所需事实、舍入规则、创建时间）；财务、返款、卖家结算、门户与报表统一读取这一份；旧快照禁止更新或重算；订单资料与正式订单仍是两个业务阶段。本条在无生产数据阶段以干净重建方式落地，取代 D-053/D-016 中两表并存的过渡形态。
+
+**经营看板与订单详情收敛**：`internal-finance` 是财务计算唯一来源；经营看板的 `financial-projection` 重复读模型与独立利润/现金流聚合退役，工作台只读精简摘要（待办、异常、最近订单、owner 少量财务摘要），完整财务进入财务中心。建立唯一的员工正式订单详情聚合入口（基础信息、买家卖家、产品预约、两类截图、评论、返款、结算、财务快照、运营事件、人工财务调整、当前允许操作）；order-integrity 详情、operating-integrity order lookup、buyer-advance-principal lookup 别名与财务订单详情的重复基础字段退役并入该入口；运营事件、评论可见性观察、Advance 与人工财务调整作为不同业务事实保留。
+
+**获客 CRM 与 Integration Outbox 退役**：获客 CRM 运行能力（routes、prospect、lead、渠道分配、首触归因、日咨询、maintenance、reporting、UI 合同、表、脚本、定时任务与测试）整体退役；B/C 买家渠道保留为独立 `buyer_channels` 业务配置。历史卖家目录改读正式表（seller_organizations、seller_organization_members、wechat_identity_claims、seller_stores、products）。`integration_outbox`、foundation outbox、业务命令 outbox 双写、drain、dead-letter/replay 与关联指标退役；`audit_events`、领域事件、幂等、事务断言与冷归档 `archive_jobs`（含 Queue/DLQ）保留；业务命令的数据库状态变化仍必须在同一 D1 transaction 完成。
+
+**历史导入中间模型隔离**：`seller_partner_import_*`、`standard_products`、`seller_product_offerings`、`product_reservation_openings` 与 historical importer 在真实历史导入完成前保留，但运行时门户与正式业务路由不得读取这些表；只能由导入 CLI、对账与隔离报告使用，并有源码边界验证。真实历史来源文件、图片来源与导入能力保留不动。
+
+**预约永久限制与一次性例外**：自动通过只在买家 ACTIVE、身份无冲突待处理、从未在该卖家组织获得 APPROVED 预约或形成正式订单（或存在有效一次性人工例外）、店铺无其他进行中预约、批次有名额、无逾期未完成订单、无异常或人工风险标记、下单排期和指引完整有效时成立。APPROVED 预约即算参加过；形成正式订单永久算参加过；同卖家组织跨店铺跨产品禁止再次预约；批准前 REJECTED/CANCELLED/EXPIRED 不算；检测到历史参加提示联系售前；售前或 owner 可创建绑定买家、卖家组织、具体需求批次、原因、操作者与有效期的一次性例外，例外使用后失效并留审计；不得通过删除旧预约绕过。预约阶段不要求订单日汇率存在，汇率在正式订单确认时按实际订单日期解析并快照。
+
+状态：Accepted by business owner 2026-08-26；Supersedes D-034's five-role set（acquisition 退役）、D-026/D-035/D-038/D-040 的获客运行裁决、D-053 的汇率维护权限分工与两表财务快照过渡形态（历史正文不改写）；仅授权本地代码/数据库/合同/测试/文档修改，不授权任何远程操作、真实数据导入或部署。实施事实（2026-08-27）：migrations 0027–0029（schema 29）、获客 CRM 与 Integration Outbox 源码/合同/脚本/前端整链退役、四角色固定分配与预约永久限制/一次性例外落地、API 基线 219 端点、全量本地验证绿——见 `docs/migration/V2_BACKEND_REBUILD_STAGE6_6_HANDOFF.md`
+
+### D-057 阶段 7.5 业务闭环补强（员工订单/联系人/结算批次）
+
+业务所有者 2026-08-29 指令授权（阶段 7.5：六项能力三批串行）。本 Decision 只记录实施事实，不改写任何历史 D 条目：
+
+- **员工订单列表与负责人**：`GET /api/staff/formal-orders` 扩展为双模式（仅含 `amazon_order_number` 时保留精确查单语义，其余为 keyset 游标列表，默认 20/最大 100/禁 OFFSET）；统一详情与列表执行同一固定分配可见性（owner 全局、buyer 双职责按买家、seller_ops 按卖家组织、marketplace 交集、Personal DENY 优先、concealed 404）；`responsibility` 分区（阶段/负责人/下一步/截止/逾期/异常）与工作台摘要（`GET /api/staff/me/work-items/summary`，返款金额仅 owner/buyer_refund）均为后端权威计算。
+- **业务对接人**：产品主要对接人沿用既有单一模型并接入员工/卖家产品 DTO（责任标记不缩小可见性）；公司公开客服渠道独立建表（`company_public_service_channels`，初始为空不得编造），Owner-only 配置，买家端仅公开显示名+渠道公开字段。
+- **卖家结算批次**：append-only 三表（batch/member/event）+ 部分唯一索引保证一个 payable 不能进入两个有效批次；确认冻结成员/金额/快照引用（触发器拒绝静默变更），取消释放成员；`PARTIALLY_PAID`/`PAID` 由既有付款账本实时推导，批次绝不复制付款事实、不回写历史财务；CSV 导出白名单+公式注入转义+稳定文件名+限额。
+- Migration 0031–0033 只追加（schema 33）；无公共池/抢单/获客中心/双聊天截图入口/旧订单完整性页面的运行时残留。
+
+状态：Accepted by business owner instruction 2026-08-29；三批本地提交（08bb223a / f8272577 / 9684a744），未 push、未部署、不构成 Staging/Production GO。
+
+### D-058 Seller 结算读取端点级边界（阶段 7.5R 后续裁决）
+
+业务所有者 2026-08-30 确认 Seller Portal 结算读取采用以下端点级边界。本条是
+D-056“同一卖家组织全部有效成员可见结算金额与凭证”组织级语义的后续细化，保留
+D-056 历史正文，不将旧阶段的宽泛组织级表述改写为新的历史事实：
+
+- `summary`、`payables`、`payables/:id`、`payments`、`payments/:id` 五个完整结算财务端点仅允许 ACTIVE Seller `OWNER`、`FINANCE`；ACTIVE `OPERATIONS`、`VIEWER` 角色统一返回 concealed `404`，不得返回金额、付款、allocation、payable 或其他财务响应字段。
+- `batches`、`batches/:id` 两个 Seller 批次端点允许 ACTIVE Seller `OWNER`、`OPERATIONS`、`FINANCE`、`VIEWER` 读取本组织非草稿、非取消批次；四角色只读范围仅适用于专用 Seller-safe 批次 DTO，不扩大到上述五个完整财务端点。批次 DTO 不含内部利润、买家返款、内部员工 ID、内部备注或对象存储 key。
+- Buyer 在 Seller 批次列表/详情边界统一 concealed `404`；未认证、会话无效或 DISABLED Seller 成员继续 `401`；跨组织资源继续列表不出现或详情 concealed `404`。payables/payments 既有 cursor token、过滤、组织隔离、稳定排序和 malformed-token 行为不变。
+- 本条不新增 Migration，不修改 DTO 字段、财务账本、付款/分配事实、批次状态机、Seller 写端点、共享游标实现、前端视觉或预约自动审核；仅授权本地代码、测试、OpenSpec 与文档更新，不构成 Staging/Production GO。
+
+状态：Accepted by business owner instruction 2026-08-30；实现已归档至本地
+OpenSpec Change `openspec/changes/archive/2026-08-30-seller-settlement-read-boundary`，未
+push、未部署、未访问任何远程或生产资源。
 
 ## 上线前必须关闭的风险项
 

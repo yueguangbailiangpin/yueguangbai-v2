@@ -4,7 +4,7 @@
 TBD - created by archiving change staff-portal-visual-refresh. Update Purpose after archive.
 ## Requirements
 ### Requirement: Every real Staff surface uses one efficient workbench grammar
-Staff login, protected shell, work queue/detail/action, customer-security tools, acquisition, product/scheduling, and owner dashboard surfaces SHALL use `tokens.css`, existing primitives, real routes, and returned Staff DTO facts to form one high-density Chinese operations workspace.
+Staff login, protected shell, work queue/detail/action, customer-security tools, product/scheduling, and owner dashboard surfaces SHALL use `tokens.css`, existing primitives, real routes, and returned Staff DTO facts to form one high-density Chinese operations workspace.
 
 #### Scenario: Staff page is compared with the approved direction
 - **WHEN** deterministic mobile and desktop screenshots are reviewed beside the Staff direction
@@ -18,7 +18,7 @@ Staff login, protected shell, work queue/detail/action, customer-security tools,
 The protected shell SHALL display 总管理员、获客、售前、卖家对接、买家返款 from the trusted Session, SHALL preserve the existing real routes, and SHALL show optional navigation only when current canonical role duties and backend-projected scope authorize the area.
 
 #### Scenario: Five canonical roles open Staff
-- **WHEN** owner, acquisition, pre_sales, seller_ops, or buyer_refund enters with one valid ACTIVE role
+- **WHEN** owner, pre_sales, seller_ops, or buyer_refund enters with one valid ACTIVE role
 - **THEN** the shell shows that exact Chinese role, never asks for role selection, and exposes only the role's permitted navigation while direct backend requests remain independently authorized.
 
 #### Scenario: Buyer-refund Staff views navigation
@@ -51,24 +51,12 @@ Order/review/refund/settlement/demand actions and invitation/recovery controls S
 - **WHEN** an ACTIVE authorized Staff completes the existing required inputs
 - **THEN** the one-time link remains ephemeral and hideable, Staff neither enters nor sees a Customer password, and request-ID/error/revoke recovery stays keyboard-operable.
 
-### Requirement: Acquisition remains hybrid, scoped, and bookmarkable
-`/staff/acquisition` SHALL remain a stable bookmarkable route. Owner SHALL receive administration and consultation-write controls. Acquisition SHALL receive Marketplace-scoped Prospect/source/read workflows and a read-only daily consultation surface without `ACQUISITION_ADMIN` or formal Buyer/Seller Lead permissions. Other roles SHALL NOT receive the customer-development operator surface.
+### Requirement: Acquisition CRM surfaces stay retired
+The acquisition CRM (`/staff/acquisition`, its operator/admin surfaces and the `ACQUISITION_ADMIN` / `ACQUISITION_BUYER_LEAD` / `ACQUISITION_SELLER_LEAD` permission codes) SHALL stay fully retired (D-056 stage 6.6C/6.6E). No navigation entry, route, fixture or default role permission SHALL resurrect it.
 
-#### Scenario: Authorized acquisition role opens the route
-- **WHEN** acquisition with a current Marketplace scope opens the route with an empty permission array
-- **THEN** scoped source, Prospect, funnel and daily-consultation reads and Prospect commands remain available, while consultation-write, channel-admin, machine-admin and formal Lead controls are absent.
-
-#### Scenario: Owner opens the route
-- **WHEN** owner opens the route with current backend authority
-- **THEN** the existing owner administration and daily consultation record/correct form are available and direct API calls remain independently authorized.
-
-#### Scenario: Owner has Personal DENY for acquisition administration
-- **WHEN** a trusted owner session can read the owner surface but its projected permissions omit `ACQUISITION_ADMIN`
-- **THEN** the daily-consultation and channel-management tabs remain available as read-only owner surfaces, while consultation/channel write forms and buttons and the machine-administration tab are absent.
-
-#### Scenario: Acquisition is denied
-- **WHEN** pre_sales, seller_ops, buyer_refund or an invalid Staff session opens the stable route directly
-- **THEN** no customer-development operator/admin control or prior sensitive cached result appears and the backend rejects unauthorized reads/writes.
+#### Scenario: Any Staff opens a retired acquisition path
+- **WHEN** owner, pre_sales, seller_ops, buyer_refund or an invalid Staff session opens a retired acquisition route or API path directly
+- **THEN** no customer-development operator/admin control or prior sensitive cached result appears and the backend fails closed.
 
 ### Requirement: Scheduling and dashboard facts remain distinct and truthful
 Product/scheduling pages SHALL preserve product cadence, stable reservation rank, planned dates, preview/confirm authority, and legacy unconfigured states; the owner dashboard SHALL preserve Beijing windows, cohort metrics, and separate projected/completed profit facts.
@@ -93,11 +81,11 @@ Touched copy SHALL be Chinese; Staff login SHALL remain path-bound to its truste
 - **THEN** 月光白, one clear trusted-login action, necessary error/recovery and optional return remain visible without duplicated workspace/login explanations, account/password fields, role selection, or Buyer/Seller handoff.
 
 #### Scenario: Representative Staff facts render
-- **WHEN** queue, acquisition, scheduling, refund, settlement, or dashboard facts are shown
+- **WHEN** queue, scheduling, refund, settlement, or dashboard facts are shown
 - **THEN** touched labels are Chinese, timestamps explicitly mean北京时间, date-only facts are not converted, 预计/已完成利润 and 卖家本金/服务费 remain separate, and object keys, Drive IDs, permanent URLs, tokens, secrets, or unauthorized customer fields are absent.
 
 ### Requirement: Staff presentation remains responsive and accessible
-Representative login, queue, acquisition, scheduling, and dashboard surfaces SHALL remain usable at 320, 390, 768, 1440, and 1600 CSS pixels, 200% root text, keyboard-only operation, and reduced motion with visible unobscured focus, 44px targets, semantic headings/tables, non-color-only state, suitable contrast, and no document-level horizontal overflow.
+Representative login, queue, scheduling, and dashboard surfaces SHALL remain usable at 320, 390, 768, 1440, and 1600 CSS pixels, 200% root text, keyboard-only operation, and reduced motion with visible unobscured focus, 44px targets, semantic headings/tables, non-color-only state, suitable contrast, and no document-level horizontal overflow.
 
 #### Scenario: Required viewport and text matrix runs
 - **WHEN** deterministic Staff pages open at each required width and at 200% text
@@ -107,12 +95,12 @@ Representative login, queue, acquisition, scheduling, and dashboard surfaces SHA
 - **WHEN** a keyboard user traverses navigation, filters, rows, forms, dialogs, and actions or reduced motion is requested
 - **THEN** focus remains visible and clear of fixed navigation, source order remains logical, controls meet 44px, and nonessential motion is removed.
 
-### Requirement: Five-role visual evidence is deterministic and reviewed
-The Change SHALL keep deterministic Staff fixtures for owner, acquisition, pre_sales, seller_ops and buyer_refund and SHALL independently assert role, permission, security, accessibility and disclosure boundaries. Acquisition fixtures SHALL use `permissions=[]` so operator access is not confused with formal Lead or admin permission.
+### Requirement: Four-role visual evidence is deterministic and reviewed
+The Change SHALL keep deterministic Staff fixtures for owner, pre_sales, seller_ops and buyer_refund and SHALL independently assert role, permission, security, accessibility and disclosure boundaries.
 
 #### Scenario: Evidence matrix is generated
 - **WHEN** the Staff role/browser suites run with Contract-valid fixtures, locale, timezone, motion and viewport settings
-- **THEN** all five role projections are covered, acquisition retains scoped Prospect workflow, and no acquisition fixture receives `ACQUISITION_BUYER_LEAD` or `ACQUISITION_SELLER_LEAD`.
+- **THEN** all four role projections are covered and no retired acquisition surface or permission appears.
 
 #### Scenario: Evidence is handed to controller review
 - **WHEN** implementation is reported complete

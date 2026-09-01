@@ -28,17 +28,17 @@ describe('backup and restore CLI expected schema', () => {
 
   it('rejects an explicit schema mismatch', () => {
     const fixture = localFixture();
-    const result = run('backup-d1.mjs', backupArgs(fixture, '37'));
+    const result = run('backup-d1.mjs', backupArgs(fixture, '36'));
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('unexpected_schema_version');
   });
 
-  it('creates and restores one anonymous schema-70 fixture when both values match', () => {
+  it('creates and restores one anonymous schema-41 fixture when both values match', () => {
     const fixture = localFixture();
-    const backup = run('backup-d1.mjs', backupArgs(fixture, '70'));
+    const backup = run('backup-d1.mjs', backupArgs(fixture, '41'));
     expect(backup.status, backup.stderr).toBe(0);
     const restored = run('restore-d1.mjs', [
-      '--expected-schema', '70',
+      '--expected-schema', '41',
       '--bundle', path.join(fixture.backup, 'd1-backup.bundle.aes256gcm'),
       '--attestation', path.join(fixture.backup, 'd1-backup.attestation.json'),
       '--restore-database', path.join(fixture.root, 'restored.sqlite'),
@@ -46,7 +46,7 @@ describe('backup and restore CLI expected schema', () => {
       '--expected-release-commit-sha', releaseSha,
     ]);
     expect(restored.status, restored.stderr).toBe(0);
-    expect(JSON.parse(restored.stdout)).toMatchObject({ status: 'PASS', schema_version: 70 });
+    expect(JSON.parse(restored.stdout)).toMatchObject({ status: 'PASS', schema_version: 41 });
   }, LONG_RUNNING_TEST_TIMEOUT_MS);
 });
 

@@ -95,7 +95,7 @@ function refund(
     status,
     order: {
       formal_order_id: 'order-1',
-      marketplace: 'JP',
+      marketplace: 'AMAZON_JP',
       amazon_order_number: '123-1234567-1234567',
       product_name: '返款产品',
       review_type: 'IMAGE',

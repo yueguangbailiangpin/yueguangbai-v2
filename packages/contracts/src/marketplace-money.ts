@@ -17,7 +17,7 @@ export type MoneyRoundingRule = 'HALF_UP';
 export type IntegerString = string;
 
 export const MARKETPLACE_PLATFORMS = [
-  'AMAZON', 'COUPANG', 'RAKUTEN', 'TIKTOK',
+  'AMAZON', 'COUPANG',
 ] as const;
 export type MarketplacePlatform = typeof MARKETPLACE_PLATFORMS[number];
 export type MarketplaceStatus = 'ACTIVE' | 'DISABLED';

@@ -4,6 +4,7 @@ import type {
   SqlStatement,
 } from '@ygb/contracts';
 import {
+  canCreateSellerStore,
   hashCanonicalJson,
   normalizeStoreName,
 } from '@ygb/domain';
@@ -16,19 +17,15 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   CatalogError,
   cleanCatalogIdentifier,
   normalizeCatalogError,
   parseCatalogInput,
   requireCatalogPermission,
+  type CatalogSellerStoreActor,
   type CatalogStaffActor,
 } from './catalog-shared';
 import {
-  legacyMarketplaceProjection,
   resolveMarketplace,
 } from '../marketplaces/registry';
 
@@ -55,13 +52,24 @@ export async function createSellerStore(
     storeName: string;
   },
   command: {
-    actor: CatalogStaffActor;
+    actor: CatalogStaffActor | CatalogSellerStoreActor;
     idempotencyKey: string;
     requestId?: string | null;
     now?: number;
   },
 ): Promise<CreateSellerStoreResult> {
-  requireCatalogPermission(command.actor, 'SELLER_MANAGE');
+  const staffActor = isStaffActor(command.actor) ? command.actor : null;
+  const sellerActor: CatalogSellerStoreActor | null = staffActor
+    ? null
+    : command.actor as CatalogSellerStoreActor;
+  if (staffActor) {
+    requireCatalogPermission(staffActor, 'SELLER_MANAGE');
+  } else if (
+    sellerActor!.sellerOrganizationId !== input.sellerOrganizationId
+    || !canCreateSellerStore(sellerActor!.role)
+  ) {
+    throw new CatalogError('FORBIDDEN', 403);
+  }
 
   const organizationId = cleanCatalogIdentifier(
     input.sellerOrganizationId,
@@ -72,10 +80,10 @@ export async function createSellerStore(
     { requireActive: true, requireAdapter: true },
   );
   // The business layer is JP-only today: seller_stores/products/
-  // demand_batches reference marketplaces(code), which admits a single 'JP'
-  // row, and product commands type marketplace_code as 'JP'. The old code
+  // demand_batches reference marketplaces(code), which admits a single 'AMAZON_JP'
+  // row, and product commands type marketplace_code as 'AMAZON_JP'. The old code
   // hardcoded the JP legacy projection for every store, so an AMAZON_US
-  // store was silently stored as 'JP' and its product applications entered
+  // store was silently stored as 'AMAZON_JP' and its product applications entered
   // the JP conflict check. Reject non-JP store creation loudly until the
   // business tables are migrated to canonical marketplace codes.
   if (marketplace.code !== 'AMAZON_JP') {
@@ -87,9 +95,9 @@ export async function createSellerStore(
   // brand-new organization without stores is not falsely blocked. A missing
   // dataScope matches resolveStaffDataScope semantics: owner roles are GLOBAL
   // (unrestricted), any other role without a scope is forbidden.
-  if (command.actor.dataScope) {
-    requireMarketplaceScope(command.actor.dataScope, marketplace.code);
-  } else if (!command.actor.roles.includes('owner')) {
+  if (staffActor?.dataScope) {
+    requireMarketplaceScope(staffActor.dataScope, marketplace.code);
+  } else if (staffActor && !staffActor.roles.includes('owner')) {
     throw new CatalogError('FORBIDDEN', 403);
   }
   const storeName = parseCatalogInput(
@@ -116,8 +124,8 @@ export async function createSellerStore(
     await acquireIdempotency<CreateSellerStoreResult>(
       database,
       {
-        actorType: 'STAFF',
-        actorId: command.actor.staffId,
+        actorType: staffActor ? 'STAFF' : 'SELLER_MEMBER',
+        actorId: staffActor?.staffId ?? sellerActor!.memberId,
         action: 'CREATE_SELLER_STORE',
         targetType: 'SELLER_STORE',
         targetId: `seller-store:${targetHash}`,
@@ -164,20 +172,6 @@ export async function createSellerStore(
       version: 1,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `seller-store-created:${storeId}`,
-      eventType: 'SELLER_STORE_CREATED',
-      aggregateType: 'SELLER_STORE',
-      aggregateId: storeId,
-      payload: {
-        store_id: storeId,
-        seller_organization_id: organizationId,
-        marketplace_code: input.marketplaceCode,
-        display_name: storeName.display,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -198,7 +192,7 @@ export async function createSellerStore(
       `).bind(
         storeId,
         organizationId,
-        legacyMarketplaceProjection(),
+        'AMAZON_JP',
         storeName.display,
         storeName.normalized,
         now,
@@ -209,7 +203,10 @@ export async function createSellerStore(
         SET marketplace_code=?
         WHERE store_id=? AND seller_organization_id=?
       `).bind(marketplace.code, storeId, organizationId),
-      database.prepare(`
+      // seller_store_events is a legacy Staff-only ledger because its actor
+      // column has a NOT NULL foreign key to staff_users. Seller self-service
+      // remains immutable and attributable through audit_events below.
+      ...(staffActor ? [database.prepare(`
         INSERT INTO seller_store_events (
           id,
           store_id,
@@ -228,23 +225,23 @@ export async function createSellerStore(
         crypto.randomUUID(),
         storeId,
         organizationId,
-        command.actor.staffId,
+        staffActor.staffId,
         JSON.stringify({
           status: 'ACTIVE',
           version: 1,
         }),
         acquired.claim.idempotencyKey,
         now,
-      ),
+      )] : []),
       createAuditEventStatement(database, {
         id: crypto.randomUUID(),
         aggregateType: 'SELLER_STORE',
         aggregateId: storeId,
         eventType: 'SELLER_STORE_CREATED',
         actor: {
-          type: 'STAFF',
-          id: command.actor.staffId,
-          roles: command.actor.roles,
+          type: staffActor ? 'STAFF' : 'SELLER_MEMBER',
+          id: staffActor?.staffId ?? sellerActor!.memberId,
+          roles: staffActor?.roles ?? [sellerActor!.role],
         },
         requestId: command.requestId ?? null,
         idempotencyKey: acquired.claim.idempotencyKey,
@@ -252,7 +249,6 @@ export async function createSellerStore(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,
@@ -287,6 +283,12 @@ export async function createSellerStore(
     );
     throw normalized;
   }
+}
+
+function isStaffActor(
+  actor: CatalogStaffActor | CatalogSellerStoreActor,
+): actor is CatalogStaffActor {
+  return 'staffId' in actor;
 }
 
 async function requireActiveSellerOrganization(
@@ -327,7 +329,7 @@ function assertStoreCreatedStatement(
         WHERE seller_stores.id=?
           AND seller_stores.organization_id=?
           AND scope.marketplace_code=CASE
-            WHEN ?='JP' THEN 'AMAZON_JP' ELSE ? END
+            WHEN ?='AMAZON_JP' THEN 'AMAZON_JP' ELSE ? END
           AND seller_stores.status='ACTIVE'
           AND seller_stores.version=1
       )

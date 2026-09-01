@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { SellerOrderChatScreenshotReadIntentResponseDto } from '@ygb/contracts';
+import type { OrderCommunicationScreenshotReadIntentDto } from '@ygb/contracts';
 
 const integerString = z.string().regex(/^(0|[1-9][0-9]*)$/u);
 const epoch = z.number().int().nonnegative();
@@ -10,17 +10,13 @@ const component = z.enum(['PENDING', 'COMPLETE', 'NOT_APPLICABLE']);
 
 export const sellerOrderChatScreenshotReadIntentResponseSchema = z
   .object({
-    read_intent: z
-      .object({
-        read_intent_id: z.string().min(1).max(120),
-        access_token: z.string().min(32).max(512).nullable(),
-        access_token_available: z.boolean(),
-        expires_at: z.number().int().nonnegative(),
-        replayed: z.boolean(),
-      })
-      .strict(),
+    read_intent_id: z.string().min(1).max(120),
+    access_token: z.string().min(32).max(512).nullable(),
+    access_token_available: z.boolean(),
+    expires_at: epoch,
+    replayed: z.boolean(),
   })
-  .strict() satisfies z.ZodType<SellerOrderChatScreenshotReadIntentResponseDto>;
+  .strict() satisfies z.ZodType<OrderCommunicationScreenshotReadIntentDto>;
 
 export const sellerMeSchema = z
   .object({
@@ -40,8 +36,10 @@ export const sellerMeSchema = z
             id: z.string(),
             seller_code: z.string(),
             name: z.string(),
-            marketplace_code: z.literal('JP'),
+            marketplace_code: z.literal('AMAZON_JP'),
             status: z.literal('ACTIVE'),
+            settlement_account_name: z.string().nullable(),
+            settlement_account_identifier: z.string().nullable(),
           })
           .strict(),
         access: z
@@ -63,7 +61,7 @@ export const sellerStoresSchema = z
       z
         .object({
           id: z.string(),
-          marketplace_code: z.literal('JP'),
+          marketplace_code: z.literal('AMAZON_JP'),
           display_name: z.string(),
           canonical_marketplace_code: z.enum([
             'AMAZON_JP',
@@ -87,13 +85,48 @@ export const sellerStoresSchema = z
   })
   .strict();
 
+export const sellerStoreMutationSchema = z
+  .object({
+    store: z
+      .object({
+        store_id: z.string(),
+        seller_organization_id: z.string(),
+        marketplace_code: z.enum([
+          'AMAZON_JP',
+          'AMAZON_US',
+          'COUPANG_KR',
+          'RAKUTEN_JP',
+          'TIKTOK_JP',
+        ]),
+        display_name: z.string(),
+        status: z.literal('ACTIVE'),
+        version: z.literal(1),
+        replayed: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
+
+// 与共享合同 CanonicalMarketplaceCode（MARKETPLACE_CODES）完全一致的三码枚举；
+// RAKUTEN_JP/TIKTOK_JP 未在现行注册表发布，不得出现在 Canonical 字段。
 const canonicalMarketplace = z.enum([
   'AMAZON_JP',
   'AMAZON_US',
   'COUPANG_KR',
-  'RAKUTEN_JP',
-  'TIKTOK_JP',
 ]);
+// 与共享合同 OrderCommunicationScreenshotReferenceDto 完全一致：上传人与上传
+// 时间由后端 read-model 返回（uploaded_by_staff_name 在上传账号不可解析时缺省）。
+const orderCommunicationScreenshot = z
+  .object({
+    file_object_id: z.string().min(1).max(120),
+    file_version: z.number().int().positive(),
+    purpose: z.literal('ORDER_COMMUNICATION_SCREENSHOT'),
+    visibility: z.literal('SELLER_VISIBLE'),
+    uploaded_at: epoch,
+    uploaded_by_staff_id: z.string().nullable(),
+    uploaded_by_staff_name: z.string().nullable().optional(),
+  })
+  .strict();
 const sellerFormalOrderCommon = {
   formal_order_id: z.string(),
   status: z.literal('CONFIRMED'),
@@ -101,20 +134,28 @@ const sellerFormalOrderCommon = {
   store: z.object({ id: z.string(), display_name: z.string() }).strict(),
   platform_product_identifier: z.string(),
   product_name: z.string(),
-  chat_screenshot: z
+  main_image: z
     .object({
-      status: z.enum(['AVAILABLE', 'NONE']),
-      file_version: z.number().int().positive().nullable(),
+      file_object_id: z.string(),
+      file_version: z.number().int().positive(),
+      client_file_name: z.string(),
     })
-    .strict(),
+    .strict()
+    .nullable(),
+  order_screenshot: z
+    .object({
+      file_object_id: z.string(),
+      file_version: z.number().int().positive(),
+    })
+    .strict()
+    .nullable(),
+  communication_screenshots: z.array(orderCommunicationScreenshot).readonly(),
   confirmed_at: epoch,
 } as const;
-const sellerAmazonFormalOrderSchema = z
+const sellerFormalOrderSchema = z
   .object({
     ...sellerFormalOrderCommon,
-    legacy_projection: z.literal('AMAZON'),
-    marketplace_code: z.literal('JP'),
-    canonical_marketplace_code: z.enum(['AMAZON_JP', 'AMAZON_US']),
+    marketplace_code: z.literal('AMAZON_JP'),
     amazon_order_number: z.string(),
     asin: z.string(),
     product_version: z.object({ id: z.string(), version_no: z.number().int().positive() }).strict(),
@@ -135,7 +176,7 @@ const sellerAmazonFormalOrderSchema = z
         payment_currency_code: z.enum(['JPY', 'USD', 'KRW', 'CNY']),
         base_rate_version_id: z.string(),
         base_rate_business_date: z.string(),
-        base_rate_confirmed_at: epoch,
+        base_rate_created_at: epoch,
         base_rate_value: integerString,
         base_rate_scale: integerString,
         policy_version_id: z.string(),
@@ -143,7 +184,7 @@ const sellerAmazonFormalOrderSchema = z
         policy_seller_organization_id: z.string().nullable(),
         policy_version_no: z.number().int().positive(),
         policy_effective_from: epoch,
-        policy_confirmed_at: epoch,
+        policy_created_at: epoch,
         markup_rate_value: integerString,
         markup_rate_scale: integerString,
         final_rate_value: integerString,
@@ -156,10 +197,10 @@ const sellerAmazonFormalOrderSchema = z
       .object({
         fee_version_id: z.string(),
         version_no: z.number().int().positive(),
-        review_type: z.string(),
+        review_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']),
         service_fee_cny_fen: integerString,
         effective_from: epoch,
-        confirmed_at: epoch,
+        created_at: epoch,
         marketplace_code: canonicalMarketplace,
         currency_code: z.literal('CNY'),
         currency_exponent: z.literal(2),
@@ -176,33 +217,9 @@ const sellerAmazonFormalOrderSchema = z
     confirmed_business_date: z.string(),
   })
   .strict();
-const sellerPlatformFormalOrderSchema = z
-  .object({
-    ...sellerFormalOrderCommon,
-    legacy_projection: z.literal('NONE'),
-    marketplace_code: z.null(),
-    canonical_marketplace_code: z.enum(['RAKUTEN_JP', 'TIKTOK_JP']),
-    amazon_order_number: z.null(),
-    asin: z.null(),
-    product_version: z.null(),
-    review_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']).nullable(),
-    final_paid_jpy: z.null(),
-    payment: z.null(),
-    seller_expected_principal_cny_fen: z.null(),
-    seller_principal_rate_snapshot: z.null(),
-    locked_service_fee_snapshot: z.null(),
-    business_completion: z.null(),
-    confirmed_business_date: z.string().nullable(),
-  })
-  .strict();
 export const sellerFormalOrdersSchema = z
   .object({
-    items: z.array(
-      z.discriminatedUnion('legacy_projection', [
-        sellerAmazonFormalOrderSchema,
-        sellerPlatformFormalOrderSchema,
-      ]),
-    ),
+    items: z.array(sellerFormalOrderSchema),
     page,
   })
   .strict();
@@ -215,6 +232,8 @@ export const sellerSettlementSummarySchema = z
         outstanding_service_fee_cny_fen: integerString,
         total_outstanding_cny_fen: integerString,
         unallocated_credit_cny_fen: integerString,
+        settlement_account_name: z.string().nullable(),
+        settlement_account_identifier: z.string().nullable(),
       })
       .strict(),
   })
@@ -242,7 +261,7 @@ export const sellerProductsSchema = z
         .object({
           id: z.string(),
           store: z.object({ id: z.string(), display_name: z.string() }).strict(),
-          marketplace_code: z.literal('JP'),
+          marketplace_code: z.literal('AMAZON_JP'),
           seller_code: z.string(),
           asin: z.string(),
           status: z.enum(['ACTIVE', 'DISABLED']),
@@ -251,6 +270,9 @@ export const sellerProductsSchema = z
           created_at: epoch,
           updated_at: epoch,
           current_version: productVersion,
+          // Stage 7.5 batch 2: responsibility marker (optional for old fixtures).
+          primary_contact_member_id: z.string().nullable().optional(),
+          primary_contact_member_name: z.string().nullable().optional(),
         })
         .strict(),
     ),
@@ -263,13 +285,14 @@ const sellerApplication = z
   .object({
     id: z.string(),
     store: z.object({ id: z.string(), display_name: z.string() }).strict(),
-    marketplace_code: z.literal('JP'),
+    marketplace_code: z.literal('AMAZON_JP'),
     asin: z.string(),
     product_name: z.string(),
     search_keywords: z.array(z.string()),
     product_url: z.string().nullable(),
     buyer_visible_notes: z.string().nullable(),
     seller_notes: z.string().nullable(),
+    ordering_guide_expected_amount_jpy: z.number().int().positive().nullable(),
     status: z.enum(['SUBMITTED', 'APPROVED', 'REJECTED', 'WITHDRAWN']),
     review_reason: z.string().nullable(),
     product_id: z.string().nullable(),
@@ -308,7 +331,7 @@ export const sellerDemandsSchema = z
               product_url: z.string().nullable(),
             })
             .strict(),
-          marketplace_code: z.literal('JP'),
+          marketplace_code: z.literal('AMAZON_JP'),
           task_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']),
           target_quantity: z.number().int(),
           held_quantity: z.number().int(),
@@ -348,7 +371,7 @@ export const sellerReviewsSchema = z
           review_case_id: z.string(),
           formal_order: z.object({ id: z.string(), amazon_order_number: z.string() }).strict(),
           store: z.object({ id: z.string(), display_name: z.string() }).strict(),
-          marketplace_code: z.literal('JP'),
+          marketplace_code: z.literal('AMAZON_JP'),
           asin: z.string(),
           product_name: z.string(),
           review_type: z.enum(['RATING', 'TEXT', 'IMAGE', 'VIDEO']),
@@ -398,6 +421,38 @@ export const sellerReviewsSchema = z
   })
   .strict();
 export type SellerReviewStatus = z.infer<typeof sellerReviewsSchema>['items'][number]['status'];
+export const sellerPaymentsSchema = z
+  .object({
+    items: z.array(
+      z
+        .object({
+          payment_id: z.string(),
+          amount_cny_fen: integerString,
+          paid_at: epoch,
+          recorded_at: epoch,
+          allocated_amount_cny_fen: integerString,
+          unallocated_amount_cny_fen: integerString,
+          status: z.enum(['REVERSED', 'UNALLOCATED', 'PARTIALLY_ALLOCATED', 'FULLY_ALLOCATED']),
+          version: z.number().int().positive(),
+          allocations: z.array(
+            z
+              .object({
+                allocation_id: z.string(),
+                payable_id: z.string(),
+                payable_type: z.enum(['SELLER_PRINCIPAL', 'SELLER_SERVICE_FEE']),
+                allocated_amount_cny_fen: integerString,
+                reversed_amount_cny_fen: integerString,
+                net_amount_cny_fen: integerString,
+                allocated_at: epoch,
+              })
+              .strict(),
+          ),
+        })
+        .strict(),
+    ),
+    page,
+  })
+  .strict();
 export const sellerPayablesSchema = z
   .object({
     items: z.array(

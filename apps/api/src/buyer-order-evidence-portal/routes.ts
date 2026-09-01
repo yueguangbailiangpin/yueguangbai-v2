@@ -117,7 +117,7 @@ async function createOrderEvidence(
   context: Context<any>,
 ): Promise<Response> {
   const buyer = await requireBuyerPortalContext(context);
-  if (buyer.marketplaceCode !== 'JP') {
+  if (buyer.marketplaceCode !== 'AMAZON_JP') {
     throw new BuyerOrderEvidencePortalError('NOT_FOUND', 404);
   }
   const body = parseSubmitBody(await readBoundedJson(
@@ -204,7 +204,7 @@ async function resubmitOrderEvidence(
   context: Context<any>,
 ): Promise<Response> {
   const buyer = await requireBuyerPortalContext(context);
-  if (buyer.marketplaceCode !== 'JP') {
+  if (buyer.marketplaceCode !== 'AMAZON_JP') {
     throw new BuyerOrderEvidencePortalError('NOT_FOUND', 404);
   }
   const submissionId = requireRouteId(context);

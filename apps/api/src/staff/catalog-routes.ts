@@ -3,7 +3,6 @@ import {
   apiSuccess,
   isApiErrorCode,
   isDemandReviewDecision,
-  isMarketplaceCode,
   isProductApplicationReviewDecision,
   PRODUCT_COLOR_SPEC_MODES,
   STAFF_PRODUCT_PAGE_DEFAULT_LIMIT,
@@ -19,8 +18,10 @@ import { parseIdempotencyKey, readBoundedJson } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
 import { addProductVersion } from '../catalog/add-product-version';
 import { createApprovedProduct } from '../catalog/create-product';
-import { createSellerStore } from '../catalog/create-store';
 import { linkProductVersionMainImage } from '../catalog/link-product-version-main-image';
+import {
+  setProductPrimaryContact,
+} from '../catalog/set-product-primary-contact';
 import type { CatalogStaffActor } from '../catalog/catalog-shared';
 import type { FileActor } from '@ygb/contracts';
 import type {
@@ -31,6 +32,7 @@ import {
   readDemandReviewContext,
   reviewDemandBatch,
 } from '../demand-batches/review-demand-batch';
+import { closeDemandBatch } from '../demand-batches/close-demand-batch';
 import type { DemandStaffActor } from '../demand-batches/demand-shared';
 import { requestIdFromContext } from '../http-auth/errors';
 import { reviewProductApplication } from '../product-applications/review-product-application';
@@ -85,16 +87,20 @@ export function registerStaffCatalogWorkflowRoutes(app: Hono<any>): void {
     withStaffWorkflowErrors(createProductVersion),
   );
   app.post(
-    '/api/staff/catalog/stores',
-    withStaffWorkflowErrors(createStore),
-  );
-  app.post(
     '/api/staff/catalog/product-versions/:versionId/main-image',
     withStaffWorkflowErrors(linkMainImage),
   );
   app.post(
+    '/api/staff/products/:id/primary-contact',
+    withStaffWorkflowErrors(setPrimaryContact),
+  );
+  app.post(
     '/api/staff/demand-batches/:id/review',
     withStaffWorkflowErrors(reviewDemand),
+  );
+  app.post(
+    '/api/staff/demand-batches/:id/close',
+    withStaffWorkflowErrors(closeDemand),
   );
   app.post(
     '/api/staff/demand-batches/:id/schedule/preview',
@@ -224,11 +230,13 @@ async function reviewApplication(context: Context<any>): Promise<Response> {
     'expected_version', 'decision', 'rejection_reason',
     'ordering_guide_expected_amount_jpy', 'color_spec_mode',
     'default_buyer_self_pay_bps', 'order_interval_days', 'orders_per_run',
+    'main_image_file_object_id',
   ]);
   const decision = body['decision'];
   if (!isProductApplicationReviewDecision(decision)) {
     throw validationError();
   }
+  const workflowActorForReview = workflowActor(authorization);
   const result = await reviewProductApplication(context.env.DB, {
     applicationId: requiredString(context.req.param('id')),
     expectedVersion: integer(body['expected_version']),
@@ -254,10 +262,24 @@ async function reviewApplication(context: Context<any>): Promise<Response> {
     ...(body['orders_per_run'] === undefined
       ? {}
       : { ordersPerRun: positiveInteger(body['orders_per_run']) }),
+    ...(body['main_image_file_object_id'] === undefined
+      ? {}
+      : {
+          mainImageFileObjectId:
+            nullableString(body['main_image_file_object_id']),
+        }),
   }, {
-    actor: workflowActor(authorization),
+    actor: workflowActorForReview,
     idempotencyKey: idempotencyKey(context),
     requestId: requestIdFromContext(context),
+    deps: {
+      storage: context.env.FILE_OBJECT_STORAGE,
+      fileAuthorization: new MainImageLinkAuthorization({
+        type: 'STAFF',
+        id: workflowActorForReview.staffId,
+        roles: workflowActorForReview.roles,
+      }),
+    },
   });
   return success(context, { product_application_review: result });
 }
@@ -279,48 +301,78 @@ async function createProduct(context: Context<any>): Promise<Response> {
   return success(context, { product: result }, 201);
 }
 
+async function setPrimaryContact(context: Context<any>): Promise<Response> {
+  const authorization = requireAuthorization(context);
+  const actor = await catalogActor(context, authorization);
+  const body = await bodyRecord(context);
+  rejectUnknown(body, [
+    'primary_contact_member_id', 'expected_version', 'reason',
+  ]);
+  const result = await setProductPrimaryContact(
+    context.env.DB,
+    {
+      productId: requiredString(context.req.param('id')),
+      primaryContactMemberId:
+        body['primary_contact_member_id'] === null
+          ? null
+          : requiredString(body['primary_contact_member_id'], 120),
+      expectedVersion: integer(body['expected_version']),
+      reason: requiredString(body['reason'], 1000),
+    },
+    {
+      actor,
+      idempotencyKey: idempotencyKey(context),
+      requestId: requestIdFromContext(context),
+    },
+  );
+  return success(context, result);
+}
+
 async function createProductVersion(context: Context<any>): Promise<Response> {
   const authorization = requireAuthorization(context);
   const actor = await catalogActor(context, authorization);
   const body = await bodyRecord(context);
-  rejectUnknown(body, ['expected_version', 'version']);
+  rejectUnknown(body, ['expected_version', 'version', 'main_image']);
   const result = await addProductVersion(context.env.DB, {
     productId: requiredString(context.req.param('id')),
     expectedVersion: integer(body['expected_version']),
     version: productVersion(body['version']),
+    ...(body['main_image'] === undefined
+      ? {}
+      : { mainImage: mainImageInput(body['main_image']) }),
   }, {
     actor,
     idempotencyKey: idempotencyKey(context),
     requestId: requestIdFromContext(context),
+    deps: {
+      storage: context.env.FILE_OBJECT_STORAGE,
+      fileAuthorization: new MainImageLinkAuthorization({
+        type: 'STAFF',
+        id: actor.staffId,
+        roles: actor.roles,
+      }),
+    },
   });
   return success(context, { product_version: result }, 201);
 }
 
-async function createStore(context: Context<any>): Promise<Response> {
-  const authorization = requireAuthorization(context);
-  // SELLER_MANAGE is enforced inside createSellerStore via
-  // requireCatalogPermission; dataScope is resolved here so the marketplace
-  // scope check inside the command can reject out-of-scope store creation.
-  const actor: CatalogStaffActor = {
-    ...workflowActor(authorization),
-    dataScope: await resolveStaffDataScope(context.env.DB, authorization, {
-      requiredPermission: 'SELLER_MANAGE',
-    }),
-  };
-  const body = await bodyRecord(context);
-  rejectUnknown(body, ['seller_organization_id', 'marketplace_code', 'store_name']);
-  const marketplace = requiredString(body['marketplace_code'], 20);
-  if (!isMarketplaceCode(marketplace)) throw validationError();
-  const result = await createSellerStore(context.env.DB, {
-    sellerOrganizationId: requiredString(body['seller_organization_id']),
-    marketplaceCode: marketplace,
-    storeName: requiredString(body['store_name'], 200),
-  }, {
-    actor,
-    idempotencyKey: idempotencyKey(context),
-    requestId: requestIdFromContext(context),
-  });
-  return success(context, { store: result }, 201);
+function mainImageInput(
+  value: unknown,
+): 'INHERIT' | 'NONE' | {
+  file_object_id: string;
+  expected_file_version: number;
+} {
+  if (value === 'INHERIT' || value === 'NONE') return value;
+  if (typeof value === 'object' && value !== null) {
+    const record = value as Record<string, unknown>;
+    return {
+      file_object_id: requiredString(record['file_object_id'], 120),
+      expected_file_version: positiveInteger(
+        record['expected_file_version'],
+      ),
+    };
+  }
+  throw validationError();
 }
 
 /**
@@ -425,6 +477,23 @@ async function reviewDemand(context: Context<any>): Promise<Response> {
     requestId: requestIdFromContext(context),
   });
   return success(context, { demand_review: result });
+}
+
+async function closeDemand(context: Context<any>): Promise<Response> {
+  exactQuery(context, new Set());
+  const authorization = requireAuthorization(context);
+  const body = await bodyRecord(context);
+  rejectUnknown(body, ['expected_version', 'close_reason']);
+  const result = await closeDemandBatch(context.env.DB, {
+    demandBatchId: requiredString(context.req.param('id')),
+    expectedVersion: integer(body['expected_version']),
+    closeReason: requiredString(body['close_reason'], 1000),
+  }, {
+    actor: workflowActor(authorization),
+    idempotencyKey: idempotencyKey(context),
+    requestId: requestIdFromContext(context),
+  });
+  return success(context, { demand_close: result });
 }
 
 function requireAuthorization(context: Context<any>): AssignmentStaffAuthorization {
@@ -610,7 +679,11 @@ function withStaffWorkflowErrors(
     try {
       return await handler(context);
     } catch (error) {
-      const candidate = error as { code?: unknown; status?: unknown };
+      const candidate = error as {
+        code?: unknown;
+        status?: unknown;
+        details?: unknown;
+      };
       const code = isApiErrorCode(candidate?.code)
         ? candidate.code
         : 'DEPENDENCY_UNAVAILABLE';
@@ -626,9 +699,28 @@ function withStaffWorkflowErrors(
         code,
         publicMessage(code),
         requestIdFromContext(context),
+        safeFailureDetails(candidate?.details),
       ), status);
     }
   };
+}
+
+/**
+ * Only short, field-scoped string details may leave the Worker. The frontend
+ * additionally filters by error code, so this is defense in depth rather than
+ * the only boundary.
+ */
+function safeFailureDetails(value: unknown): Record<string, string> | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const result: Record<string, string> = {};
+  for (const [key, item] of Object.entries(source)) {
+    if (!/^[a-z_]{1,40}$/u.test(key)) continue;
+    if (typeof item !== 'string' || item.length > 200) continue;
+    result[key] = item;
+  }
+  return Object.keys(result).length > 0 ? result : null;
 }
 
 function publicMessage(code: ApiErrorCode): string {

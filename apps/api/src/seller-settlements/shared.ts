@@ -27,6 +27,7 @@ export type SellerSettlementErrorCode =
   | 'FILE_OBJECT_NOT_FOUND'
   | 'FILE_NOT_VERIFIED'
   | 'SELLER_SETTLEMENT_CONFLICT'
+  | 'EXPORT_TOO_LARGE'
   | 'DEPENDENCY_UNAVAILABLE';
 
 export class SellerSettlementError extends Error {

@@ -1,7 +1,6 @@
 export const SCHEDULED_OPERATION_JOB_NAMES = [
   'reservation_expiry',
   'instruction_expiry',
-  'outbox_delivery',
   'file_orphan_cleanup',
   'drive_archive',
 ] as const;
@@ -38,7 +37,7 @@ export const SCHEDULED_OPERATION_CAPABILITY_SCOPES = [
 ] as const;
 export type ScheduledOperationCapabilityScope =
   (typeof SCHEDULED_OPERATION_CAPABILITY_SCOPES)[number];
-export const SCHEDULED_OPERATION_COMMAND_TYPES = ['RUN_JOB', 'REPLAY_DEAD_LETTER'] as const;
+export const SCHEDULED_OPERATION_COMMAND_TYPES = ['RUN_JOB'] as const;
 export type ScheduledOperationCommandType = (typeof SCHEDULED_OPERATION_COMMAND_TYPES)[number];
 export const SCHEDULED_OPERATION_REASON_CODES = [
   'OPERATOR_RETRY',
@@ -111,10 +110,6 @@ export interface ScheduledOperationRunDto {
 export interface ScheduledOperationManualRunCommandDto {
   reason_code: ScheduledOperationReasonCode;
 }
-export interface ScheduledOperationDeadLetterReplayCommandDto {
-  event_id: string;
-  reason_code: ScheduledOperationReasonCode;
-}
 export interface ScheduledOperationManualRunResultDto {
   command_type: 'RUN_JOB';
   job_name: ScheduledOperationJobName;
@@ -122,17 +117,8 @@ export interface ScheduledOperationManualRunResultDto {
   outcome: ScheduledOperationOutcome;
   run: ScheduledOperationRunDto;
 }
-export interface ScheduledOperationDeadLetterReplayResultDto {
-  command_type: 'REPLAY_DEAD_LETTER';
-  job_name: 'outbox_delivery';
-  reason_code: ScheduledOperationReasonCode;
-  outcome: 'SUCCEEDED' | 'DISABLED';
-  dead_letter_id: string;
-  event_id: string;
-}
 export type ScheduledOperationCommandResultDto =
-  | ScheduledOperationManualRunResultDto
-  | ScheduledOperationDeadLetterReplayResultDto;
+  | ScheduledOperationManualRunResultDto;
 export interface ScheduledOperationalSignalObservationDto {
   observation_id: string;
   signal_type: ScheduledOperationalSignalType;
@@ -205,17 +191,6 @@ export function parseScheduledOperationManualRunCommand(
   if (!published(record['reason_code'], SCHEDULED_OPERATION_REASON_CODES))
     throw new Error('invalid_scheduled_operation_command');
   return { reason_code: record['reason_code'] };
-}
-export function parseScheduledOperationDeadLetterReplayCommand(
-  value: unknown,
-): ScheduledOperationDeadLetterReplayCommandDto {
-  const record = exactRecord(value, ['event_id', 'reason_code']);
-  if (
-    !safeIdentifier(record['event_id']) ||
-    !published(record['reason_code'], SCHEDULED_OPERATION_REASON_CODES)
-  )
-    throw new Error('invalid_scheduled_operation_command');
-  return { event_id: record['event_id'], reason_code: record['reason_code'] };
 }
 export function parseScheduledOperationRunDto(value: unknown): ScheduledOperationRunDto {
   const record = exactRecord(value, [
@@ -320,31 +295,7 @@ export function parseScheduledOperationCommandResultDto(
       run,
     };
   }
-  const record = exactRecord(value, [
-    'command_type',
-    'job_name',
-    'reason_code',
-    'outcome',
-    'dead_letter_id',
-    'event_id',
-  ]);
-  if (
-    record['command_type'] !== 'REPLAY_DEAD_LETTER' ||
-    record['job_name'] !== 'outbox_delivery' ||
-    !published(record['reason_code'], SCHEDULED_OPERATION_REASON_CODES) ||
-    (record['outcome'] !== 'SUCCEEDED' && record['outcome'] !== 'DISABLED') ||
-    !safeIdentifier(record['dead_letter_id']) ||
-    !safeIdentifier(record['event_id'])
-  )
-    throw new Error('invalid_scheduled_operation_result');
-  return {
-    command_type: 'REPLAY_DEAD_LETTER',
-    job_name: record['job_name'],
-    reason_code: record['reason_code'],
-    outcome: record['outcome'],
-    dead_letter_id: record['dead_letter_id'],
-    event_id: record['event_id'],
-  };
+  throw new Error('invalid_scheduled_operation_result');
 }
 export function parseScheduledOperationalSignalObservationDto(
   value: unknown,
@@ -586,14 +537,6 @@ function nullableTimestamp(value: unknown): value is number | null {
 }
 function timestamp(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;
-}
-function safeIdentifier(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length >= 1 &&
-    value.length <= 200 &&
-    !/[\u0000-\u001f\u007f]/u.test(value)
-  );
 }
 function opaqueObservationId(value: unknown): value is string {
   return typeof value === 'string' && /^[0-9a-f]{64}$/u.test(value);

@@ -7,10 +7,11 @@ import { identifierSchema } from '../contracts/runtime';
 import { useBuyerMutation } from '../mutations/useBuyerMutation';
 import { buyerQueryKeys } from '../queries/keys';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
-import { BuyerFilePicker } from '../shared/BuyerFilePicker';
+import { FileDropZone } from '../../ui/FileDropZone';
 import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { useFileUpload } from '../shared/useFileUpload';
 import { BuyerJourney } from '../shared/BuyerJourney';
+import { StageContactCard, STAGE_FOR_ROUTE } from '../shared/StageContactCard';
 import { reviewTypeLabel } from '../shared/status';
 
 export function BuyerReviewFormPage(): React.JSX.Element {
@@ -75,22 +76,23 @@ export function BuyerReviewFormPage(): React.JSX.Element {
     });
   }
   if (!formalOrderId) return <BuyerQueryError error={null} title="无法打开评论提交页面" />;
-  if (eligible.isPending) return <BuyerLoading label="正在确认评论资格" />;
+  if (eligible.isPending) return <BuyerLoading label="正在确认能否提交评论" />;
   if (eligible.isError) return <BuyerQueryError error={eligible.error} />;
   if (!current?.allowed_actions.includes('SUBMIT'))
     return <BuyerQueryError error={null} title="无法打开评论提交页面" />;
   return (
     <section className="buyer-page buyer-flow-page buyer-form-page">
-      <BuyerJourney current="reviews" />
+      <BuyerJourney current="review" />
       <PageHeader
         eyebrow="评论阶段"
         title="提交评论资料"
         description={current.order.product_name}
       />
+      <StageContactCard stage={STAGE_FOR_ROUTE['/buyer/reviews']} />
       <Card className="buyer-action-panel">
         <div className="buyer-form-intro">
           <strong>准备评论资料</strong>
-          <p>请提交 1–3 个已验证文件；评论链接可稍后补充。</p>
+          <p>请提交 1–3 个评论文件；评论链接可稍后补充。</p>
         </div>
         <dl className="buyer-facts">
           <div>
@@ -112,20 +114,22 @@ export function BuyerReviewFormPage(): React.JSX.Element {
             <TextInput name="review_url" type="url" />
           </FormField>
           <FormField
-            label="评论证据"
+            label="评论文件"
             htmlFor="review-files"
             description="请选择 1–3 个图片或 PDF 文件"
             required
           >
-            <BuyerFilePicker
-              name="review_files"
+            <FileDropZone
+              id="review-files"
               multiple
               accept="image/jpeg,image/png,image/webp,application/pdf"
               required
-              buttonLabel="选择评论证据"
+              maximumFiles={3}
+              maximumBytes={20 * 1024 * 1024}
+              buttonLabel="选择评论文件"
               emptyLabel="尚未选择文件"
-              onChange={(event) => {
-                files.current = Array.from(event.currentTarget.files ?? []).slice(0, 4);
+              onFilesChange={(selectedFiles) => {
+                files.current = [...selectedFiles];
               }}
             />
           </FormField>

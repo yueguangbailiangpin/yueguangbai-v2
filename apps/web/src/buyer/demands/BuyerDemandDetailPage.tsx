@@ -1,13 +1,14 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Tag } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router';
 import { Button, Card, Checkbox } from '../../ui/primitives';
+import { MoonwhiteIcon } from '../../ui/MoonwhiteIcon';
 import { buyerApi } from '../api/client';
 import { useBuyerMutation } from '../mutations/useBuyerMutation';
 import { buyerQueryKeys } from '../queries/keys';
 import { formatBps, formatJpy, formatShanghai } from '../shared/format';
 import { BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
+import { ProtectedImage } from '../shared/ProtectedImage';
 import { BuyerMutationRecovery } from '../shared/BuyerMutationRecovery';
 import { reviewTypeLabel } from '../shared/status';
 
@@ -40,8 +41,17 @@ export function BuyerDemandDetailPage(): React.JSX.Element {
   if (query.isPending) return <BuyerLoading />;
   if (query.isError) return <BuyerQueryError error={query.error} />;
   const demand = query.data;
+  const activeStoreReservation = demand.reservation_eligibility
+    === 'INELIGIBLE_ACTIVE_STORE_RESERVATION';
   return <section className="buyer-page buyer-product-detail-page">
-    <header className="buyer-detail-header"><span className="buyer-product-icon" aria-hidden="true"><Tag /></span>
+    <header className="buyer-detail-header"><div className="buyer-product-icon">
+      {demand.main_image ? <ProtectedImage
+        reference={demand.main_image}
+        alt={`${demand.product_name} 主图`}
+        className="buyer-product-main-image"
+        fallback={<MoonwhiteIcon name="inventory_2" size={20} />}
+      /> : <MoonwhiteIcon name="inventory_2" size={20} />}
+    </div>
       <div><p className="eyebrow">产品详情</p><h1>{demand.product_name}</h1><p>{demand.store_display_name}</p></div></header>
     <Card className="buyer-fact-card">
       <h2>预约信息</h2>
@@ -55,12 +65,18 @@ export function BuyerDemandDetailPage(): React.JSX.Element {
       {demand.buyer_visible_notes ? <p className="buyer-public-note">{demand.buyer_visible_notes}</p> : null}
     </Card>
     <Card className="buyer-confirm-card">
-      <h2>确认预约</h2><p>提交前确认一下当前自费比例哦，如果产品信息有变化需要重新确认。</p>
-      <Checkbox checked={confirmed} onChange={(event) => setConfirmed(event.currentTarget.checked)}
-        label={`我确认接受 ${formatBps(demand.buyer_self_pay_bps)} 的自费比例`} />
-      <BuyerMutationRecovery mutation={mutation} deterministicMessage="需求事实已变化，请刷新事实后重新确认。"
+      <h2>确认预约</h2>{activeStoreReservation ? <p>
+        当前店铺已有进行中的预约，请先完成或取消后再预约其他商品。
+      </p> : <p>{demand.buyer_self_pay_bps > 0
+        ? '提交前确认一下当前自费比例哦，如果产品信息有变化需要重新确认。'
+        : '该产品无需自费，确认后即可预约。'}</p>}
+      {!activeStoreReservation && demand.buyer_self_pay_bps > 0 ? <Checkbox checked={confirmed}
+        onChange={(event) => setConfirmed(event.currentTarget.checked)}
+        label={`我确认接受 ${formatBps(demand.buyer_self_pay_bps)} 的自费比例`} /> : null}
+      <BuyerMutationRecovery mutation={mutation} deterministicMessage="产品信息有更新，请刷新后重新确认。"
         onRefresh={() => { void query.refetch(); }} />
-      <Button disabled={!confirmed} loading={mutation.isPending} loadingLabel="预约中…"
+      <Button disabled={activeStoreReservation || (demand.buyer_self_pay_bps > 0 && !confirmed)}
+        loading={mutation.isPending} loadingLabel="预约中…"
         onClick={() => mutation.mutate({ expected_demand_version: demand.demand_version,
           accepted_buyer_self_pay_bps: demand.buyer_self_pay_bps })}>确认并预约</Button>
     </Card>

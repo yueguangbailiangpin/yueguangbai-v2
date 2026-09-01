@@ -14,11 +14,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-  type PreparedOutboxEvent,
-} from '../foundation/outbox';
-import {
   batchWithAssignmentRetry,
   prepareWorkItemCompletionStatements,
   prepareDirectWorkItem,
@@ -221,12 +216,6 @@ async function transitionReview(
           replayed: false,
         };
 
-    const outboxes = await prepareDecisionOutboxes(
-      input.mode,
-      source,
-      response,
-      now,
-    );
     const preparedRefund = input.mode === 'APPROVE'
       ? await prepareBuyerRefundObligationFromReviewApproval(database, {
           sourceReviewEventId: buyerRefundEventId as string,
@@ -335,10 +324,6 @@ async function transitionReview(
         internalNote,
         now,
       }),
-      ...outboxes.flatMap((outbox) => createOutboxStatements(
-        database,
-        outbox,
-      )),
       completeIdempotencyStatement(
         database,
         acquired.claim,
@@ -386,7 +371,7 @@ async function transitionReview(
           workType: 'BUYER_REFUND_PROCESSING',
           sourceEntityType: 'BUYER_REFUND_OBLIGATION',
           sourceEntityId: preparedRefund.obligationId,
-          marketplaceCode: 'JP',
+          marketplaceCode: 'AMAZON_JP',
           buyerCustomerId: source.buyer_customer_id,
           sellerOrganizationId: source.seller_organization_id,
           actorType: 'STAFF',
@@ -452,47 +437,6 @@ function updateReviewCaseDecisionStatement(
   );
 }
 
-async function prepareDecisionOutboxes(
-  mode: DecisionMode,
-  source: Awaited<ReturnType<typeof requireCurrentReviewCaseForStaff>>,
-  response: DecisionResult,
-  now: number,
-): Promise<readonly PreparedOutboxEvent[]> {
-  const baseOutboxId = crypto.randomUUID();
-  const base = await prepareOutboxEvent({
-    id: baseOutboxId,
-    dedupKey: `review-decision:${baseOutboxId}`,
-    eventType: decisionEventType(mode),
-    aggregateType: 'REVIEW_CASE',
-    aggregateId: source.review_case_id,
-    payload: response,
-    createdAt: now,
-  });
-  if (mode !== 'APPROVE') return [base];
-  const approved = response as ApproveReviewResult;
-  const financial = await Promise.all(approved.financial_events.map(
-    (event) => prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `review-financial:${event.event_id}`,
-      eventType: event.event_type,
-      aggregateType: 'FORMAL_ORDER',
-      aggregateId: source.formal_order_id,
-      payload: {
-        review_case_id: source.review_case_id,
-        formal_order_id: source.formal_order_id,
-        event_id: event.event_id,
-        amount_cny_fen: event.amount_cny_fen,
-        formal_order_financial_snapshot_id:
-          event.formal_order_financial_snapshot_id,
-        creates_actual_payment: false,
-        creates_settlement: false,
-        creates_profit: false,
-      },
-      createdAt: now,
-    }),
-  ));
-  return [base, ...financial];
-}
 
 function decisionAuditStatements(
   database: SqlDatabase,

@@ -12,6 +12,13 @@ import {
   createMigratedTestDatabase,
   type SqliteDatabase,
 } from '@ygb/testkit';
+import { sha256Hex } from '@ygb/domain';
+import type { FileActor } from '@ygb/contracts';
+import type {
+  FileAuthorizationResource,
+  FileAuthorizationService,
+} from '../files/authorization';
+import { MockObjectStorage } from '../files/mock-object-storage';
 import { createApp } from '../app';
 import { resolveAssignmentStaffAuthorization } from '../staff-assignment';
 import { registerStaffCatalogWorkflowRoutes } from '../staff/catalog-routes';
@@ -19,8 +26,8 @@ import {
   addProductVersion,
 } from './add-product-version';
 import {
-  assignSellerMemberStore,
-} from './assign-member-store';
+  linkProductVersionMainImage,
+} from './link-product-version-main-image';
 import {
   createApprovedProduct,
 } from './create-product';
@@ -47,7 +54,7 @@ describe('seller stores and product catalog', () => {
     seedCatalogActorsAndOrganizations(database);
     const store = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '员工 API 店铺',
     }, {
       actor: sellerOpsActor(),
@@ -137,9 +144,9 @@ describe('seller stores and product catalog', () => {
 
     // AMAZON_US is ACTIVE/AVAILABLE in the registry, but the business tables
     // (seller_stores/products/demand_batches reference marketplaces(code)
-    // which admits a single 'JP' row) are JP-only. The old code hardcoded the
+    // which admits a single 'AMAZON_JP' row) are JP-only. The old code hardcoded the
     // JP legacy projection for every store, so a US store was silently stored
-    // as 'JP' and its product applications entered the JP conflict check.
+    // as 'AMAZON_JP' and its product applications entered the JP conflict check.
     // Creation must fail loudly instead.
     await expect(createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
@@ -169,7 +176,7 @@ describe('seller stores and product catalog', () => {
     // JP store creation remains unaffected.
     const jp = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '日本店铺',
     }, {
       actor: sellerOpsActor(),
@@ -177,7 +184,7 @@ describe('seller stores and product catalog', () => {
       now: 2100,
     });
     expect(jp).toMatchObject({
-      marketplace_code: 'JP',
+      marketplace_code: 'AMAZON_JP',
       status: 'ACTIVE',
     });
   });
@@ -188,7 +195,7 @@ describe('seller stores and product catalog', () => {
 
     const first = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '  Ｍｏｏｎ   Store ',
     }, {
       actor: sellerOpsActor(),
@@ -205,7 +212,7 @@ describe('seller stores and product catalog', () => {
 
     const replay = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: 'Moon Store',
     }, {
       actor: sellerOpsActor(),
@@ -219,7 +226,7 @@ describe('seller stores and product catalog', () => {
 
     await expect(createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: 'moon   store',
     }, {
       actor: sellerOpsActor(),
@@ -232,7 +239,7 @@ describe('seller stores and product catalog', () => {
 
     const otherOrgStore = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-2',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: 'Moon Store',
     }, {
       actor: sellerOpsActor(),
@@ -243,13 +250,93 @@ describe('seller stores and product catalog', () => {
       .toBe('seller-org-2');
   });
 
-  it('gives OWNER all active stores and limits OPERATIONS to assigned scopes', async () => {
+  it('allows every Seller member role to create only inside their own organization', async () => {
+    database = createMigratedTestDatabase();
+    seedCatalogActorsAndOrganizations(database);
+    const sellerOwner = {
+      memberId: 'seller-member-owner-1',
+      sellerOrganizationId: 'seller-org-1',
+      role: 'OWNER' as const,
+    };
+
+    const created = await createSellerStore(database, {
+      sellerOrganizationId: 'seller-org-1',
+      marketplaceCode: 'AMAZON_JP',
+      storeName: '卖家自助店铺',
+    }, {
+      actor: sellerOwner,
+      idempotencyKey: 'seller-store:create:0001',
+      now: 2400,
+    });
+    expect(created).toMatchObject({
+      seller_organization_id: 'seller-org-1',
+      display_name: '卖家自助店铺',
+      replayed: false,
+    });
+
+    const replay = await createSellerStore(database, {
+      sellerOrganizationId: 'seller-org-1',
+      marketplaceCode: 'AMAZON_JP',
+      storeName: '卖家自助店铺',
+    }, {
+      actor: sellerOwner,
+      idempotencyKey: 'seller-store:create:0001',
+      now: 2500,
+    });
+    expect(replay).toEqual({ ...created, replayed: true });
+
+    await expect(createSellerStore(database, {
+      sellerOrganizationId: 'seller-org-2',
+      marketplaceCode: 'AMAZON_JP',
+      storeName: '越权店铺',
+    }, {
+      actor: sellerOwner,
+      idempotencyKey: 'seller-store:create:cross-org',
+      now: 2600,
+    })).rejects.toMatchObject({ code: 'FORBIDDEN', status: 403 });
+
+    for (const [index, role] of (
+      ['OPERATIONS', 'FINANCE', 'VIEWER'] as const
+    ).entries()) {
+      const memberCreated = await createSellerStore(database, {
+        sellerOrganizationId: 'seller-org-1',
+        marketplaceCode: 'AMAZON_JP',
+        storeName: `${role}员工店铺`,
+      }, {
+        actor: {
+          ...sellerOwner,
+          memberId: `seller-member-${role.toLowerCase()}-1`,
+          role,
+        },
+        idempotencyKey: `seller-store:create:${role.toLowerCase()}`,
+        now: 2700 + index,
+      });
+      expect(memberCreated.seller_organization_id).toBe('seller-org-1');
+    }
+
+    const audit = await database.prepare(`
+      SELECT actor_type,actor_id,actor_roles_json
+      FROM audit_events
+      WHERE aggregate_type='SELLER_STORE' AND aggregate_id=?
+    `).bind(created.store_id).first<{
+      actor_type: string;
+      actor_id: string;
+      actor_roles_json: string;
+    }>();
+    expect(audit).toEqual({
+      actor_type: 'SELLER_MEMBER',
+      actor_id: 'seller-member-owner-1',
+      actor_roles_json: '["OWNER"]',
+    });
+  });
+
+  it('gives every ACTIVE member all stores of the organization (D-056 §4.4)', async () => {
     database = createMigratedTestDatabase();
     seedCatalogActorsAndOrganizations(database);
 
     const storeOne = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '店铺一',
     }, {
       actor: sellerOpsActor(),
@@ -258,21 +345,12 @@ describe('seller stores and product catalog', () => {
     });
     const storeTwo = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '店铺二',
     }, {
       actor: sellerOpsActor(),
       idempotencyKey: 'store:create:scope:0002',
       now: 2100,
-    });
-
-    await assignSellerMemberStore(database, {
-      memberId: 'seller-member-ops-1',
-      storeId: storeTwo.store_id,
-    }, {
-      actor: sellerOpsActor(),
-      idempotencyKey: 'scope:assign:0001',
-      now: 2200,
     });
 
     const ownerAccess = await resolveSellerMemberStoreAccess(
@@ -297,8 +375,8 @@ describe('seller stores and product catalog', () => {
       memberId: 'seller-member-ops-1',
       sellerOrganizationId: 'seller-org-1',
       role: 'OPERATIONS',
-      allActiveStores: false,
-      storeIds: [storeTwo.store_id],
+      allActiveStores: true,
+      storeIds: [storeOne.store_id, storeTwo.store_id].sort(),
       canManageProducts: true,
     });
 
@@ -309,8 +387,8 @@ describe('seller stores and product catalog', () => {
       );
     expect(financeAccess).toMatchObject({
       role: 'FINANCE',
-      allActiveStores: false,
-      storeIds: [],
+      allActiveStores: true,
+      storeIds: [storeOne.store_id, storeTwo.store_id].sort(),
       canManageProducts: false,
     });
   });
@@ -321,7 +399,7 @@ describe('seller stores and product catalog', () => {
 
     const storeOne = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '产品店铺一',
     }, {
       actor: sellerOpsActor(),
@@ -330,7 +408,7 @@ describe('seller stores and product catalog', () => {
     });
     const storeTwo = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-2',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '产品店铺二',
     }, {
       actor: sellerOpsActor(),
@@ -348,7 +426,7 @@ describe('seller stores and product catalog', () => {
       now: 2200,
     });
     expect(created).toMatchObject({
-      marketplace_code: 'JP',
+      marketplace_code: 'AMAZON_JP',
       asin: 'B0TEST0001',
       current_version_no: 1,
       status: 'ACTIVE',
@@ -387,7 +465,7 @@ describe('seller stores and product catalog', () => {
 
     const store = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '版本店铺',
     }, {
       actor: sellerOpsActor(),
@@ -485,7 +563,7 @@ describe('seller stores and product catalog', () => {
 
     await expect(createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '非法\n店铺',
     }, {
       actor: sellerOpsActor(),
@@ -503,7 +581,7 @@ describe('seller stores and product catalog', () => {
 
     const store = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '权限测试店铺',
     }, {
       actor: sellerOpsActor(),
@@ -578,137 +656,6 @@ describe('seller stores and product catalog', () => {
     expect(ownerVersion.version_no).toBe(2);
   });
 
-  it('wires the staff store creation route with auth, scope and replay safety', async () => {
-    database = createMigratedTestDatabase();
-    seedCatalogActorsAndOrganizations(database);
-
-    // 401 without staff authorization
-    const anonymousApp = createApp();
-    registerStaffCatalogWorkflowRoutes(anonymousApp);
-    const anonymous = await anonymousApp.request(
-      'https://api.test/api/staff/catalog/stores',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          seller_organization_id: 'seller-org-1',
-          marketplace_code: 'AMAZON_JP',
-          store_name: '路由建店店铺',
-        }),
-      },
-      { DB: database } as any,
-    );
-    expect(anonymous.status).toBe(401);
-
-    // Authorized seller_ops (SELLER_MANAGE + AMAZON_JP scope) creates the store
-    const authorization = await resolveAssignmentStaffAuthorization(
-      database,
-      'staff-seller-ops',
-    );
-    expect(authorization).not.toBeNull();
-    const app = createApp();
-    app.use('/api/staff/*', async (context, next) => {
-      (context as any).set('staffAuthorization', authorization);
-      await next();
-    });
-    registerStaffCatalogWorkflowRoutes(app);
-
-    const requestInit = {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Idempotency-Key': 'route-store:create',
-      },
-      body: JSON.stringify({
-        seller_organization_id: 'seller-org-1',
-        marketplace_code: 'AMAZON_JP',
-        store_name: '路由建店店铺',
-      }),
-    };
-    const created = await app.request(
-      'https://api.test/api/staff/catalog/stores',
-      requestInit,
-      { DB: database } as any,
-    );
-    expect(created.status).toBe(201);
-    const payload = await created.json() as any;
-    expect(payload.data.store).toMatchObject({
-      seller_organization_id: 'seller-org-1',
-      marketplace_code: 'AMAZON_JP',
-      display_name: '路由建店店铺',
-      status: 'ACTIVE',
-    });
-
-    // Replay with the same key returns the same store (no duplicate)
-    const replay = await app.request(
-      'https://api.test/api/staff/catalog/stores',
-      requestInit,
-      { DB: database } as any,
-    );
-    expect(replay.status).toBe(201);
-    const replayPayload = await replay.json() as any;
-    expect(replayPayload.data.store.store_id).toBe(payload.data.store.store_id);
-    expect(replayPayload.data.store.replayed).toBe(true);
-
-    // Validation: invalid marketplace code -> 400
-    const badMarket = await app.request(
-      'https://api.test/api/staff/catalog/stores',
-      {
-        ...requestInit,
-        headers: {
-          'Content-Type': 'application/json',
-          'Idempotency-Key': 'route-store:bad-market',
-        },
-        body: JSON.stringify({
-          seller_organization_id: 'seller-org-1',
-          marketplace_code: 'NOT_A_MARKET',
-          store_name: '坏市场店铺',
-        }),
-      },
-      { DB: database } as any,
-    );
-    expect(badMarket.status).toBe(400);
-
-    // A pre_sales actor (no SELLER_MANAGE) is forbidden
-    const preSales = await resolveAssignmentStaffAuthorization(
-      database,
-      'staff-pre-sales',
-    );
-    expect(preSales).not.toBeNull();
-    const app2 = createApp();
-    app2.use('/api/staff/*', async (context, next) => {
-      (context as any).set('staffAuthorization', preSales);
-      await next();
-    });
-    registerStaffCatalogWorkflowRoutes(app2);
-    const forbidden = await app2.request(
-      'https://api.test/api/staff/catalog/stores',
-      requestInit,
-      { DB: database } as any,
-    );
-    expect(forbidden.status).toBe(403);
-
-    // A seller_ops actor WITHOUT an AMAZON_JP marketplace scope is out of
-    // scope: 404 (concealment, not 403) per the resource-ownership rule.
-    const reviewer = await resolveAssignmentStaffAuthorization(
-      database,
-      'staff-product-reviewer',
-    );
-    expect(reviewer).not.toBeNull();
-    const app3 = createApp();
-    app3.use('/api/staff/*', async (context, next) => {
-      (context as any).set('staffAuthorization', reviewer);
-      await next();
-    });
-    registerStaffCatalogWorkflowRoutes(app3);
-    const outOfScope = await app3.request(
-      'https://api.test/api/staff/catalog/stores',
-      requestInit,
-      { DB: database } as any,
-    );
-    expect(outOfScope.status).toBe(404);
-  });
-
   it('wires the staff main-image route with auth, file contract and replay safety', async () => {
     database = createMigratedTestDatabase();
     seedCatalogActorsAndOrganizations(database);
@@ -717,7 +664,7 @@ describe('seller stores and product catalog', () => {
     // verified PRODUCT_IMAGE file upload intent owned by staff.
     const store = await createSellerStore(database, {
       sellerOrganizationId: 'seller-org-1',
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       storeName: '主图测试店铺',
     }, {
       actor: sellerOpsActor(),
@@ -823,7 +770,178 @@ describe('seller stores and product catalog', () => {
     );
     expect(forbidden.status).toBe(403);
   });
+
+  it('inherits the previous main image on new versions and accepts a fresh upload', async () => {
+    database = createMigratedTestDatabase();
+    seedCatalogActorsAndOrganizations(database);
+    const storage = new MockObjectStorage();
+    const fileAuthorization = new StaffMainImageAuthorization();
+
+    const store = await createSellerStore(database, {
+      sellerOrganizationId: 'seller-org-1',
+      marketplaceCode: 'AMAZON_JP',
+      storeName: '继承主图店铺',
+    }, {
+      actor: sellerOpsActor(),
+      idempotencyKey: 'inherit-main-image:store',
+      now: 4000,
+    });
+    const product = await createApprovedProduct(database, {
+      storeId: store.store_id,
+      asin: 'B0INHERIT1',
+      version: productVersion('继承主图产品'),
+    }, {
+      actor: productReviewerActor(),
+      idempotencyKey: 'inherit-main-image:product',
+      now: 4100,
+    });
+    seedStaffProductImage(database, 'file-main-image-1', 4200);
+    seedStaffProductImage(database, 'file-main-image-new', 4201);
+    const inheritBytes = new TextEncoder().encode('inherit-main-image');
+    const inheritSha = await sha256Hex(inheritBytes);
+    const freshBytes = new TextEncoder().encode('fresh-main-image');
+    const freshSha = await sha256Hex(freshBytes);
+    await database.prepare(`
+      UPDATE file_objects SET uploaded_sha256=?
+      WHERE id IN ('file-main-image-1','file-main-image-new')
+    `).bind(inheritSha).run();
+    await database.prepare(`
+      UPDATE file_objects SET uploaded_sha256=? WHERE id='file-main-image-new'
+    `).bind(freshSha).run();
+    await storage.putObject({
+      objectKey: 'files/v1/2026/08/' + 'file-main-image-1'.padEnd(40, 'x'),
+      bytes: inheritBytes,
+      contentType: 'image/webp',
+      metadata: {},
+    });
+    await storage.putObject({
+      objectKey: 'files/v1/2026/08/' + 'file-main-image-new'.padEnd(40, 'x'),
+      bytes: freshBytes,
+      contentType: 'image/webp',
+      metadata: {},
+    });
+
+    await linkProductVersionMainImage(database, fileAuthorization, {
+      productVersionId: product.product_version_id,
+      fileObjectId: 'file-main-image-1',
+      expectedFileVersion: 1,
+    }, {
+      actor: productReviewerActor(),
+      idempotencyKey: 'inherit-main-image:link',
+      now: 4300,
+    });
+
+    const versionTwo = await addProductVersion(database, {
+      productId: product.product_id,
+      expectedVersion: 1,
+      version: productVersion('继承版本'),
+    }, {
+      actor: productReviewerActor(),
+      idempotencyKey: 'inherit-main-image:version-2',
+      now: 4400,
+      deps: { storage, fileAuthorization },
+    });
+    expect(versionTwo.version_no).toBe(2);
+    expect(versionTwo.main_image_file_object_id).toMatch(
+      /^[0-9a-f-]{36}$/u,
+    );
+    expect(versionTwo.main_image_file_object_id)
+      .not.toBe('file-main-image-1');
+
+    const versionThree = await addProductVersion(database, {
+      productId: product.product_id,
+      expectedVersion: 2,
+      version: productVersion('换图版本'),
+      mainImage: {
+        file_object_id: 'file-main-image-new',
+        expected_file_version: 1,
+      },
+    }, {
+      actor: productReviewerActor(),
+      idempotencyKey: 'inherit-main-image:version-3',
+      now: 4500,
+      deps: { storage, fileAuthorization },
+    });
+    expect(versionThree.version_no).toBe(3);
+    expect(versionThree.main_image_file_object_id).toMatch(
+      /^[0-9a-f-]{36}$/u,
+    );
+    expect(versionThree.main_image_file_object_id)
+      .not.toBe('file-main-image-new');
+
+    const versionFour = await addProductVersion(database, {
+      productId: product.product_id,
+      expectedVersion: 3,
+      version: productVersion('空主图版本'),
+      mainImage: 'NONE',
+    }, {
+      actor: productReviewerActor(),
+      idempotencyKey: 'inherit-main-image:version-4',
+      now: 4600,
+      deps: { storage, fileAuthorization },
+    });
+    expect(versionFour.main_image_file_object_id).toBeNull();
+
+    const bindings = await database.prepare(`
+      SELECT
+        version.version_no,
+        object.id AS file_object_id,
+        object.object_key,
+        object.uploaded_sha256
+      FROM product_versions version
+      LEFT JOIN product_version_main_images image
+        ON image.product_version_id=version.id
+      LEFT JOIN file_entity_links link
+        ON link.id=image.file_entity_link_id
+      LEFT JOIN file_objects object
+        ON object.id=link.file_object_id
+      WHERE version.product_id=?
+      ORDER BY version.version_no
+    `).bind(product.product_id).all<{
+      version_no: number;
+      file_object_id: string | null;
+      object_key: string | null;
+      uploaded_sha256: string | null;
+    }>();
+    expect(bindings.results.map((row) => ({
+      version_no: Number(row.version_no),
+      file_object_id: row.file_object_id,
+    }))).toEqual([
+      { version_no: 1, file_object_id: 'file-main-image-1' },
+      { version_no: 2, file_object_id: versionTwo.main_image_file_object_id },
+      {
+        version_no: 3,
+        file_object_id: versionThree.main_image_file_object_id,
+      },
+      { version_no: 4, file_object_id: null },
+    ]);
+    expect(bindings.results[1]?.uploaded_sha256).toBe(inheritSha);
+    expect(bindings.results[2]?.uploaded_sha256).toBe(freshSha);
+    expect(Array.from(
+      storage.objects.get(bindings.results[1]!.object_key!)!.bytes,
+    )).toEqual(Array.from(inheritBytes));
+    expect(Array.from(
+      storage.objects.get(bindings.results[2]!.object_key!)!.bytes,
+    )).toEqual(Array.from(freshBytes));
+  });
 });
+
+class StaffMainImageAuthorization implements FileAuthorizationService {
+  assertCanCreateUpload(): void {}
+  assertCanUpload(): void {}
+  assertCanCompleteUpload(): void {}
+  assertCanRead(): void {}
+  assertCanLink(_actor: FileActor, resource: FileAuthorizationResource): void {
+    if (resource.purpose !== 'PRODUCT_IMAGE'
+      || resource.visibility !== 'SELLER_VISIBLE'
+      || resource.entityType !== 'PRODUCT_VERSION') {
+      throw Object.assign(new Error('forbidden'), {
+        code: 'FORBIDDEN',
+        status: 403,
+      });
+    }
+  }
+}
 
 function seedCatalogActorsAndOrganizations(
   database: SqliteDatabase,
@@ -879,14 +997,14 @@ function seedCatalogActorsAndOrganizations(
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
       (
-        'seller-org-1', 'JP', 'ido-mango-1001',
+        'seller-org-1', 'AMAZON_JP', 'ido-mango-1001',
         'seller-channel-ido-mango',
         'seller-channel-ido-mango',
         1001, '测试卖家一', 'ACTIVE', 1,
         1000, 1000, 1000, NULL
       ),
       (
-        'seller-org-2', 'JP', 'ygbceping-1001',
+        'seller-org-2', 'AMAZON_JP', 'ygbceping-1001',
         'seller-channel-ygbceping',
         'seller-channel-ygbceping',
         1001, '测试卖家二', 'ACTIVE', 1,

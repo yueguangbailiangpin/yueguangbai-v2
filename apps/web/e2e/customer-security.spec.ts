@@ -105,6 +105,9 @@ test('有效邀请只展示脱敏微信和绑定站点，成功消费后进入 B
   await page.getByLabel('密码', { exact: true }).fill('Strong-Password-2026!');
   await page.getByLabel('确认密码').fill('Strong-Password-2026!');
   await page.getByRole('button', { name: '完成注册' }).click();
+  // 当前批准交互：注册成功页人工点击进入，不自动跳转。
+  await expect(page.getByRole('heading', { name: '注册成功' })).toBeVisible();
+  await page.getByRole('button', { name: '进入买家中心' }).click();
   await expect(page).toHaveURL(/\/buyer$/u);
   expect(registrationBody).toEqual({
     invitation_token: invitationToken, marketplace_code: 'AMAZON_US',
@@ -147,7 +150,7 @@ test('普通 ACTIVE Staff 从买家客户页处理邀请与恢复，且不提供
     json(route, success({ session: staffSession() })));
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/staff/buyer-customers');
-  await expect(page.getByRole('heading', { name: '买家客户', exact: true, level: 2 }))
+  await expect(page.getByRole('heading', { name: '买家客户', exact: true }).first())
     .toBeVisible();
   await expect(page.getByRole('heading', { name: '历史客户 / 已有客户查询' })).toBeVisible();
   await expect(page.getByText(/账号开通、密码恢复都从具体客户记录发起/u)).toBeVisible();

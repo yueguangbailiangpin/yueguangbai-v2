@@ -22,10 +22,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   readDemandHeader,
   type DemandHeaderRow,
 } from './read-model';
@@ -156,26 +152,6 @@ export async function confirmDemandSchedule(
       schedule,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey:
-        `demand-order-schedule:${proposal.demandBatchId}:${nextScheduleVersion}`,
-      eventType: 'DEMAND_ORDER_SCHEDULE_CHANGED',
-      aggregateType: 'DEMAND_BATCH',
-      aggregateId: proposal.demandBatchId,
-      payload: {
-        demand_batch_id: proposal.demandBatchId,
-        demand_version: nextDemandVersion,
-        schedule_version: nextScheduleVersion,
-        first_order_date: schedule.first_order_date,
-        order_interval_days: schedule.order_interval_days,
-        orders_per_run: schedule.orders_per_run,
-        theoretical_last_order_date: schedule.theoretical_last_order_date,
-        affected_reservation_count: schedule.affected_reservation_count,
-        reason: schedule.change_reason,
-      },
-      createdAt: now,
-    });
     const statements: SqlStatement[] = [
       database.prepare(`
         UPDATE demand_batches
@@ -208,7 +184,6 @@ export async function confirmDemandSchedule(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: {
           demand_batch_id: proposal.demandBatchId,

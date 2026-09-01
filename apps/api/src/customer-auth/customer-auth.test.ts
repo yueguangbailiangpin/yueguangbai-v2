@@ -77,8 +77,8 @@ describe('customer activation, authentication, and session lifecycle', () => {
     seedStaffAndBuyerChannel(database);
 
     const buyer = await createBuyerCustomer(database, {
-      marketplaceCode: 'JP',
-      buyerChannelId: 'buyer-channel-b',
+      marketplaceCode: 'AMAZON_JP',
+      buyerChannelId: 'buyer-channel-wechat-b',
       displayName: '测试买家',
       wechatId: 'buyer_login_01',
     }, {
@@ -144,8 +144,8 @@ describe('customer activation, authentication, and session lifecycle', () => {
     seedStaffAndBuyerChannel(database);
 
     const buyer = await createBuyerCustomer(database, {
-      marketplaceCode: 'JP',
-      buyerChannelId: 'buyer-channel-b',
+      marketplaceCode: 'AMAZON_JP',
+      buyerChannelId: 'buyer-channel-wechat-b',
       displayName: '改密买家',
       wechatId: 'buyer_password_01',
     }, {
@@ -235,7 +235,7 @@ describe('customer activation, authentication, and session lifecycle', () => {
     seedStaffAndBuyerChannel(database);
 
     const seller = await createSellerOrganization(database, {
-      marketplaceCode: 'JP',
+      marketplaceCode: 'AMAZON_JP',
       sellerChannelId: 'seller-channel-ido-mango',
       organizationName: '登录测试卖家',
       ownerDisplayName: '卖家负责人',
@@ -311,8 +311,8 @@ describe('customer activation, authentication, and session lifecycle', () => {
     seedStaffAndBuyerChannel(database);
 
     const buyer = await createBuyerCustomer(database, {
-      marketplaceCode: 'JP',
-      buyerChannelId: 'buyer-channel-b',
+      marketplaceCode: 'AMAZON_JP',
+      buyerChannelId: 'buyer-channel-wechat-b',
       displayName: '待核验买家',
       wechatId: 'buyer_review_01',
     }, {
@@ -394,13 +394,11 @@ function seedStaffAndBuyerChannel(
       ('scope-auth-seller-jp','staff-seller-ops','seller_ops','AMAZON_JP',
        'ACTIVE','zz-phase3h-test-owner',1000,NULL,'TEST_PRIMARY',1000,1000,'PRIMARY');
 
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-b', 'B', '买家渠道B',
-      'ACTIVE', 1, 1, 1000, 1000, NULL
-    );
+    -- Buyer numbers must be 13+ characters; start the seeded operational
+    -- channel B counter at a four-digit sequence.
+    UPDATE buyer_channels
+    SET next_sequence=1001
+    WHERE id='buyer-channel-wechat-b';
   `);
 }
 

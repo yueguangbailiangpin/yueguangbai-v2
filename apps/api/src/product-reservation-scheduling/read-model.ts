@@ -1,4 +1,5 @@
 import type {
+  DemandBatchStatus,
   DemandOrderScheduleVersionDto,
   ReservationStatus,
   SqlDatabase,
@@ -14,6 +15,7 @@ import {
 } from '@ygb/contracts';
 import { plannedOrderDate } from '@ygb/domain';
 import { scopeAllowsBuyer } from '../staff-assignment';
+import { canCloseDemandBatch } from '../demand-batches/close-demand-batch';
 import {
   canViewDemand,
   canViewProduct,
@@ -40,6 +42,8 @@ interface ProductRow {
   order_interval_days: number | null;
   orders_per_run: number | null;
   updated_at: number;
+  primary_contact_member_id: string | null;
+  primary_contact_member_name: string | null;
 }
 
 interface ProductVersionRow {
@@ -56,6 +60,10 @@ interface ProductVersionRow {
   order_interval_days: number | null;
   orders_per_run: number | null;
   created_at: number;
+  main_image_file_object_id: string | null;
+  main_image_file_version: number | null;
+  main_image_client_file_name: string | null;
+  main_image_bound_at: number | null;
 }
 
 interface DemandRow {
@@ -72,9 +80,11 @@ interface DemandRow {
 export interface DemandHeaderRow {
   demand_batch_id: string;
   seller_organization_id: string;
+  store_id: string;
+  marketplace_code: string;
   product_id: string;
   source_product_version_id: string;
-  status: string;
+  status: DemandBatchStatus;
   product_name: string;
   target_quantity: number;
   order_deadline: number;
@@ -102,6 +112,8 @@ interface ReservationRow {
   status: ReservationStatus;
   submitted_at: number;
   queue_rank: number | null;
+  decision_source: 'AUTO' | 'STAFF';
+  reservation_version: number;
   evidence_status: string | null;
   formal_order_status: string | null;
   evidence_order_date: string | null;
@@ -157,12 +169,16 @@ export async function listStaffProducts(
       version.product_name,
       version.order_interval_days,
       version.orders_per_run,
-      product.updated_at
+      product.updated_at,
+      product.primary_contact_member_id,
+      primary_contact.display_name AS primary_contact_member_name
     FROM products product
     JOIN seller_stores store ON store.id=product.store_id
     JOIN product_versions version
       ON version.product_id=product.id
       AND version.version_no=product.current_version_no
+    LEFT JOIN seller_organization_members primary_contact
+      ON primary_contact.id=product.primary_contact_member_id
     WHERE ${visibility}
       ${searchSql}
       ${cursorSql}
@@ -211,12 +227,16 @@ export async function readStaffProduct(
       version.product_name,
       version.order_interval_days,
       version.orders_per_run,
-      product.updated_at
+      product.updated_at,
+      product.primary_contact_member_id,
+      primary_contact.display_name AS primary_contact_member_name
     FROM products product
     JOIN seller_stores store ON store.id=product.store_id
     JOIN product_versions version
       ON version.product_id=product.id
       AND version.version_no=product.current_version_no
+    LEFT JOIN seller_organization_members primary_contact
+      ON primary_contact.id=product.primary_contact_member_id
     WHERE product.id=?
   `).bind(productId).first<ProductRow>();
   if (!product || !await canViewProduct(
@@ -226,14 +246,30 @@ export async function readStaffProduct(
   const [versions, demands] = await Promise.all([
     database.prepare(`
       SELECT
-        id AS product_version_id, version_no, product_name,
-        search_keywords_json, ordering_guide_expected_amount_jpy,
-        color_spec_mode, default_buyer_self_pay_bps, product_url,
-        buyer_visible_notes, internal_notes,
-        order_interval_days, orders_per_run, created_at
-      FROM product_versions
-      WHERE product_id=?
-      ORDER BY version_no DESC
+        version.id AS product_version_id, version.version_no, version.product_name,
+        version.search_keywords_json, version.ordering_guide_expected_amount_jpy,
+        version.color_spec_mode, version.default_buyer_self_pay_bps, version.product_url,
+        version.buyer_visible_notes, version.internal_notes,
+        version.order_interval_days, version.orders_per_run, version.created_at,
+        image_link.file_object_id AS main_image_file_object_id,
+        image_file.version AS main_image_file_version,
+        image_file.client_file_name AS main_image_client_file_name,
+        main_image.created_at AS main_image_bound_at
+      FROM product_versions version
+      LEFT JOIN product_version_main_images main_image
+        ON main_image.product_version_id=version.id
+      LEFT JOIN file_entity_links image_link
+        ON image_link.id=main_image.file_entity_link_id
+        AND image_link.entity_type='PRODUCT_VERSION'
+        AND image_link.entity_id=version.id
+        AND image_link.purpose='PRODUCT_IMAGE'
+        AND image_link.revoked_at IS NULL
+      LEFT JOIN file_objects image_file
+        ON image_file.id=image_link.file_object_id
+        AND image_file.status='VERIFIED'
+        AND image_file.purpose='PRODUCT_IMAGE'
+      WHERE version.product_id=?
+      ORDER BY version.version_no DESC
     `).bind(productId).all<ProductVersionRow>(),
     database.prepare(`
       SELECT
@@ -293,6 +329,17 @@ export async function readStaffReservationSchedule(
   if (!header || !await canViewDemand(
     database, actor, demandBatchId, header.seller_organization_id,
   )) throw new SchedulingError('NOT_FOUND', 404);
+  const canClose = header.status === 'PUBLISHED'
+    && await canCloseDemandBatch(database, {
+      demandBatchId,
+      staffId: actor.staffId,
+      source: {
+        demand_batch_id: header.demand_batch_id,
+        organization_id: header.seller_organization_id,
+        marketplace_code: header.marketplace_code,
+        status: header.status,
+      },
+    });
 
   const rows = await database.prepare(`
     WITH ranked AS (
@@ -302,6 +349,7 @@ export async function readStaffReservationSchedule(
         customer.buyer_customer_no,
         customer.display_name AS buyer_display_name,
         reservation.status,
+        reservation.version AS reservation_version,
         reservation.submitted_at,
         CASE WHEN reservation.status IN ('PENDING_REVIEW','APPROVED')
           THEN SUM(CASE WHEN reservation.status IN ('PENDING_REVIEW','APPROVED')
@@ -313,6 +361,12 @@ export async function readStaffReservationSchedule(
         END AS queue_rank,
         evidence.status AS evidence_status,
         formal_order.status AS formal_order_status,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM reservation_events approve_event
+          WHERE approve_event.reservation_id=reservation.id
+            AND approve_event.event_type='RESERVATION_APPROVED'
+            AND approve_event.actor_type='SYSTEM'
+        ) THEN 'AUTO' ELSE 'STAFF' END AS decision_source,
         evidence_version.amazon_order_date AS evidence_order_date,
         formal_order.amazon_order_date AS formal_order_date
       FROM product_reservations reservation
@@ -351,6 +405,8 @@ export async function readStaffReservationSchedule(
       effective_reservation_count: Number(header.effective_reservation_count),
       order_deadline: Number(header.order_deadline),
       demand_version: Number(header.demand_version),
+      status: header.status,
+      can_close: canClose,
       schedule,
     },
     items: page.map((row) => reservationDto(row, actor, schedule)),
@@ -373,6 +429,8 @@ export async function readDemandHeader(
     SELECT
       demand.id AS demand_batch_id,
       demand.organization_id AS seller_organization_id,
+      demand.store_id,
+      demand.marketplace_code,
       demand.product_id,
       version.id AS source_product_version_id,
       demand.status,
@@ -432,6 +490,8 @@ function productDto(row: ProductRow): StaffProductListItemDto {
           orders_per_run: Number(row.orders_per_run),
         },
     updated_at: Number(row.updated_at),
+    primary_contact_member_id: row.primary_contact_member_id,
+    primary_contact_member_name: row.primary_contact_member_name,
   };
 }
 
@@ -460,6 +520,16 @@ function versionDto(row: ProductVersionRow): StaffProductVersionDto {
       : {
           order_interval_days: Number(row.order_interval_days),
           orders_per_run: Number(row.orders_per_run),
+        },
+    main_image: row.main_image_file_object_id === null
+      || row.main_image_file_version === null
+      || row.main_image_bound_at === null
+      ? null
+      : {
+          file_object_id: row.main_image_file_object_id,
+          file_version: Number(row.main_image_file_version),
+          client_file_name: row.main_image_client_file_name ?? '',
+          bound_at: Number(row.main_image_bound_at),
         },
     created_at: Number(row.created_at),
   };
@@ -508,6 +578,8 @@ function reservationDto(
   return {
     reservation_id: row.reservation_id,
     status: row.status,
+    decision_source: row.decision_source,
+    version: Number(row.reservation_version),
     submitted_at: Number(row.submitted_at),
     rank,
     planned_order_date: rank === null || schedule === null

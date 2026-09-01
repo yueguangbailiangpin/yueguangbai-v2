@@ -96,15 +96,6 @@ async function register(
     .toLowerCase() !== 'true') {
     throw new BuyerSelfRegistrationError('FEATURE_DISABLED', 503);
   }
-  const defaultBuyerChannelId = String(
-    context.env.BUYER_SELF_REGISTRATION_CHANNEL_ID ?? '',
-  ).trim();
-  if (defaultBuyerChannelId.length < 1) {
-    throw new BuyerSelfRegistrationError(
-      'CONFIGURATION_INVALID',
-      503,
-    );
-  }
 
   const requestId = String(
     context.get('requestId') ?? crypto.randomUUID(),
@@ -188,7 +179,6 @@ async function register(
       marketplaceCode: body.marketplace_code,
       password: body.password,
       passwordConfirmation: body.password_confirmation,
-      buyerChannelId: defaultBuyerChannelId,
     },
     {
       requestId,

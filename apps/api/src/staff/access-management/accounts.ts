@@ -1,16 +1,34 @@
 import {
+  isStaffPermissionCode,
   isStaffRoleCode,
   type SqlDatabase,
   type SqlStatement,
+  type StaffAccessBuyerRefundOwnerAssignmentDto,
   type StaffAccessEmployeeDto,
+  type StaffAccessPersonalDenyMutationDto,
+  type StaffAccessSellerOrganizationAssignmentDto,
   type StaffRoleCode,
 } from '@ygb/contracts';
-import { canonicalJson } from '@ygb/domain';
+import { canonicalJson, hashCanonicalJson } from '@ygb/domain';
 import { createAuditEventStatement } from '../../foundation/audit';
+import {
+  acquireIdempotency,
+  assertIdempotencyCompletionStatement,
+  completeIdempotencyStatement,
+  IdempotencyError,
+  markIdempotencyFailed,
+} from '../../foundation/idempotency';
 import type { AssignmentStaffAuthorization } from '../../staff-assignment';
+import {
+  isStaffEligibleForFixedDuty,
+} from '../../staff-assignment';
 import { normalizeStaffEmail } from '../../staff-auth/cloudflare-access';
 import { StaffAccessManagementError } from './errors';
-import { readStaffAccessEmployee } from './read-model';
+import {
+  readStaffAccessEmployee,
+  readStaffBuyerRefundOwnerAssignment,
+  readStaffSellerOrganizationAssignment,
+} from './read-model';
 
 interface TargetRow {
   id: string;
@@ -27,6 +45,26 @@ interface ScopeRow {
   role_code: string;
   marketplace_code: string;
   scope_kind: 'PRIMARY' | 'SUPPORT';
+}
+interface ActiveSellerManagerRow {
+  id: string;
+  staff_id: string;
+  version: number;
+}
+interface ActiveBuyerOwnerRow {
+  id: string;
+  staff_id: string;
+  version: number;
+}
+interface BuyerCustomerRow {
+  id: string;
+  display_name: string;
+  marketplace_code: string;
+}
+interface SellerOrganizationRow {
+  id: string;
+  organization_name: string;
+  marketplace_code: string;
 }
 
 export async function createStaffAccount(
@@ -406,6 +444,916 @@ export async function changeStaffAccountStatus(
   return readStaffAccessEmployee(database, staffId);
 }
 
+/**
+ * Replaces the immutable fixed seller-account manager relationship.  The
+ * previous assignment is only revoked; a fresh active assignment, audit row
+ * and outbox event are appended in the same D1 batch.  That keeps historic
+ * work items and financial facts pointing to their original owner.
+ */
+export async function changeSellerOrganizationManager(
+  database: SqlDatabase,
+  input: {
+    sellerOrganizationId: string;
+    assignedStaffId: string;
+    expectedAssignmentVersion: number;
+    idempotencyKey: string;
+    requestId: string | null;
+  },
+  actor: AssignmentStaffAuthorization,
+): Promise<{
+  seller_organization: StaffAccessSellerOrganizationAssignmentDto;
+  replayed: boolean;
+}> {
+  requireOwner(actor);
+  if (!Number.isSafeInteger(input.expectedAssignmentVersion) || input.expectedAssignmentVersion < 0)
+    validation();
+  const organization = await database
+    .prepare(
+      `SELECT id,organization_name,marketplace_code FROM seller_organizations
+      WHERE id=? AND status='ACTIVE'`,
+    )
+    .bind(input.sellerOrganizationId)
+    .first<SellerOrganizationRow>();
+  if (!organization) notFound();
+
+  const candidate = await targetRow(database, input.assignedStaffId);
+  if (!candidate) notFound();
+  // This control is specifically for the seller-ops fixed owner.  Owner
+  // fallback remains a system safety path, not a manual directory choice.
+  if (
+    candidate.status !== 'ACTIVE' ||
+    candidate.active_role_count !== 1 ||
+    candidate.role_code !== 'seller_ops'
+  )
+    stateConflict();
+  if (
+    !(await isStaffEligibleForFixedDuty(database, {
+      staffId: input.assignedStaffId,
+      dutyCode: 'SELLER_ACCOUNT_MANAGER',
+      marketplaceCode: organization.marketplace_code,
+    }))
+  )
+    stateConflict();
+
+  const requestHash = await hashCanonicalJson({
+    action: 'CHANGE_SELLER_ORGANIZATION_MANAGER',
+    seller_organization_id: input.sellerOrganizationId,
+    assigned_staff_id: input.assignedStaffId,
+    expected_assignment_version: input.expectedAssignmentVersion,
+  });
+  let acquired;
+  try {
+    acquired = await acquireIdempotency<{
+      seller_organization: StaffAccessSellerOrganizationAssignmentDto;
+      replayed: boolean;
+    }>(database, {
+      actorType: 'STAFF',
+      actorId: actor.staffId,
+      action: 'CHANGE_SELLER_ORGANIZATION_MANAGER',
+      targetType: 'SELLER_ORGANIZATION',
+      targetId: organization.id,
+      idempotencyKey: input.idempotencyKey,
+      requestHash,
+    });
+  } catch (error) {
+    throw normalizeIdempotencyError(error);
+  }
+  if (acquired.kind === 'REPLAY') {
+    return { ...acquired.response, replayed: true };
+  }
+
+  const now = Date.now();
+  try {
+    const active = await database
+      .prepare(
+        `SELECT id,staff_id,version FROM seller_staff_assignments
+        WHERE seller_organization_id=? AND duty_code='SELLER_ACCOUNT_MANAGER'
+          AND status='ACTIVE'`,
+      )
+      .bind(organization.id)
+      .first<ActiveSellerManagerRow>();
+    const activeVersion = active?.version ?? 0;
+    if (activeVersion !== input.expectedAssignmentVersion) versionConflict();
+
+    // A command that was retried with a different idempotency key after its
+    // first commit remains safe: it observes this exact manager/version and
+    // returns a semantic replay rather than rotating ownership again.
+    if (active?.staff_id === input.assignedStaffId) {
+      const response = {
+        seller_organization: await readStaffSellerOrganizationAssignment(database, organization.id),
+        replayed: true,
+      } as const;
+      await database.batch([
+        completeIdempotencyStatement(database, acquired.claim, response, {
+          resultReferences: { assignment_id: active.id },
+          now,
+        }),
+        assertIdempotencyCompletionStatement(database, acquired.claim),
+      ]);
+      return response;
+    }
+
+    const assignmentId = crypto.randomUUID();
+    const response: {
+      seller_organization: StaffAccessSellerOrganizationAssignmentDto;
+      replayed: boolean;
+    } = {
+      seller_organization: {
+        seller_organization_id: organization.id,
+        seller_organization_name: organization.organization_name,
+        marketplace_code: organization.marketplace_code,
+        manager: {
+          assignment_id: assignmentId,
+          staff_id: input.assignedStaffId,
+          staff_display_name: candidate.display_name,
+          version: 1,
+        },
+      },
+      replayed: false,
+    };
+    const statements: SqlStatement[] = [];
+    if (active) {
+      statements.push(
+        database
+          .prepare(
+            `UPDATE seller_staff_assignments
+            SET status='REVOKED',revoked_at=?,version=version+1,updated_at=MAX(?,updated_at+1)
+            WHERE id=? AND status='ACTIVE' AND version=?`,
+          )
+          .bind(now, now, active.id, active.version),
+      );
+    }
+    statements.push(
+      database
+        .prepare(
+          `INSERT INTO seller_staff_assignments(
+            id,seller_organization_id,duty_code,staff_id,status,source,
+            assigned_by_actor_type,assigned_by_actor_id,reason,version,
+            created_at,updated_at,revoked_at
+          ) VALUES(?,?,'SELLER_ACCOUNT_MANAGER',?,'ACTIVE','MANUAL_REASSIGN',
+            'STAFF',?,'STAFF_ACCESS_MANAGEMENT',1,?,?,NULL)`,
+        )
+        .bind(assignmentId, organization.id, input.assignedStaffId, actor.staffId, now, now),
+      database
+        .prepare(
+          `INSERT INTO staff_assignment_events(
+            id,event_type,subject_type,subject_id,duty_code,assignment_id,
+            work_item_id,batch_id,old_staff_id,new_staff_id,actor_type,actor_id,
+            reason,request_id,idempotency_key,metadata_json,created_at
+          ) VALUES(?,'FIXED_OWNER_CHANGED','SELLER_ORGANIZATION',?,
+            'SELLER_ACCOUNT_MANAGER',?,NULL,NULL,?,?,'STAFF',?,
+            'STAFF_ACCESS_MANAGEMENT',?,?,?,?)`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          organization.id,
+          assignmentId,
+          active?.staff_id ?? null,
+          input.assignedStaffId,
+          actor.staffId,
+          input.requestId,
+          acquired.claim.idempotencyKey,
+          canonicalJson({ expected_assignment_version: input.expectedAssignmentVersion }),
+          now,
+        ),
+      createAuditEventStatement(database, {
+        id: crypto.randomUUID(),
+        aggregateType: 'SELLER_ORGANIZATION',
+        aggregateId: organization.id,
+        eventType: 'SELLER_ACCOUNT_MANAGER_CHANGED',
+        actor: { type: 'STAFF', id: actor.staffId, roles: [...actor.roles] },
+        requestId: input.requestId,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        previousState: {
+          assignment_id: active?.id ?? null,
+          staff_id: active?.staff_id ?? null,
+          assignment_version: active?.version ?? 0,
+        },
+        nextState: {
+          assignment_id: assignmentId,
+          staff_id: input.assignedStaffId,
+          assignment_version: 1,
+        },
+        createdAt: now,
+      }),
+      database
+        .prepare(
+          `INSERT INTO transaction_assertions(assertion_value)
+        SELECT CASE WHEN EXISTS(
+          SELECT 1 FROM seller_staff_assignments
+          WHERE id=? AND seller_organization_id=? AND staff_id=?
+            AND duty_code='SELLER_ACCOUNT_MANAGER' AND status='ACTIVE'
+        ) THEN 1 ELSE 0 END`,
+        )
+        .bind(assignmentId, organization.id, input.assignedStaffId),
+      completeIdempotencyStatement(database, acquired.claim, response, {
+        resultReferences: { assignment_id: assignmentId },
+        now,
+      }),
+      assertIdempotencyCompletionStatement(database, acquired.claim),
+    );
+    await database.batch(statements);
+    const projected = await readStaffSellerOrganizationAssignment(database, organization.id);
+    return { seller_organization: projected, replayed: false };
+  } catch (error) {
+    const normalized = normalizeIdempotencyError(error);
+    await markIdempotencyFailed(database, acquired.claim, normalized.code, now);
+    throw normalized;
+  }
+}
+
+/**
+ * Sets or transfers the buyer's fixed BUYER_REFUND_OWNER binding.  The
+ * previous assignment is only revoked; a fresh active assignment, audited
+ * event row (with the mandatory operator reason) and outbox event are
+ * appended in the same D1 batch.  Buyers without an owner fail closed on
+ * review/refund work, so this is the only manual remediation path.
+ */
+export async function changeBuyerRefundOwner(
+  database: SqlDatabase,
+  input: {
+    buyerCustomerId: string;
+    assignedStaffId: string;
+    expectedAssignmentVersion: number;
+    reason: string;
+    idempotencyKey: string;
+    requestId: string | null;
+  },
+  actor: AssignmentStaffAuthorization,
+): Promise<{
+  buyer: StaffAccessBuyerRefundOwnerAssignmentDto;
+  replayed: boolean;
+}> {
+  requireOwner(actor);
+  if (!Number.isSafeInteger(input.expectedAssignmentVersion) || input.expectedAssignmentVersion < 0)
+    validation();
+  const reason = text(input.reason, 1000);
+  const buyer = await database
+    .prepare(
+      `SELECT id,display_name,marketplace_code FROM buyer_customers WHERE id=?`,
+    )
+    .bind(input.buyerCustomerId)
+    .first<BuyerCustomerRow>();
+  if (!buyer) notFound();
+
+  const candidate = await targetRow(database, input.assignedStaffId);
+  if (!candidate) notFound();
+  if (
+    candidate.status !== 'ACTIVE' ||
+    candidate.active_role_count !== 1 ||
+    candidate.role_code !== 'buyer_refund'
+  )
+    stateConflict();
+  if (
+    !(await isStaffEligibleForFixedDuty(database, {
+      staffId: input.assignedStaffId,
+      dutyCode: 'BUYER_REFUND_OWNER',
+      marketplaceCode: buyer.marketplace_code,
+    }))
+  )
+    stateConflict();
+
+  const requestHash = await hashCanonicalJson({
+    action: 'CHANGE_BUYER_REFUND_OWNER',
+    buyer_customer_id: input.buyerCustomerId,
+    assigned_staff_id: input.assignedStaffId,
+    expected_assignment_version: input.expectedAssignmentVersion,
+    reason,
+  });
+  let acquired;
+  try {
+    acquired = await acquireIdempotency<{
+      buyer: StaffAccessBuyerRefundOwnerAssignmentDto;
+      replayed: boolean;
+    }>(database, {
+      actorType: 'STAFF',
+      actorId: actor.staffId,
+      action: 'CHANGE_BUYER_REFUND_OWNER',
+      targetType: 'BUYER_CUSTOMER',
+      targetId: buyer.id,
+      idempotencyKey: input.idempotencyKey,
+      requestHash,
+    });
+  } catch (error) {
+    throw normalizeIdempotencyError(error);
+  }
+  if (acquired.kind === 'REPLAY') {
+    return { ...acquired.response, replayed: true };
+  }
+
+  const now = Date.now();
+  try {
+    const active = await database
+      .prepare(
+        `SELECT id,staff_id,version FROM buyer_staff_assignments
+        WHERE buyer_customer_id=? AND duty_code='BUYER_REFUND_OWNER'
+          AND status='ACTIVE'`,
+      )
+      .bind(buyer.id)
+      .first<ActiveBuyerOwnerRow>();
+    const activeVersion = active?.version ?? 0;
+    if (activeVersion !== input.expectedAssignmentVersion) versionConflict();
+
+    // A retried command with a different idempotency key stays safe: when the
+    // observed owner/version already matches, answer with a semantic replay
+    // instead of rotating the binding again.
+    if (active?.staff_id === input.assignedStaffId) {
+      const response = {
+        buyer: await readStaffBuyerRefundOwnerAssignment(database, buyer.id),
+        replayed: true,
+      } as const;
+      await database.batch([
+        completeIdempotencyStatement(database, acquired.claim, response, {
+          resultReferences: { assignment_id: active.id },
+          now,
+        }),
+        assertIdempotencyCompletionStatement(database, acquired.claim),
+      ]);
+      return response;
+    }
+
+    const assignmentId = crypto.randomUUID();
+    const currentProjection = await readStaffBuyerRefundOwnerAssignment(database, buyer.id);
+    const response: {
+      buyer: StaffAccessBuyerRefundOwnerAssignmentDto;
+      replayed: boolean;
+    } = {
+      buyer: {
+        ...currentProjection,
+        refund_owner: {
+          assignment_id: assignmentId,
+          staff_id: input.assignedStaffId,
+          staff_display_name: candidate.display_name,
+          version: 1,
+        },
+      },
+      replayed: false,
+    };
+    const statements: SqlStatement[] = [];
+    if (active) {
+      statements.push(
+        database
+          .prepare(
+            `UPDATE buyer_staff_assignments
+            SET status='REVOKED',revoked_at=?,version=version+1,updated_at=MAX(?,updated_at+1)
+            WHERE id=? AND status='ACTIVE' AND version=?`,
+          )
+          .bind(now, now, active.id, active.version),
+      );
+    }
+    statements.push(
+      database
+        .prepare(
+          `INSERT INTO buyer_staff_assignments(
+            id,buyer_customer_id,duty_code,staff_id,status,source,
+            assigned_by_actor_type,assigned_by_actor_id,reason,version,
+            created_at,updated_at,revoked_at
+          ) VALUES(?,?,'BUYER_REFUND_OWNER',?,'ACTIVE','MANUAL_REASSIGN',
+            'STAFF',?,?,1,?,?,NULL)`,
+        )
+        .bind(assignmentId, buyer.id, input.assignedStaffId, actor.staffId, reason, now, now),
+      database
+        .prepare(
+          `INSERT INTO staff_assignment_events(
+            id,event_type,subject_type,subject_id,duty_code,assignment_id,
+            work_item_id,batch_id,old_staff_id,new_staff_id,actor_type,actor_id,
+            reason,request_id,idempotency_key,metadata_json,created_at
+          ) VALUES(?,'FIXED_OWNER_CHANGED','BUYER_CUSTOMER',?,
+            'BUYER_REFUND_OWNER',?,NULL,NULL,?,?,'STAFF',?,
+            ?,?,?,?,?)`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          buyer.id,
+          assignmentId,
+          active?.staff_id ?? null,
+          input.assignedStaffId,
+          actor.staffId,
+          reason,
+          input.requestId,
+          acquired.claim.idempotencyKey,
+          canonicalJson({ expected_assignment_version: input.expectedAssignmentVersion }),
+          now,
+        ),
+      createAuditEventStatement(database, {
+        id: crypto.randomUUID(),
+        aggregateType: 'BUYER_CUSTOMER',
+        aggregateId: buyer.id,
+        eventType: 'BUYER_REFUND_OWNER_CHANGED',
+        actor: { type: 'STAFF', id: actor.staffId, roles: [...actor.roles] },
+        requestId: input.requestId,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        previousState: {
+          assignment_id: active?.id ?? null,
+          staff_id: active?.staff_id ?? null,
+          assignment_version: active?.version ?? 0,
+        },
+        nextState: {
+          assignment_id: assignmentId,
+          staff_id: input.assignedStaffId,
+          assignment_version: 1,
+          reason,
+        },
+        createdAt: now,
+      }),
+      database
+        .prepare(
+          `INSERT INTO transaction_assertions(assertion_value)
+        SELECT CASE WHEN EXISTS(
+          SELECT 1 FROM buyer_staff_assignments
+          WHERE id=? AND buyer_customer_id=? AND staff_id=?
+            AND duty_code='BUYER_REFUND_OWNER' AND status='ACTIVE'
+        ) THEN 1 ELSE 0 END`,
+        )
+        .bind(assignmentId, buyer.id, input.assignedStaffId),
+      completeIdempotencyStatement(database, acquired.claim, response, {
+        resultReferences: { assignment_id: assignmentId },
+        now,
+      }),
+      assertIdempotencyCompletionStatement(database, acquired.claim),
+    );
+    await database.batch(statements);
+    const projected = await readStaffBuyerRefundOwnerAssignment(database, buyer.id);
+    return { buyer: projected, replayed: false };
+  } catch (error) {
+    const normalized = normalizeIdempotencyError(error);
+    await markIdempotencyFailed(database, acquired.claim, normalized.code, now);
+    throw normalized;
+  }
+}
+
+/**
+ * Stage 6.6E: sets or transfers the buyer's fixed BUYER_PRE_SALES_OWNER
+ * binding — the pre-sales mirror of changeBuyerRefundOwner.
+ */
+export async function changeBuyerPreSalesOwner(
+  database: SqlDatabase,
+  input: {
+    buyerCustomerId: string;
+    assignedStaffId: string;
+    expectedAssignmentVersion: number;
+    reason: string;
+    idempotencyKey: string;
+    requestId: string | null;
+  },
+  actor: AssignmentStaffAuthorization,
+): Promise<{
+  buyer: StaffAccessBuyerRefundOwnerAssignmentDto;
+  replayed: boolean;
+}> {
+  requireOwner(actor);
+  if (!Number.isSafeInteger(input.expectedAssignmentVersion) || input.expectedAssignmentVersion < 0)
+    validation();
+  const reason = text(input.reason, 1000);
+  const buyer = await database
+    .prepare(
+      `SELECT id,display_name,marketplace_code FROM buyer_customers WHERE id=?`,
+    )
+    .bind(input.buyerCustomerId)
+    .first<BuyerCustomerRow>();
+  if (!buyer) notFound();
+
+  const candidate = await targetRow(database, input.assignedStaffId);
+  if (!candidate) notFound();
+  if (
+    candidate.status !== 'ACTIVE' ||
+    candidate.active_role_count !== 1 ||
+    candidate.role_code !== 'pre_sales'
+  )
+    stateConflict();
+  if (
+    !(await isStaffEligibleForFixedDuty(database, {
+      staffId: input.assignedStaffId,
+      dutyCode: 'BUYER_PRE_SALES_OWNER',
+      marketplaceCode: buyer.marketplace_code,
+    }))
+  )
+    stateConflict();
+
+  const requestHash = await hashCanonicalJson({
+    action: 'CHANGE_BUYER_PRE_SALES_OWNER',
+    buyer_customer_id: input.buyerCustomerId,
+    assigned_staff_id: input.assignedStaffId,
+    expected_assignment_version: input.expectedAssignmentVersion,
+    reason,
+  });
+  let acquired;
+  try {
+    acquired = await acquireIdempotency<{
+      buyer: StaffAccessBuyerRefundOwnerAssignmentDto;
+      replayed: boolean;
+    }>(database, {
+      actorType: 'STAFF',
+      actorId: actor.staffId,
+      action: 'CHANGE_BUYER_PRE_SALES_OWNER',
+      targetType: 'BUYER_CUSTOMER',
+      targetId: buyer.id,
+      idempotencyKey: input.idempotencyKey,
+      requestHash,
+    });
+  } catch (error) {
+    throw normalizeIdempotencyError(error);
+  }
+  if (acquired.kind === 'REPLAY') {
+    return { ...acquired.response, replayed: true };
+  }
+
+  const now = Date.now();
+  try {
+    const active = await database
+      .prepare(
+        `SELECT id,staff_id,version FROM buyer_staff_assignments
+        WHERE buyer_customer_id=? AND duty_code='BUYER_PRE_SALES_OWNER'
+          AND status='ACTIVE'`,
+      )
+      .bind(buyer.id)
+      .first<ActiveBuyerOwnerRow>();
+    const activeVersion = active?.version ?? 0;
+    if (activeVersion !== input.expectedAssignmentVersion) versionConflict();
+
+    // A retried command with a different idempotency key stays safe: when the
+    // observed owner/version already matches, answer with a semantic replay
+    // instead of rotating the binding again.
+    if (active?.staff_id === input.assignedStaffId) {
+      const response = {
+        buyer: await readStaffBuyerRefundOwnerAssignment(database, buyer.id),
+        replayed: true,
+      } as const;
+      await database.batch([
+        completeIdempotencyStatement(database, acquired.claim, response, {
+          resultReferences: { assignment_id: active.id },
+          now,
+        }),
+        assertIdempotencyCompletionStatement(database, acquired.claim),
+      ]);
+      return response;
+    }
+
+    const assignmentId = crypto.randomUUID();
+    const statements: SqlStatement[] = [];
+    if (active) {
+      statements.push(
+        database
+          .prepare(
+            `UPDATE buyer_staff_assignments
+            SET status='REVOKED',revoked_at=?,version=version+1,updated_at=MAX(?,updated_at+1)
+            WHERE id=? AND status='ACTIVE' AND version=?`,
+          )
+          .bind(now, now, active.id, active.version),
+      );
+    }
+    statements.push(
+      database
+        .prepare(
+          `INSERT INTO buyer_staff_assignments(
+            id,buyer_customer_id,duty_code,staff_id,status,source,
+            assigned_by_actor_type,assigned_by_actor_id,reason,version,
+            created_at,updated_at,revoked_at
+          ) VALUES(?,?,'BUYER_PRE_SALES_OWNER',?,'ACTIVE','MANUAL_REASSIGN',
+            'STAFF',?,?,1,?,?,NULL)`,
+        )
+        .bind(assignmentId, buyer.id, input.assignedStaffId, actor.staffId, reason, now, now),
+      database
+        .prepare(
+          `INSERT INTO staff_assignment_events(
+            id,event_type,subject_type,subject_id,duty_code,assignment_id,
+            work_item_id,batch_id,old_staff_id,new_staff_id,actor_type,actor_id,
+            reason,request_id,idempotency_key,metadata_json,created_at
+          ) VALUES(?,'FIXED_OWNER_CHANGED','BUYER_CUSTOMER',?,
+            'BUYER_PRE_SALES_OWNER',?,NULL,NULL,?,?,'STAFF',?,
+            ?,?,?,?,?)`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          buyer.id,
+          assignmentId,
+          active?.staff_id ?? null,
+          input.assignedStaffId,
+          actor.staffId,
+          reason,
+          input.requestId,
+          acquired.claim.idempotencyKey,
+          canonicalJson({ expected_assignment_version: input.expectedAssignmentVersion }),
+          now,
+        ),
+      createAuditEventStatement(database, {
+        id: crypto.randomUUID(),
+        aggregateType: 'BUYER_CUSTOMER',
+        aggregateId: buyer.id,
+        eventType: 'BUYER_PRE_SALES_OWNER_CHANGED',
+        actor: { type: 'STAFF', id: actor.staffId, roles: [...actor.roles] },
+        requestId: input.requestId,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        previousState: {
+          assignment_id: active?.id ?? null,
+          staff_id: active?.staff_id ?? null,
+          assignment_version: active?.version ?? 0,
+        },
+        nextState: {
+          assignment_id: assignmentId,
+          staff_id: input.assignedStaffId,
+          assignment_version: 1,
+          reason,
+        },
+        createdAt: now,
+      }),
+      database
+        .prepare(
+          `INSERT INTO transaction_assertions(assertion_value)
+        SELECT CASE WHEN EXISTS(
+          SELECT 1 FROM buyer_staff_assignments
+          WHERE id=? AND buyer_customer_id=? AND staff_id=?
+            AND duty_code='BUYER_PRE_SALES_OWNER' AND status='ACTIVE'
+        ) THEN 1 ELSE 0 END`,
+        )
+        .bind(assignmentId, buyer.id, input.assignedStaffId),
+      completeIdempotencyStatement(database, acquired.claim, {
+        buyer: await readStaffBuyerRefundOwnerAssignment(database, buyer.id),
+        replayed: false,
+      }, {
+        resultReferences: { assignment_id: assignmentId },
+        now,
+      }),
+      assertIdempotencyCompletionStatement(database, acquired.claim),
+    );
+    await database.batch(statements);
+    const projected = await readStaffBuyerRefundOwnerAssignment(database, buyer.id);
+    return { buyer: projected, replayed: false };
+  } catch (error) {
+    const normalized = normalizeIdempotencyError(error);
+    await markIdempotencyFailed(database, acquired.claim, normalized.code, now);
+    throw normalized;
+  }
+}
+
+/**
+ * Stage 6.6E: Personal DENY management. A DENY row can only shrink a role's
+ * default permissions — GRANT rows are impossible (database trigger), and the
+ * permission code must be a published code. Bumping authorization_version
+ * invalidates the target staff's cached session authorization.
+ */
+export async function setPersonalDeny(
+  database: SqlDatabase,
+  input: { staffId: string; permissionCode: string; reason: string; idempotencyKey: string; requestId: string | null },
+  actor: AssignmentStaffAuthorization,
+): Promise<StaffAccessPersonalDenyMutationDto> {
+  requireOwner(actor);
+  const permissionCode = requirePublishedPermissionCode(input.permissionCode);
+  const reason = text(input.reason, 1000);
+  const target = await targetRow(database, input.staffId);
+  if (!target) notFound();
+  if (target.status !== 'ACTIVE' || target.active_role_count !== 1) stateConflict();
+
+  const requestHash = await hashCanonicalJson({
+    action: 'SET_STAFF_PERSONAL_DENY',
+    staff_id: input.staffId,
+    permission_code: permissionCode,
+    reason,
+  });
+  let acquired;
+  try {
+    acquired = await acquireIdempotency<StaffAccessPersonalDenyMutationDto>(database, {
+      actorType: 'STAFF',
+      actorId: actor.staffId,
+      action: 'SET_STAFF_PERSONAL_DENY',
+      targetType: 'STAFF_USER',
+      targetId: input.staffId,
+      idempotencyKey: input.idempotencyKey,
+      requestHash,
+    });
+  } catch (error) {
+    throw normalizeIdempotencyError(error);
+  }
+  if (acquired.kind === 'REPLAY') return acquired.response;
+
+  const now = Date.now();
+  try {
+    const existing = await database
+      .prepare(
+        `SELECT status FROM staff_permission_overrides
+        WHERE staff_id=? AND permission_code=?`,
+      )
+      .bind(input.staffId, permissionCode)
+      .first<{ status: string }>();
+    const statements: SqlStatement[] = [];
+    if (existing?.status === 'ACTIVE') {
+      // Already denied — answer with a semantic replay instead of duplicating.
+      const response: StaffAccessPersonalDenyMutationDto = {
+        deny: await readPersonalDeny(database, input.staffId, permissionCode),
+        replayed: true,
+      };
+      await database.batch([
+        completeIdempotencyStatement(database, acquired.claim, response, { now }),
+        assertIdempotencyCompletionStatement(database, acquired.claim),
+      ]);
+      return response;
+    }
+    if (existing) {
+      // REVOKED row exists — revive it as an ACTIVE DENY (PK is fixed).
+      statements.push(
+        database.prepare(
+          `UPDATE staff_permission_overrides
+          SET effect='DENY',status='ACTIVE',reason=?,assigned_by_staff_id=?,
+            assigned_at=?,revoked_at=NULL,updated_at=?
+          WHERE staff_id=? AND permission_code=? AND status='REVOKED'`,
+        ).bind(reason, actor.staffId, now, now, input.staffId, permissionCode),
+      );
+    } else {
+      statements.push(
+        database.prepare(
+          `INSERT INTO staff_permission_overrides(
+            staff_id,permission_code,effect,status,reason,assigned_by_staff_id,
+            assigned_at,revoked_at,created_at,updated_at
+          ) VALUES(?,?,'DENY','ACTIVE',?,?,?,NULL,?,?)`,
+        ).bind(input.staffId, permissionCode, reason, actor.staffId, now, now, now),
+      );
+    }
+    statements.push(
+      database.prepare(
+        `UPDATE staff_users
+        SET authorization_version=authorization_version+1,updated_at=?
+        WHERE id=?`,
+      ).bind(now, input.staffId),
+      createAuditEventStatement(database, {
+        id: crypto.randomUUID(),
+        aggregateType: 'STAFF_USER',
+        aggregateId: input.staffId,
+        eventType: 'STAFF_PERSONAL_DENY_SET',
+        actor: { type: 'STAFF', id: actor.staffId, roles: [...actor.roles] },
+        requestId: input.requestId,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        nextState: { permission_code: permissionCode, effect: 'DENY', status: 'ACTIVE', reason },
+        createdAt: now,
+      }),
+      database.prepare(
+        `INSERT INTO transaction_assertions(assertion_value)
+        SELECT CASE WHEN EXISTS(
+          SELECT 1 FROM staff_permission_overrides
+          WHERE staff_id=? AND permission_code=?
+            AND effect='DENY' AND status='ACTIVE'
+        ) THEN 1 ELSE 0 END`,
+      ).bind(input.staffId, permissionCode),
+    );
+    await database.batch(statements);
+    const response: StaffAccessPersonalDenyMutationDto = {
+      deny: await readPersonalDeny(database, input.staffId, permissionCode),
+      replayed: false,
+    };
+    await database.batch([
+      completeIdempotencyStatement(database, acquired.claim, response, { now }),
+      assertIdempotencyCompletionStatement(database, acquired.claim),
+    ]);
+    return response;
+  } catch (error) {
+    const normalized = normalizeIdempotencyError(error);
+    await markIdempotencyFailed(database, acquired.claim, normalized.code, now);
+    throw normalized;
+  }
+}
+
+export async function revokePersonalDeny(
+  database: SqlDatabase,
+  input: { staffId: string; permissionCode: string; reason: string; idempotencyKey: string; requestId: string | null },
+  actor: AssignmentStaffAuthorization,
+): Promise<StaffAccessPersonalDenyMutationDto> {
+  requireOwner(actor);
+  const permissionCode = requirePublishedPermissionCode(input.permissionCode);
+  const reason = text(input.reason, 1000);
+  const target = await targetRow(database, input.staffId);
+  if (!target) notFound();
+
+  const requestHash = await hashCanonicalJson({
+    action: 'REVOKE_STAFF_PERSONAL_DENY',
+    staff_id: input.staffId,
+    permission_code: permissionCode,
+    reason,
+  });
+  let acquired;
+  try {
+    acquired = await acquireIdempotency<StaffAccessPersonalDenyMutationDto>(database, {
+      actorType: 'STAFF',
+      actorId: actor.staffId,
+      action: 'REVOKE_STAFF_PERSONAL_DENY',
+      targetType: 'STAFF_USER',
+      targetId: input.staffId,
+      idempotencyKey: input.idempotencyKey,
+      requestHash,
+    });
+  } catch (error) {
+    throw normalizeIdempotencyError(error);
+  }
+  if (acquired.kind === 'REPLAY') return acquired.response;
+
+  const now = Date.now();
+  try {
+    const existing = await database
+      .prepare(
+        `SELECT status FROM staff_permission_overrides
+        WHERE staff_id=? AND permission_code=?`,
+      )
+      .bind(input.staffId, permissionCode)
+      .first<{ status: string }>();
+    if (existing?.status !== 'ACTIVE') {
+      // Nothing active to revoke — semantic replay of the revoked state.
+      const response: StaffAccessPersonalDenyMutationDto = {
+        deny: await readPersonalDeny(database, input.staffId, permissionCode),
+        replayed: true,
+      };
+      await database.batch([
+        completeIdempotencyStatement(database, acquired.claim, response, { now }),
+        assertIdempotencyCompletionStatement(database, acquired.claim),
+      ]);
+      return response;
+    }
+    await database.batch([
+      database.prepare(
+        `UPDATE staff_permission_overrides
+        SET status='REVOKED',revoked_at=?,reason=?,updated_at=?
+        WHERE staff_id=? AND permission_code=? AND status='ACTIVE' AND effect='DENY'`,
+      ).bind(now, reason, now, input.staffId, permissionCode),
+      database.prepare(
+        `UPDATE staff_users
+        SET authorization_version=authorization_version+1,updated_at=?
+        WHERE id=?`,
+      ).bind(now, input.staffId),
+      createAuditEventStatement(database, {
+        id: crypto.randomUUID(),
+        aggregateType: 'STAFF_USER',
+        aggregateId: input.staffId,
+        eventType: 'STAFF_PERSONAL_DENY_REVOKED',
+        actor: { type: 'STAFF', id: actor.staffId, roles: [...actor.roles] },
+        requestId: input.requestId,
+        idempotencyKey: acquired.claim.idempotencyKey,
+        nextState: { permission_code: permissionCode, status: 'REVOKED', reason },
+        createdAt: now,
+      }),
+      database.prepare(
+        `INSERT INTO transaction_assertions(assertion_value)
+        SELECT CASE WHEN EXISTS(
+          SELECT 1 FROM staff_permission_overrides
+          WHERE staff_id=? AND permission_code=? AND status='REVOKED'
+        ) THEN 1 ELSE 0 END`,
+      ).bind(input.staffId, permissionCode),
+    ]);
+    const response2: StaffAccessPersonalDenyMutationDto = {
+      deny: await readPersonalDeny(database, input.staffId, permissionCode),
+      replayed: false,
+    };
+    await database.batch([
+      completeIdempotencyStatement(database, acquired.claim, response2, { now }),
+      assertIdempotencyCompletionStatement(database, acquired.claim),
+    ]);
+    return response2;
+  } catch (error) {
+    const normalized = normalizeIdempotencyError(error);
+    await markIdempotencyFailed(database, acquired.claim, normalized.code, now);
+    throw normalized;
+  }
+}
+
+async function readPersonalDeny(
+  database: SqlDatabase,
+  staffId: string,
+  permissionCode: string,
+): Promise<import('@ygb/contracts').StaffAccessPersonalDenyDto> {
+  const row = await database
+    .prepare(
+      `SELECT override.staff_id,staff.display_name AS staff_display_name,
+        override.permission_code,override.status,override.reason,
+        override.assigned_by_staff_id,override.assigned_at,override.revoked_at
+      FROM staff_permission_overrides override
+      JOIN staff_users staff ON staff.id=override.staff_id
+      WHERE override.staff_id=? AND override.permission_code=?`,
+    )
+    .bind(staffId, permissionCode)
+    .first<{
+      staff_id: string;
+      staff_display_name: string;
+      permission_code: string;
+      status: string;
+      reason: string | null;
+      assigned_by_staff_id: string;
+      assigned_at: number;
+      revoked_at: number | null;
+    }>();
+  if (!row) notFound();
+  return Object.freeze({
+    staff_id: row.staff_id,
+    staff_display_name: row.staff_display_name,
+    permission_code: row.permission_code,
+    status: row.status === 'ACTIVE' ? 'ACTIVE' : 'REVOKED',
+    reason: row.reason,
+    assigned_by_staff_id: row.assigned_by_staff_id,
+    assigned_at: Number(row.assigned_at),
+    revoked_at: row.revoked_at === null ? null : Number(row.revoked_at),
+  });
+}
+
+function requirePublishedPermissionCode(value: string): string {
+  if (!isStaffPermissionCode(value)) validation();
+  return value;
+}
+
 async function normalizedMarkets(
   database: SqlDatabase,
   role: StaffRoleCode,
@@ -512,4 +1460,11 @@ function notFound(): never {
 }
 function dependency(): never {
   throw new StaffAccessManagementError('DEPENDENCY_UNAVAILABLE', 503);
+}
+function normalizeIdempotencyError(error: unknown): StaffAccessManagementError {
+  if (error instanceof StaffAccessManagementError) return error;
+  if (error instanceof IdempotencyError) {
+    return new StaffAccessManagementError(error.code, error.status);
+  }
+  return new StaffAccessManagementError('DEPENDENCY_UNAVAILABLE', 503);
 }

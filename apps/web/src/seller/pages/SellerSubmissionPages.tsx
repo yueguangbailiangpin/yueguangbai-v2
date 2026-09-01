@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   Alert,
   Button,
@@ -12,6 +12,8 @@ import {
   TextInput,
 } from '../../ui/primitives';
 import { CursorPagination } from '../../ui/CursorPagination';
+import { FileDropZone } from '../../ui/FileDropZone';
+import { isFrontendApiError } from '../../api/errors';
 import { useFileUpload } from '../../buyer/shared/useFileUpload';
 import { BuyerMutationRecovery } from '../../buyer/shared/BuyerMutationRecovery';
 import { useBuyerMutation } from '../../buyer/mutations/useBuyerMutation';
@@ -20,7 +22,7 @@ import { sellerQueryKeys } from '../queries/keys';
 import { useSellerCursorPages } from '../queries/useSellerCursorPages';
 import { useSellerStoreContext } from '../routes/SellerLayout';
 
-export function SellerProductApplicationFormPage(): React.JSX.Element {
+export function SellerProductApplicationFormPage({ embedded = false }: { embedded?: boolean } = {}): React.JSX.Element {
   const client = useQueryClient();
   const navigate = useNavigate();
   const { storeId } = useSellerStoreContext();
@@ -28,6 +30,10 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
   const files = useRef<File[]>([]);
   const uploadedSelection = useRef<readonly File[] | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [selectedStoreId, setSelectedStoreId] = useState(storeId ?? '');
+  const [showStoreCreator, setShowStoreCreator] = useState(false);
+  const [storeName, setStoreName] = useState('');
+  const [storeMessage, setStoreMessage] = useState<string | null>(null);
   const me = useQuery({
     queryKey: sellerQueryKeys.me,
     queryFn: ({ signal }) => sellerApi.me(client, signal).then((r) => r.data.me),
@@ -37,14 +43,47 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
     queryKey: sellerQueryKeys.storesPage,
     queryFn: (cursor, signal) => sellerApi.stores(client, cursor, signal),
   });
+  const createStore = useBuyerMutation({
+    operation: (body: unknown, key, signal) => sellerApi.createStore(client, body, key, signal),
+    onSuccess: async (result) => {
+      setSelectedStoreId(result.data.store.store_id);
+      setStoreName('');
+      setStoreMessage('店铺已创建并自动选中，可以继续提交产品申请。');
+      setShowStoreCreator(false);
+      await client.invalidateQueries({ queryKey: sellerQueryKeys.stores });
+    },
+    onError: (error) =>
+      setStoreMessage(
+        isFrontendApiError(error) && error.code === 'DUPLICATE_STORE'
+          ? '这个店铺已经存在，请刷新店铺列表后选择。'
+          : '店铺创建未完成，请核对名称后重试。',
+      ),
+  });
+  const selectableStores = useMemo(
+    () =>
+      stores.items.filter(
+        (store) =>
+          store.status === 'ACTIVE' &&
+          store.marketplace_status === 'ACTIVE' &&
+          store.adapter_status === 'AVAILABLE',
+      ),
+    [stores.items],
+  );
+  useEffect(() => {
+    if (storeId && selectableStores.some((store) => store.id === storeId)) {
+      setSelectedStoreId(storeId);
+    } else if (!selectedStoreId && selectableStores.length === 1) {
+      setSelectedStoreId(selectableStores[0]!.id);
+    }
+  }, [selectedStoreId, selectableStores, storeId]);
   const mutation = useBuyerMutation({
     operation: (body: unknown, key, signal) =>
       sellerApi.submitApplication(client, body, key, signal),
-    onSuccess: async (result) => {
-      await client.invalidateQueries({ queryKey: sellerQueryKeys.applications(storeId) });
+    onSuccess: (result) => {
       navigate(`/seller/products/${result.data.application.id}`, { replace: true });
+      void client.invalidateQueries({ queryKey: sellerQueryKeys.applications(storeId) });
     },
-    onError: () => setMessage('提交未完成，请刷新页面事实后重试。'),
+    onError: (error) => setMessage(productApplicationErrorMessage(error)),
   });
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -62,14 +101,17 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
       .map((v) => v.trim())
       .filter(Boolean);
     const selectedStore = String(data.get('store_id') ?? '');
+    const amount = Number(data.get('ordering_guide_expected_amount_jpy'));
     if (
       !selectedStore ||
       !/^[A-Z0-9]{10}$/u.test(asin) ||
       !String(data.get('product_name') ?? '').trim() ||
+      !Number.isSafeInteger(amount) ||
+      amount < 1 ||
       files.current.length < 1 ||
       files.current.length > 8
     ) {
-      setMessage('请填写店铺、10 位产品标识、中文名，且选择 1 至 8 张图片。');
+      setMessage('请填写店铺、10 位产品标识、中文名、正整数日元金额，且选择 1 至 8 张图片。');
       return;
     }
     const selectedFiles = files.current;
@@ -96,6 +138,7 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
       product_url: String(data.get('product_url') ?? '').trim() || null,
       buyer_visible_notes: String(data.get('buyer_visible_notes') ?? '').trim() || null,
       seller_notes: String(data.get('seller_notes') ?? '').trim() || null,
+      ordering_guide_expected_amount_jpy: amount,
       image_files: manifest.files.map((file) => ({
         file_object_id: file.file_object_id,
         expected_file_version: file.file_version,
@@ -111,11 +154,13 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
   ].includes(upload.state);
   return (
     <section className="seller-page seller-submission-page">
-      <PageHeader
-        title="提交产品申请"
-        eyebrow="商品资料"
-        description="提交后进入审核；图片仅用于本次申请。"
-      />
+      {!embedded ? (
+        <PageHeader
+          title="提交产品申请"
+          eyebrow="商品资料"
+          description="提交后进入审核；图片仅用于本次申请。"
+        />
+      ) : null}
       <Card className="seller-form-card">
         {me.isPending || stores.isInitialPending ? (
           <p role="status">核验可提交范围中…</p>
@@ -133,17 +178,93 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
               重新读取
             </Button>
           </>
-        ) : !me.data?.access.can_submit_product_applications ? (
-          <Alert tone="warning">当前账号没有提交产品申请的权限。</Alert>
         ) : (
-          <form
-            className="seller-form"
-            onSubmit={(event) => {
-              void submit(event);
-            }}
-          >
+          <>
+            {selectableStores.length === 0 || showStoreCreator ? (
+              <form
+                className="seller-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const normalized = storeName.normalize('NFKC').trim();
+                  setStoreMessage(null);
+                  if (normalized) {
+                    createStore.mutate({
+                      marketplace_code: 'AMAZON_JP',
+                      store_name: normalized,
+                    });
+                  }
+                }}
+              >
+                <h3>{selectableStores.length === 0 ? '首次提交前先添加店铺' : '添加店铺'}</h3>
+                <p>店铺创建后归本组织所有，产品申请会提交到这个店铺。</p>
+                <FormField label="店铺名称" htmlFor="new-seller-store" required>
+                  <TextInput
+                    id="new-seller-store"
+                    value={storeName}
+                    maxLength={200}
+                    onChange={(event) => setStoreName(event.target.value)}
+                    required
+                  />
+                </FormField>
+                <div className="entry-actions">
+                  <Button
+                    type="submit"
+                    loading={createStore.isPending}
+                    disabled={!storeName.trim()}
+                  >
+                    创建店铺
+                  </Button>
+                  {selectableStores.length > 0 ? (
+                    <Button
+                      type="button"
+                      className="secondary"
+                      onClick={() => setShowStoreCreator(false)}
+                    >
+                      取消
+                    </Button>
+                  ) : null}
+                </div>
+                <BuyerMutationRecovery
+                  mutation={createStore}
+                  onRefresh={() => stores.retryInitial()}
+                />
+              </form>
+            ) : (
+              <Button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setStoreMessage(null);
+                  setShowStoreCreator(true);
+                }}
+              >
+                添加店铺
+              </Button>
+            )}
+            {storeMessage ? (
+              <Alert tone={createStore.state === 'FAILED' ? 'danger' : 'success'}>
+                {storeMessage}
+              </Alert>
+            ) : null}
+            {selectableStores.length === 0 ? (
+              <Alert tone="info">创建首个店铺后，产品申请表会自动显示。</Alert>
+            ) : !me.data.access.can_submit_product_applications ? (
+              <Alert tone="warning">当前账号可以添加店铺，但没有提交产品申请的权限。</Alert>
+            ) : (
+              <form
+                className="seller-form"
+                onSubmit={(event) => {
+                  void submit(event);
+                }}
+              >
             <FormField label="店铺" htmlFor="application-store" required>
-              <Select name="store_id" defaultValue={storeId ?? ''} required>
+              <Select
+                id="application-store"
+                name="store_id"
+                value={selectedStoreId}
+                onChange={(event) => setSelectedStoreId(event.target.value)}
+                required
+              >
                 <option value="">请选择店铺</option>
                 {stores.items.map((store) => (
                   <option
@@ -166,20 +287,35 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
               description="请填写平台页面中的 10 位产品标识"
               required
             >
-              <TextInput name="asin" maxLength={10} required />
+              <TextInput id="application-asin" name="asin" maxLength={10} required />
             </FormField>
             <FormField label="中文名" htmlFor="application-name" required>
-              <TextInput name="product_name" maxLength={200} required />
+              <TextInput id="application-name" name="product_name" maxLength={200} required />
+            </FormField>
+            <FormField
+              label="产品金额（JPY）"
+              htmlFor="application-amount"
+              description="填写买家下单时参考的日元整数金额，审核人员可核对调整"
+              required
+            >
+              <TextInput
+                id="application-amount"
+                name="ordering_guide_expected_amount_jpy"
+                type="number"
+                min="1"
+                step="1"
+                required
+              />
             </FormField>
             <FormField
               label="搜索词"
               htmlFor="application-keywords"
               description="多个搜索词用逗号分隔"
             >
-              <TextInput name="keywords" maxLength={1000} />
+              <TextInput id="application-keywords" name="keywords" maxLength={1000} />
             </FormField>
             <FormField label="产品链接" htmlFor="application-url">
-              <TextInput name="product_url" type="url" />
+              <TextInput id="application-url" name="product_url" type="url" />
             </FormField>
             <FormField
               label="申请图片"
@@ -187,26 +323,35 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
               description="1 至 8 张 JPG、PNG 或 WebP 图片，每张不超过 10 MiB"
               required
             >
-              <TextInput
-                name="images"
-                type="file"
+              <FileDropZone
+                id="application-images"
                 accept="image/jpeg,image/png,image/webp"
                 multiple
                 required
-                onChange={(event) => {
-                  files.current = Array.from(event.currentTarget.files ?? []);
+                maximumFiles={8}
+                maximumBytes={10 * 1024 * 1024}
+                buttonLabel="选择申请图片"
+                emptyLabel="尚未选择图片"
+                onFilesChange={(selectedFiles) => {
+                  files.current = [...selectedFiles];
                   uploadedSelection.current = null;
                   setMessage(null);
                 }}
               />
             </FormField>
             <FormField label="买家说明" htmlFor="application-buyer-notes">
-              <TextInput name="buyer_visible_notes" maxLength={2000} />
+              <TextInput
+                id="application-buyer-notes"
+                name="buyer_visible_notes"
+                maxLength={2000}
+              />
             </FormField>
             <FormField label="备注" htmlFor="application-seller-notes">
-              <TextInput name="seller_notes" maxLength={2000} />
+              <TextInput id="application-seller-notes" name="seller_notes" maxLength={2000} />
             </FormField>
-            {message ? <Alert tone="danger">{message}</Alert> : null}
+            {message && mutation.state !== 'FAILED' ? (
+              <Alert tone="danger">{message}</Alert>
+            ) : null}
             {upload.canRetry ? (
               <Button
                 type="button"
@@ -238,6 +383,7 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
             <RequestIdDisplay requestId={upload.requestId} />
             <BuyerMutationRecovery
               mutation={mutation}
+              deterministicMessage={message ?? '产品申请未创建，请刷新后重试。'}
               onRefresh={() => {
                 void me.refetch();
                 stores.retryInitial();
@@ -251,7 +397,9 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
             >
               提交申请
             </Button>
-          </form>
+              </form>
+            )}
+          </>
         )}
         {!stores.isInitialPending && !stores.initialError ? (
           <CursorPagination
@@ -269,10 +417,32 @@ export function SellerProductApplicationFormPage(): React.JSX.Element {
   );
 }
 
-export function SellerDemandFormPage(): React.JSX.Element {
+export function productApplicationErrorMessage(error: unknown): string {
+  if (!isFrontendApiError(error)) {
+    return '产品申请未创建，请稍后重试。';
+  }
+  switch (error.code) {
+    case 'PRODUCT_APPLICATION_CONFLICT':
+      return '这个产品标识已有待审核申请，请不要重复提交。';
+    case 'DUPLICATE_PRODUCT':
+      return '这个产品已经创建，无需再次申请。';
+    case 'ASIN_STORE_CONFLICT':
+      return '这个产品标识已经归属其他店铺，请核对店铺。';
+    case 'FORBIDDEN':
+      return '当前账号无权提交产品申请。';
+    case 'DEPENDENCY_UNAVAILABLE':
+      return '系统暂时无法分配审核任务，产品申请尚未创建，请稍后重试或联系总管理员。';
+    default:
+      return `产品申请未创建（${error.code}），请核对页面信息后重试。`;
+  }
+}
+
+export function SellerDemandFormPage({ embedded = false }: { embedded?: boolean } = {}): React.JSX.Element {
   const client = useQueryClient();
   const navigate = useNavigate();
+  const [search] = useSearchParams();
   const { storeId } = useSellerStoreContext();
+  const requestedProductId = search.get('product_id') ?? '';
   const [message, setMessage] = useState<string | null>(null);
   const me = useQuery({
     queryKey: sellerQueryKeys.me,
@@ -285,9 +455,9 @@ export function SellerDemandFormPage(): React.JSX.Element {
   });
   const mutation = useBuyerMutation({
     operation: (body: unknown, key, signal) => sellerApi.submitDemand(client, body, key, signal),
-    onSuccess: async () => {
-      await client.invalidateQueries({ queryKey: sellerQueryKeys.demands(storeId) });
+    onSuccess: () => {
       navigate('/seller/demands', { replace: true });
+      void client.invalidateQueries({ queryKey: sellerQueryKeys.demands(storeId) });
     },
     onError: () => setMessage('提交未完成，请刷新页面事实后重试。'),
   });
@@ -295,41 +465,33 @@ export function SellerDemandFormPage(): React.JSX.Element {
     event.preventDefault();
     setMessage(null);
     const data = new FormData(event.currentTarget);
-    const openAt = beijingEpoch(String(data.get('open_at') ?? ''));
-    const reservation = beijingEpoch(String(data.get('reservation_deadline') ?? ''));
-    const order = beijingEpoch(String(data.get('order_deadline') ?? ''));
     const quantity = Number(data.get('target_quantity'));
     if (
       !me.data?.access.can_submit_demand_batches ||
       !String(data.get('product_id') ?? '') ||
       !Number.isSafeInteger(quantity) ||
-      quantity < 1 ||
-      openAt === null ||
-      reservation === null ||
-      order === null ||
-      !(openAt < reservation && reservation < order)
+      quantity < 1
     ) {
-      setMessage('请填写通过的产品、正整数数量以及依次递增的北京时间。');
+      setMessage('请填写通过的产品和正整数数量。开放、预约和下单时间由系统自动排期。');
       return;
     }
     mutation.mutate({
       product_id: String(data.get('product_id')),
       task_type: String(data.get('task_type')),
       target_quantity: quantity,
-      open_at: openAt,
-      reservation_deadline: reservation,
-      order_deadline: order,
       buyer_visible_notes: String(data.get('buyer_visible_notes') ?? '').trim() || null,
       seller_notes: String(data.get('seller_notes') ?? '').trim() || null,
     });
   }
   return (
     <section className="seller-page seller-submission-page">
-      <PageHeader
-        title="提交需求"
-        eyebrow="数量计划"
-        description="每次追加数量都会新建一个需求批次，不会改历史记录。"
-      />
+      {!embedded ? (
+        <PageHeader
+          title="提交数量计划"
+          eyebrow="数量计划"
+          description="每次追加数量都是一份新的计划，之前的记录不会改动。"
+        />
+      ) : null}
       <Card className="seller-form-card">
         {me.isPending || products.isInitialPending ? (
           <p role="status">核验可提交产品中…</p>
@@ -348,11 +510,11 @@ export function SellerDemandFormPage(): React.JSX.Element {
             </Button>
           </>
         ) : !me.data?.access.can_submit_demand_batches ? (
-          <Alert tone="warning">当前账号没有提交需求的权限。</Alert>
+          <Alert tone="warning">当前账号没有提交数量计划的权限。</Alert>
         ) : (
           <form className="seller-form" onSubmit={submit}>
             <FormField label="已通过产品" htmlFor="demand-product" required>
-              <Select name="product_id" required defaultValue="">
+              <Select name="product_id" required defaultValue={requestedProductId}>
                 <option value="">请选择产品</option>
                 {products.items
                   .filter((product) => product.status === 'ACTIVE')
@@ -363,7 +525,7 @@ export function SellerDemandFormPage(): React.JSX.Element {
                   ))}
               </Select>
             </FormField>
-            <FormField label="任务类型" htmlFor="demand-type" required>
+            <FormField label="评论类型" htmlFor="demand-type" required>
               <Select name="task_type" defaultValue="TEXT">
                 <option value="TEXT">文字评价</option>
                 <option value="RATING">评分评价</option>
@@ -374,15 +536,7 @@ export function SellerDemandFormPage(): React.JSX.Element {
             <FormField label="目标数量" htmlFor="demand-quantity" required>
               <TextInput name="target_quantity" type="number" min="1" step="1" required />
             </FormField>
-            <FormField label="开放时间（北京时间）" htmlFor="demand-open" required>
-              <TextInput name="open_at" type="datetime-local" required />
-            </FormField>
-            <FormField label="预约截止（北京时间）" htmlFor="demand-reservation" required>
-              <TextInput name="reservation_deadline" type="datetime-local" required />
-            </FormField>
-            <FormField label="下单截止（北京时间）" htmlFor="demand-order" required>
-              <TextInput name="order_deadline" type="datetime-local" required />
-            </FormField>
+            <Alert tone="info">开放、预约和下单的时间由系统自动排期；工作人员审核时确认首个下单日期。</Alert>
             <FormField label="买家说明" htmlFor="demand-buyer-notes">
               <TextInput name="buyer_visible_notes" maxLength={2000} />
             </FormField>
@@ -398,7 +552,7 @@ export function SellerDemandFormPage(): React.JSX.Element {
               }}
             />
             <Button className="seller-form-submit" type="submit" loading={mutation.isPending}>
-              提交需求
+              提交数量计划
             </Button>
           </form>
         )}
@@ -418,8 +572,26 @@ export function SellerDemandFormPage(): React.JSX.Element {
   );
 }
 
-function beijingEpoch(value: string): number | null {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/u.test(value)) return null;
-  const epoch = Date.parse(`${value}:00+08:00`);
-  return Number.isSafeInteger(epoch) && epoch >= 0 ? epoch : null;
+export function SellerProductCampaignFlowPage({
+  initialMode,
+}: { initialMode: 'product' | 'demand' }): React.JSX.Element {
+  const [mode, setMode] = useState(initialMode);
+  return (
+    <section className="seller-page seller-submission-page">
+      <PageHeader
+        title="商品与数量计划"
+        eyebrow="统一提交入口"
+        description="先申请商品；商品审核通过后，就可以为它提交数量计划。每一步都有独立的审核记录。"
+      />
+      <div className="seller-flow-tabs" role="tablist" aria-label="商品与数量计划">
+        <Button type="button" className={mode === 'product' ? undefined : 'secondary'} onClick={() => setMode('product')}>
+          商品申请
+        </Button>
+        <Button type="button" className={mode === 'demand' ? undefined : 'secondary'} onClick={() => setMode('demand')}>
+          创建数量计划
+        </Button>
+      </div>
+      {mode === 'product' ? <SellerProductApplicationFormPage embedded /> : <SellerDemandFormPage embedded />}
+    </section>
+  );
 }

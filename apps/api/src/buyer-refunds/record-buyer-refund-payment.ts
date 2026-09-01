@@ -16,10 +16,6 @@ import {
   type IdempotencyClaim,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   prepareWorkItemCompletionStatements,
   requireAssignedWorkflowActor,
 } from '../staff-assignment';
@@ -236,15 +232,6 @@ export async function recordBuyerRefundPayment(
       },
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `buyer-refund-payment:${paymentEntryId}`,
-      eventType: 'BUYER_REFUND_PAYMENT_RECORDED',
-      aggregateType: 'BUYER_REFUND_OBLIGATION',
-      aggregateId: obligationId,
-      payload: response,
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -359,7 +346,6 @@ export async function recordBuyerRefundPayment(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

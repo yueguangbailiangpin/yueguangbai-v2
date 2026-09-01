@@ -1,13 +1,14 @@
-import { ArrowRight, Clock3, Tag, UsersRound } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, PageHeader, SearchInput, Select, StatusBadge } from '../../ui/primitives';
+import { MoonwhiteIcon } from '../../ui/MoonwhiteIcon';
 import { buyerApi } from '../api/client';
 import { buyerQueryKeys, cursorQuery } from '../queries/keys';
 import { useCursorPages } from '../queries/useCursorPages';
 import { formatBps, formatJpy, formatShanghai } from '../shared/format';
 import { BuyerEmpty, BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
+import { ProtectedImage } from '../shared/ProtectedImage';
 import { reviewTypeLabel } from '../shared/status';
 
 const PAGE_SIZE = 6;
@@ -67,7 +68,7 @@ export function BuyerDemandsPage(): React.JSX.Element {
           label="搜产品或店铺"
         />
         <Select
-          aria-label="筛选任务类型"
+          aria-label="筛选评论类型"
           value={filter}
           onChange={(event) => changeFilter(event.target.value as Filter)}
         >
@@ -93,30 +94,39 @@ export function BuyerDemandsPage(): React.JSX.Element {
               key={item.demand_id}
               to={`/buyer/demands/${item.demand_id}`}
             >
-              <span className="buyer-product-icon" aria-hidden="true">
-                <Tag />
-              </span>
+              <div className="buyer-product-icon">
+                {item.main_image ? <ProtectedImage
+                  reference={item.main_image}
+                  alt=""
+                  className="buyer-product-main-image"
+                  fallback={<MoonwhiteIcon name="inventory_2" size={20} />}
+                /> : <MoonwhiteIcon name="inventory_2" size={20} />}
+              </div>
               <div className="buyer-product-row-main">
                 <div className="buyer-product-row-title">
                   <div>
                     <p>{item.store_display_name}</p>
                     <h2>{item.product_name}</h2>
                   </div>
-                  <StatusBadge tone="processing">{reviewTypeLabel(item.task_type)}</StatusBadge>
+                  <StatusBadge tone={item.reservation_eligibility === 'ELIGIBLE' ? 'processing' : 'warning'}>
+                    {item.reservation_eligibility === 'ELIGIBLE'
+                      ? reviewTypeLabel(item.task_type)
+                      : '该店铺已有预约'}
+                  </StatusBadge>
                 </div>
                 <div className="buyer-product-row-facts">
                   <span>{formatJpy(item.reference_order_amount_jpy)}</span>
                   <span>自费 {formatBps(item.buyer_self_pay_bps)}</span>
                   <span>
-                    <UsersRound aria-hidden="true" />剩 {item.remaining_quantity}
+                    <MoonwhiteIcon name="groups" size={20} />剩 {item.remaining_quantity}
                   </span>
                   <span>
-                    <Clock3 aria-hidden="true" />
+                    <MoonwhiteIcon name="event_available" size={20} />
                     {formatShanghai(item.reservation_deadline)}
                   </span>
                 </div>
               </div>
-              <ArrowRight className="buyer-product-row-arrow" aria-hidden="true" />
+              <MoonwhiteIcon name="chevron_right" size={20} className="buyer-product-row-arrow" />
             </Link>
           ))}
         </div>

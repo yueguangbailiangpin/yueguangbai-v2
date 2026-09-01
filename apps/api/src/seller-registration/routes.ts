@@ -95,11 +95,9 @@ export function registerSellerRegistrationRoutes(app: Hono<AppEnv>): void {
         )
       )
         throw validation();
-      const leadId = url.searchParams.get('lead_id'),
-        sellerOrganizationId = url.searchParams.get('seller_organization_id');
-      if ((leadId === null) === (sellerOrganizationId === null)) throw validation();
+      const sellerOrganizationId = url.searchParams.get('seller_organization_id');
+      if (sellerOrganizationId === null) throw validation();
       const invitation = await readCurrentSellerInvitation(context.env.DB, actor, {
-        leadId,
         sellerOrganizationId,
       });
       context.header('Cache-Control', 'no-store');

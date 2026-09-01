@@ -7,6 +7,7 @@ import {
 import { completePurposeBoundUploadIntent, createPurposeBoundUploadIntent } from './file-upload-api';
 import type { UploadedFileReceipt } from './file-contracts';
 import { validateFileSelection, type ValidatedFileSelection } from './file-descriptor';
+import { downscaleImageForUpload } from './image-downscale';
 import {
   initialFileUploadSnapshot,
   type FileUploadSlotState,
@@ -67,7 +68,7 @@ export class FileUploadController {
 
   getSnapshot = (): FileUploadSnapshot => this.snapshot;
 
-  start(workflowKey: unknown, files: readonly File[]): Promise<void> {
+  async start(workflowKey: unknown, files: readonly File[]): Promise<void> {
     if (this.active) return this.active;
     if (!this.snapshot.canStartNewOperation) {
       return Promise.resolve();
@@ -98,7 +99,10 @@ export class FileUploadController {
       state: 'VALIDATING',
     });
     try {
-      this.selections = validateFileSelection(this.workflow, files);
+      const prepared = await Promise.all(
+        files.map((file) => downscaleImageForUpload(file)),
+      );
+      this.selections = validateFileSelection(this.workflow, prepared);
     } catch (error: unknown) {
       this.publishFailure(error, 'ERROR', false, false);
       return Promise.resolve();
@@ -210,7 +214,12 @@ export class FileUploadController {
       await this.uploadRemaining();
     } catch (error: unknown) {
       if (error instanceof FileUploadTransitionError) throw error;
-      if (isCanceledFrontendError(error)) this.cancelFromFailure(error);
+      const canceled = isCanceledFrontendError(error)
+        || this.snapshot.state === 'CANCELED'
+        || this.abortController?.signal.aborted === true;
+      if (canceled) {
+        if (this.snapshot.state !== 'CANCELED') this.cancelFromFailure(error);
+      }
       else {
         this.createKey = null;
         this.publishFailure(error, 'RESTART_REQUIRED', false, true);
@@ -221,31 +230,30 @@ export class FileUploadController {
   private async uploadRemaining(): Promise<void> {
     if (!this.workflow || !this.intent) return;
     this.abortController = new AbortController();
-    for (const slot of this.intent.slots) {
-      if (slot.state === 'UPLOADED') continue;
-      if (!slot.uploadToken) {
-        this.publishFailure(
-          new FrontendApiError('FILE_UPLOAD_EXPIRED', 410, null, 'CONFLICT'),
-          'RESTART_REQUIRED', false, true,
-        );
-        return;
-      }
-      slot.idempotencyKey ??= this.generateKey();
-      slot.state = 'UPLOADING';
-      this.publishSlotProgress(slot, {
-        mode: 'INDETERMINATE', loadedBytes: null, totalBytes: null, percent: null,
-      });
-      try {
+    const pending = this.intent.slots.filter((slot) => slot.state !== 'UPLOADED');
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      while (next < pending.length) {
+        const slot = pending[next++];
+        if (!slot) return;
+        if (!slot.uploadToken) {
+          throw new FrontendApiError('FILE_UPLOAD_EXPIRED', 410, null, 'CONFLICT');
+        }
+        slot.idempotencyKey ??= this.generateKey();
+        slot.state = 'UPLOADING';
+        this.publishSlotProgress(slot, {
+          mode: 'INDETERMINATE', loadedBytes: null, totalBytes: null, percent: null,
+        });
         const result = await uploadSingleFileMultipart({
           client: this.client,
-          identity: this.workflow.identity,
-          lifecyclePrefix: this.workflow.lifecyclePrefix,
-          intentId: this.intent.id,
+          identity: this.workflow!.identity,
+          lifecyclePrefix: this.workflow!.lifecyclePrefix,
+          intentId: this.intent!.id,
           fileObjectId: slot.fileObjectId,
           file: slot.selection.file,
           uploadToken: slot.uploadToken,
           idempotencyKey: slot.idempotencyKey,
-          signal: this.abortController.signal,
+          signal: this.abortController!.signal,
           onProgress: (progress) => this.publishSlotProgress(slot, progress),
         });
         slot.state = 'UPLOADED';
@@ -258,18 +266,27 @@ export class FileUploadController {
         slot.uploadToken = null;
         slot.idempotencyKey = null;
         this.publishSlots('UPLOADING', result.requestId);
-      } catch (error: unknown) {
-        if (error instanceof FileUploadTransitionError) throw error;
-        if (isCanceledFrontendError(error)) {
-          slot.state = 'CANCELED';
-          this.cancelFromFailure(error);
-          return;
-        }
-        slot.state = 'FAILED';
-        this.publishSlots('UPLOADING', this.snapshot.requestId);
-        this.handleUploadFailure(error);
+      }
+    };
+    try {
+      const concurrency = this.workflowKey === 'sellerProductApplicationImage' ? 3 : 1;
+      await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    } catch (error: unknown) {
+      if (error instanceof FileUploadTransitionError) throw error;
+      const canceled = isCanceledFrontendError(error)
+        || this.snapshot.state === 'CANCELED'
+        || this.abortController.signal.aborted;
+      if (canceled) {
+        this.abortController.abort();
+        if (this.snapshot.state !== 'CANCELED') this.cancelFromFailure(error);
         return;
       }
+      this.abortController.abort();
+      const failed = pending.find((slot) => slot.state === 'UPLOADING');
+      if (failed) failed.state = 'FAILED';
+      this.publishSlots('UPLOADING', this.snapshot.requestId);
+      this.handleUploadFailure(error);
+      return;
     }
     await this.complete();
   }

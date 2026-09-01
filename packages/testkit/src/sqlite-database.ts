@@ -106,12 +106,32 @@ class SqliteStatement implements SqlStatement {
 export function applyMigrations(
   database: SqliteDatabase,
   migrationsDirectory = path.resolve(process.cwd(), 'migrations'),
+  throughSchemaVersion?: number,
 ): string[] {
-  const files = readdirSync(migrationsDirectory)
+  const availableFiles = readdirSync(migrationsDirectory)
     .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
     .sort();
 
-  if (files.length === 0) throw new Error('no_migrations_found');
+  if (availableFiles.length === 0) throw new Error('no_migrations_found');
+  if (
+    throughSchemaVersion !== undefined
+    && (!Number.isInteger(throughSchemaVersion) || throughSchemaVersion < 1)
+  ) {
+    throw new Error('invalid_migration_target');
+  }
+  const files = throughSchemaVersion === undefined
+    ? availableFiles
+    : availableFiles.filter(
+      (name) => Number.parseInt(name.slice(0, 4), 10) <= throughSchemaVersion,
+    );
+  if (
+    throughSchemaVersion !== undefined
+    && !files.some(
+      (name) => Number.parseInt(name.slice(0, 4), 10) === throughSchemaVersion,
+    )
+  ) {
+    throw new Error('migration_target_not_found');
+  }
 
   for (const file of files) {
     database.exec('BEGIN IMMEDIATE;');
@@ -133,22 +153,25 @@ export function applyMigrations(
   return files;
 }
 
-export function createMigratedTestDatabase(): SqliteDatabase {
+export interface CreateMigratedTestDatabaseOptions {
+  throughSchemaVersion?: number;
+}
+
+export function createMigratedTestDatabase(
+  options: CreateMigratedTestDatabaseOptions = {},
+): SqliteDatabase {
   const database = new SqliteDatabase();
-  applyMigrations(database);
+  applyMigrations(
+    database,
+    path.resolve(process.cwd(), 'migrations'),
+    options.throughSchemaVersion,
+  );
   // Phase 3H workflows require an explicit, fully eligible assignee. Keep a
   // deterministic owner fixture available to tests that focus on another
-  // bounded context and do not define their own staff topology.
+  // bounded context and do not define their own staff topology. The D-056
+  // fixed-assignment model has no departments/teams any more — a plain
+  // owner account is enough.
   database.exec(`
-    INSERT INTO staff_departments (
-      id, code, name, status, version, created_at, updated_at, disabled_at
-    ) VALUES ('phase3h-test-department','phase3h-test','Phase 3H Test',
-      'ACTIVE',1,1,1,NULL);
-    INSERT INTO staff_teams (
-      id, department_id, code, name, status, version,
-      created_at, updated_at, disabled_at
-    ) VALUES ('phase3h-test-team','phase3h-test-department','phase3h-test',
-      'Phase 3H Test','ACTIVE',1,1,1,NULL);
     INSERT INTO staff_users (
       id, display_name, status, authorization_version, version,
       created_at, updated_at, disabled_at
@@ -157,9 +180,6 @@ export function createMigratedTestDatabase(): SqliteDatabase {
       staff_id, role_code, status, assigned_by_staff_id, assigned_at,
       revoked_at, created_at, updated_at
     ) VALUES ('zz-phase3h-test-owner','owner','ACTIVE',NULL,1,NULL,1,1);
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES ('zz-phase3h-test-owner','phase3h-test-team','ACTIVE',1,NULL,1,1);
   `);
   return database;
 }

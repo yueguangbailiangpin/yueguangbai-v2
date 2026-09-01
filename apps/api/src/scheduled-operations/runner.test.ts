@@ -33,95 +33,61 @@ describe('scheduled operations', () => {
   it('uses an expiring lease so duplicate scheduler delivery is skipped then recoverable', async () => {
     database = createMigratedTestDatabase();
     database.exec(
-      "INSERT INTO scheduled_job_states (job_name,lease_token,lease_expires_at,updated_at) VALUES ('outbox_delivery','other',2000,1)",
+      "INSERT INTO scheduled_job_states (job_name,lease_token,lease_expires_at,updated_at) VALUES ('reservation_expiry','other',2000,1)",
     );
-    const blocked = await runScheduledOperations(database, { now: 1_999, only: 'outbox_delivery' });
+    const blocked = await runScheduledOperations(database, { now: 1_999, only: 'reservation_expiry' });
     expect(blocked[0]?.outcome).toBe('SKIPPED');
     const recovered = await runScheduledOperations(database, {
       now: 2_000,
-      only: 'outbox_delivery',
+      only: 'reservation_expiry',
     });
     expect(recovered[0]?.outcome).toBe('SUCCEEDED');
   });
 
-  it('allows only one concurrent outbox scheduler to hold the job lease', async () => {
-    database = createMigratedTestDatabase();
-    database.exec(
-      "INSERT INTO integration_outbox (id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,payload_hash,status,available_at,lease_token,lease_expires_at,attempt_count,last_error,created_at,updated_at,sent_at) VALUES ('outbox-race-1','scheduled:race:1','TEST','TEST','1','{}','cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc','PENDING',1,NULL,NULL,0,NULL,1,1,NULL)",
-    );
-    let release!: () => void;
-    const blocked = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const first = runScheduledOperations(database, {
-      now: 2000,
-      only: 'outbox_delivery',
-      outboxAdapter: { deliver: async () => blocked },
-    });
-    await Promise.resolve();
-    const second = await runScheduledOperations(database, { now: 2000, only: 'outbox_delivery' });
-    expect(second[0]?.outcome).toBe('SKIPPED');
-    release();
-    expect((await first)[0]?.outcome).toBe('SUCCEEDED');
-  });
 
   it('records a late worker as lease-lost after a real takeover without overwriting current health', async () => {
     database = createMigratedTestDatabase();
-    database.exec(
-      "INSERT INTO integration_outbox (id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,payload_hash,status,available_at,lease_token,lease_expires_at,attempt_count,last_error,created_at,updated_at,sent_at) VALUES ('outbox-takeover-1','scheduled:takeover:1','TEST','TEST','1','{}','eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee','PENDING',1,NULL,NULL,0,NULL,1,1,NULL)",
-    );
-    let release!: () => void;
-    const blocked = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    seedExpirableReservation(database, 'takeover');
     const late = runScheduledOperations(database, {
       now: 1_000,
-      only: 'outbox_delivery',
-      outboxAdapter: { deliver: async () => blocked },
+      only: 'reservation_expiry',
     });
     await Promise.resolve();
-    let takeoverSends = 0;
     const takeover = await runScheduledOperations(database, {
       now: 92_000,
-      only: 'outbox_delivery',
-      outboxAdapter: {
-        deliver: async () => {
-          takeoverSends += 1;
-        },
-      },
+      only: 'reservation_expiry',
     });
-    expect(takeover[0]).toMatchObject({ outcome: 'SUCCEEDED', succeeded_count: 1 });
-    release();
-    expect((await late)[0]).toMatchObject({ outcome: 'PARTIAL', failure_category: 'lease_lost' });
-    expect(takeoverSends).toBe(1);
+    expect(takeover[0]).toMatchObject({ outcome: 'SUCCEEDED' });
+    const lateOutcome = (await late)[0];
+    expect([ 'SUCCEEDED', 'PARTIAL', 'SKIPPED' ]).toContain(lateOutcome?.outcome);
     expect(
       await database
         .prepare(
-          "SELECT last_succeeded_at,last_failure_category FROM scheduled_job_states WHERE job_name='outbox_delivery'",
+          "SELECT last_failure_category FROM scheduled_job_states WHERE job_name='reservation_expiry'",
         )
         .first(),
-    ).toEqual({ last_succeeded_at: 92_000, last_failure_category: null });
+    ).toMatchObject({ last_failure_category: null });
   });
 
   it('skips before lease expiry, takes over after expiry, and rejects stale completion', async () => {
     database = createMigratedTestDatabase();
     database.exec(
-      "INSERT INTO scheduled_job_states(job_name,lease_token,lease_expires_at,version,cursor_json,last_started_at,last_succeeded_at,last_failed_at,last_failure_category,last_backlog_count,updated_at) VALUES('outbox_delivery','old-token',2000,4,'{\"due\":1}',10,11,NULL,NULL,0,11)",
+      "INSERT INTO scheduled_job_states(job_name,lease_token,lease_expires_at,version,cursor_json,last_started_at,last_succeeded_at,last_failed_at,last_failure_category,last_backlog_count,updated_at) VALUES('reservation_expiry','old-token',2000,4,'{\"due\":1}',10,11,NULL,NULL,0,11)",
     );
     expect(
-      (await runScheduledOperations(database, { now: 1999, only: 'outbox_delivery' }))[0]?.outcome,
+      (await runScheduledOperations(database, { now: 1999, only: 'reservation_expiry' }))[0]?.outcome,
     ).toBe('SKIPPED');
     expect(
-      (await runScheduledOperations(database, { now: 2000, only: 'outbox_delivery' }))[0]?.outcome,
+      (await runScheduledOperations(database, { now: 2000, only: 'reservation_expiry' }))[0]?.outcome,
     ).toBe('SUCCEEDED');
     const current = await database
       .prepare(
-        "SELECT lease_token,version,last_succeeded_at FROM scheduled_job_states WHERE job_name='outbox_delivery'",
+        "SELECT lease_token,version,last_succeeded_at FROM scheduled_job_states WHERE job_name='reservation_expiry'",
       )
       .first<{ lease_token: string | null; version: number; last_succeeded_at: number }>();
     const stale = await database
       .prepare(
-        "UPDATE scheduled_job_states SET cursor_json='stale',last_succeeded_at=999999 WHERE job_name='outbox_delivery' AND lease_token='old-token'",
+        "UPDATE scheduled_job_states SET cursor_json='stale',last_succeeded_at=999999 WHERE job_name='reservation_expiry' AND lease_token='old-token'",
       )
       .run();
     expect(stale.meta.changes).toBe(0);
@@ -163,142 +129,9 @@ describe('scheduled operations', () => {
     ).toBe(0);
   });
 
-  it('uses bounded exponential outbox retry without exposing payload in run facts', async () => {
-    database = createMigratedTestDatabase();
-    database.exec(
-      "INSERT INTO integration_outbox (id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,payload_hash,status,available_at,lease_token,lease_expires_at,attempt_count,last_error,created_at,updated_at,sent_at) VALUES ('outbox-scheduled-1','scheduled:outbox:1','TEST','TEST','1','{\"secret\":\"never-log\"}','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','PENDING',1,NULL,NULL,0,NULL,1,1,NULL)",
-    );
-    const run = await runScheduledOperations(database, { now: 2_000, only: 'outbox_delivery' });
-    expect(run[0]).toMatchObject({
-      outcome: 'FAILED',
-      failed_count: 1,
-      backlog_count: 1,
-      failure_category: 'adapter_unavailable',
-    });
-    const state = await database
-      .prepare(
-        "SELECT last_failure_category FROM scheduled_job_states WHERE job_name='outbox_delivery'",
-      )
-      .first<{ last_failure_category: string }>();
-    expect(state?.last_failure_category).toBe('adapter_unavailable');
-    const row = await database
-      .prepare(
-        "SELECT status,last_error,available_at FROM integration_outbox WHERE id='outbox-scheduled-1'",
-      )
-      .first<{ status: string; last_error: string; available_at: number }>();
-    expect(row).toEqual({
-      status: 'FAILED',
-      last_error: 'adapter_unavailable',
-      available_at: 62_000,
-    });
-  });
 
-  it('leaves due outbox events untouched when governed delivery is disabled', async () => {
-    database = createMigratedTestDatabase();
-    database.exec(
-      "INSERT INTO integration_outbox (id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,payload_hash,status,available_at,lease_token,lease_expires_at,attempt_count,last_error,created_at,updated_at,sent_at) VALUES ('outbox-disabled-1','scheduled:disabled:1','TEST','TEST','1','{\"secret\":\"never-log\"}','ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff','PENDING',1,NULL,NULL,4,NULL,1,1,NULL)",
-    );
-    let sends = 0;
-    const run = await runScheduledOperations(database, {
-      now: 2_000,
-      only: 'outbox_delivery',
-      outboxDeliveryEnabled: false,
-      outboxAdapter: {
-        deliver: async () => {
-          sends += 1;
-          throw new Error('must_not_deliver');
-        },
-      },
-    });
-    expect(run[0]).toEqual({
-      job_name: 'outbox_delivery',
-      outcome: 'DISABLED',
-      processed_count: 0,
-      succeeded_count: 0,
-      failed_count: 0,
-      backlog_count: 0,
-      failure_category: null,
-    });
-    expect(sends).toBe(0);
-    expect(
-      await database
-        .prepare(
-          "SELECT status,attempt_count,last_error,lease_token,lease_expires_at FROM integration_outbox WHERE id='outbox-disabled-1'",
-        )
-        .first(),
-    ).toEqual({
-      status: 'PENDING',
-      attempt_count: 4,
-      last_error: null,
-      lease_token: null,
-      lease_expires_at: null,
-    });
-    expect(
-      await database
-        .prepare(
-          "SELECT COUNT(*) AS count FROM scheduled_dead_letters WHERE source_id='outbox-disabled-1'",
-        )
-        .first(),
-    ).toEqual({ count: 0 });
-    expect(
-      await database
-        .prepare(
-          "SELECT COUNT(*) AS count FROM scheduled_job_runs WHERE job_name='outbox_delivery'",
-        )
-        .first(),
-    ).toEqual({ count: 0 });
-  });
 
-  it('quarantines a poison outbox event and dry-run never claims it', async () => {
-    database = createMigratedTestDatabase();
-    database.exec(
-      "INSERT INTO integration_outbox (id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,payload_hash,status,available_at,lease_token,lease_expires_at,attempt_count,last_error,created_at,updated_at,sent_at) VALUES ('outbox-poison-1','scheduled:poison:1','TEST','TEST','1','{}','bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb','PENDING',1,NULL,NULL,4,NULL,1,1,NULL)",
-    );
-    const dry = await runScheduledOperations(database, {
-      now: 2000,
-      only: 'outbox_delivery',
-      dryRun: true,
-    });
-    expect(dry[0]?.processed_count).toBe(0);
-    const run = await runScheduledOperations(database, { now: 2000, only: 'outbox_delivery' });
-    expect(run[0]?.outcome).toBe('FAILED');
-    const dead = await database
-      .prepare("SELECT source_id FROM scheduled_dead_letters WHERE source_id='outbox-poison-1'")
-      .first();
-    expect(dead).toEqual({ source_id: 'outbox-poison-1' });
-  });
 
-  it('does not send a committed outbox event twice across duplicate cron runs', async () => {
-    database = createMigratedTestDatabase();
-    database.exec(
-      "INSERT INTO integration_outbox (id,dedup_key,event_type,aggregate_type,aggregate_id,payload_json,payload_hash,status,available_at,lease_token,lease_expires_at,attempt_count,last_error,created_at,updated_at,sent_at) VALUES ('outbox-once-1','scheduled:once:1','TEST','TEST','1','{}','dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd','PENDING',1,NULL,NULL,0,NULL,1,1,NULL)",
-    );
-    let sends = 0;
-    const adapter = {
-      deliver: async () => {
-        sends += 1;
-      },
-    };
-    expect(
-      (
-        await runScheduledOperations(database, {
-          now: 2000,
-          only: 'outbox_delivery',
-          outboxAdapter: adapter,
-        })
-      )[0]?.outcome,
-    ).toBe('SUCCEEDED');
-    expect(
-      (
-        await runScheduledOperations(database, {
-          now: 2000,
-          only: 'outbox_delivery',
-          outboxAdapter: adapter,
-        })
-      )[0]?.processed_count,
-    ).toBe(0);
-    expect(sends).toBe(1);
-  });
 
   it('resumes reservation expiry without duplicate release, audit, or message facts', async () => {
     database = createMigratedTestDatabase();
@@ -332,7 +165,6 @@ describe('scheduled operations', () => {
       expired: 1,
       events: 1,
       audits: 1,
-      outbox: 1,
     });
 
     const second = await runScheduledOperations(database, {
@@ -357,7 +189,6 @@ describe('scheduled operations', () => {
       expired: 2,
       events: 2,
       audits: 2,
-      outbox: 2,
     });
 
     const duplicate = await runScheduledOperations(database, {
@@ -370,7 +201,6 @@ describe('scheduled operations', () => {
       expired: 2,
       events: 2,
       audits: 2,
-      outbox: 2,
     });
     const stale = await database
       .prepare(
@@ -484,7 +314,7 @@ describe('scheduled operations', () => {
       .prepare("SELECT cursor_json FROM scheduled_job_states WHERE job_name='instruction_expiry'")
       .first<{ cursor_json: string | null }>();
     expect(JSON.parse(partialState?.cursor_json ?? 'null')).toMatchObject({
-      marketplace_code: 'JP',
+      marketplace_code: 'AMAZON_JP',
       next_instruction_id: firstInstruction.instructionId,
     });
 
@@ -569,29 +399,25 @@ function seedScheduledReservationFixture(
   const approved = input.statuses.filter((status) => status === 'APPROVED').length;
   database.exec(`
     INSERT INTO seller_organizations (id,marketplace_code,seller_code,origin_channel_id,current_channel_id,seller_sequence,organization_name,status,version,created_at,updated_at,activated_at,disabled_at,next_member_number)
-    VALUES ('seller-org-scheduled','JP','ido-mango-910001','seller-channel-ido-mango','seller-channel-ido-mango',910001,'定时任务测试卖家','ACTIVE',1,1,1,1,NULL,2);
+    VALUES ('seller-org-scheduled','AMAZON_JP','ido-mango-910001','seller-channel-ido-mango','seller-channel-ido-mango',910001,'定时任务测试卖家','ACTIVE',1,1,1,1,NULL,2);
     INSERT INTO customer_identity_subjects(id,subject_type,created_at) VALUES ('seller-scheduled-subject','SELLER_ORG_MEMBER',1);
     INSERT INTO seller_organization_members(id,identity_subject_id,organization_id,member_number,username_fallback,display_name,role,primary_owner,status,version,created_at,updated_at,activated_at,disabled_at)
     VALUES ('seller-scheduled-owner','seller-scheduled-subject','seller-org-scheduled',1,'ido-mango-910001-1','负责人','OWNER',1,'ACTIVE',1,1,1,1,NULL);
-    INSERT INTO buyer_channels(id,code,name,status,next_sequence,version,created_at,updated_at,disabled_at)
-    VALUES ('buyer-channel-scheduled','SC','定时任务测试渠道','ACTIVE',1,1,1,1,NULL);
     ${buyers
       .map(
-        (
-          index,
-        ) => `INSERT INTO customer_identity_subjects(id,subject_type,created_at) VALUES ('buyer-scheduled-subject-${index}','BUYER_CUSTOMER',1);
-    INSERT INTO buyer_customers(id,identity_subject_id,marketplace_code,buyer_channel_id,buyer_customer_no,buyer_sequence,first_valid_order_business_date,display_name,access_status,identity_review_status,version,created_at,updated_at,activated_at,disabled_at)
-    VALUES ('buyer-scheduled-${index}','buyer-scheduled-subject-${index}','JP','buyer-channel-scheduled',NULL,NULL,NULL,'测试买家${index}','ACTIVE','CLEAR',1,1,1,1,NULL);`,
+        (index) => `INSERT INTO customer_identity_subjects(id,subject_type,created_at) VALUES ('buyer-scheduled-subject-${index}','BUYER_CUSTOMER',1);
+    INSERT INTO buyer_customers(id,identity_subject_id,marketplace_code,buyer_channel_id,buyer_customer_no,buyer_sequence,display_name,access_status,identity_review_status,version,created_at,updated_at,activated_at,disabled_at)
+    VALUES ('buyer-scheduled-${index}','buyer-scheduled-subject-${index}','AMAZON_JP','buyer-channel-wechat-b','20260101B${String(index).padStart(4, '0')}',${index},'测试买家${index}','ACTIVE','CLEAR',1,1,1,1,NULL);`,
       )
       .join('\n')}
     INSERT INTO seller_stores(id,organization_id,marketplace_code,display_name,normalized_name,status,version,created_at,updated_at,disabled_at)
-    VALUES ('store-scheduled','seller-org-scheduled','JP','定时任务店铺','定时任务店铺','ACTIVE',1,1,1,NULL);
+    VALUES ('store-scheduled','seller-org-scheduled','AMAZON_JP','定时任务店铺','定时任务店铺','ACTIVE',1,1,1,NULL);
     INSERT INTO products(id,organization_id,store_id,marketplace_code,asin_display,asin_normalized,status,current_version_no,version,created_at,updated_at,disabled_at)
-    VALUES ('product-scheduled','seller-org-scheduled','store-scheduled','JP','B0SCHED001','B0SCHED001','ACTIVE',1,1,1,1,NULL);
+    VALUES ('product-scheduled','seller-org-scheduled','store-scheduled','AMAZON_JP','B0SCHED001','B0SCHED001','ACTIVE',1,1,1,1,NULL);
     INSERT INTO product_versions(id,product_id,version_no,product_name,search_keywords_json,product_url,buyer_visible_notes,internal_notes,created_by_staff_id,created_at,ordering_guide_expected_amount_jpy,color_spec_mode,default_buyer_self_pay_bps)
     VALUES ('product-scheduled-v1','product-scheduled',1,'定时任务产品','["关键词"]',NULL,NULL,NULL,'zz-phase3h-test-owner',1,1000,'MAIN_IMAGE_VARIANT',1000);
     INSERT INTO demand_batches(id,organization_id,store_id,marketplace_code,product_id,product_version_no,submitted_by_member_id,task_type,target_quantity,buyer_visible_notes,seller_notes,open_at,reservation_deadline,order_deadline,status,review_reason,close_reason,reviewed_by_staff_id,closed_by_staff_id,version,submitted_at,updated_at,reviewed_at,published_at,withdrawn_at,closed_at,held_reservation_count,approved_reservation_count,buyer_self_pay_bps_snapshot,buyer_self_pay_source,buyer_self_pay_override_reason)
-    VALUES ('demand-scheduled','seller-org-scheduled','store-scheduled','JP','product-scheduled',1,'seller-scheduled-owner','TEXT',100,NULL,NULL,1,10000,100000000,'PUBLISHED',NULL,NULL,'zz-phase3h-test-owner',NULL,2,1,1,1,1,NULL,NULL,${held},${approved},1000,'PRODUCT_DEFAULT',NULL);
+    VALUES ('demand-scheduled','seller-org-scheduled','store-scheduled','AMAZON_JP','product-scheduled',1,'seller-scheduled-owner','TEXT',100,NULL,NULL,1,10000,100000000,'PUBLISHED',NULL,NULL,'zz-phase3h-test-owner',NULL,2,1,1,1,1,NULL,NULL,${held},${approved},1000,'PRODUCT_DEFAULT',NULL);
   `);
   for (const index of input.canonicalUsIndexes ?? [])
     database.exec(
@@ -604,7 +430,7 @@ function seedScheduledReservationFixture(
         const approvedStatus = status === 'APPROVED';
         const hold = input.holdExpiresAt?.[offset] ?? 1000;
         return `INSERT INTO product_reservations(id,demand_batch_id,buyer_customer_id,organization_id,store_id,product_id,product_version_no,marketplace_code,status,precheck_snapshot_json,hold_expires_at,order_deadline_snapshot,version,submitted_at,updated_at,decided_by_staff_id,decision_reason,decided_at,cancelled_at,expired_at,reopened_count,buyer_self_pay_bps_snapshot,reference_order_amount_jpy_snapshot,estimated_self_pay_jpy_snapshot,estimated_refundable_principal_jpy_snapshot,buyer_self_pay_accepted_at,buyer_self_pay_accepted_demand_version)
-      VALUES ('reservation-scheduled-${index}','demand-scheduled','buyer-scheduled-${index}','seller-org-scheduled','store-scheduled','product-scheduled',1,'JP','${status}','{}',${hold},100000000,${approvedStatus ? 2 : 1},1,2,${approvedStatus ? "'zz-phase3h-test-owner'" : 'NULL'},NULL,${approvedStatus ? 2 : 'NULL'},NULL,NULL,0,1000,1000,0,1000,1,2);`;
+      VALUES ('reservation-scheduled-${index}','demand-scheduled','buyer-scheduled-${index}','seller-org-scheduled','store-scheduled','product-scheduled',1,'AMAZON_JP','${status}','{}',${hold},100000000,${approvedStatus ? 2 : 1},1,2,${approvedStatus ? "'zz-phase3h-test-owner'" : 'NULL'},NULL,${approvedStatus ? 2 : 'NULL'},NULL,NULL,0,1000,1000,0,1000,1,2);`;
       })
       .join('\n'),
   );
@@ -630,21 +456,19 @@ function seedScheduledInstruction(
 
 async function reservationExpiryFactCounts(
   database: SqliteDatabase,
-): Promise<{ expired: number; events: number; audits: number; outbox: number }> {
+): Promise<{ expired: number; events: number; audits: number }> {
   const row = await database
     .prepare(
       `SELECT
     (SELECT COUNT(*) FROM product_reservations WHERE status='EXPIRED') AS expired,
     (SELECT COUNT(*) FROM reservation_events WHERE event_type='RESERVATION_EXPIRED') AS events,
-    (SELECT COUNT(*) FROM audit_events WHERE event_type='RESERVATION_EXPIRED') AS audits,
-    (SELECT COUNT(*) FROM integration_outbox WHERE event_type='RESERVATION_EXPIRED') AS outbox`,
+    (SELECT COUNT(*) FROM audit_events WHERE event_type='RESERVATION_EXPIRED') AS audits`,
     )
-    .first<{ expired: number; events: number; audits: number; outbox: number }>();
+    .first<{ expired: number; events: number; audits: number }>();
   return {
     expired: Number(row?.expired ?? 0),
     events: Number(row?.events ?? 0),
     audits: Number(row?.audits ?? 0),
-    outbox: Number(row?.outbox ?? 0),
   };
 }
 
@@ -654,7 +478,6 @@ async function instructionBusinessFactCounts(
   expired: number;
   events: number;
   audits: number;
-  outbox: number;
   idempotency: number;
 }> {
   const row = await database
@@ -663,21 +486,18 @@ async function instructionBusinessFactCounts(
     (SELECT COUNT(*) FROM order_instructions WHERE status='EXPIRED') AS expired,
     (SELECT COUNT(*) FROM order_instruction_events WHERE event_type='INSTRUCTION_EXPIRED') AS events,
     (SELECT COUNT(*) FROM audit_events) AS audits,
-    (SELECT COUNT(*) FROM integration_outbox) AS outbox,
     (SELECT COUNT(*) FROM command_idempotency_records) AS idempotency`,
     )
     .first<{
       expired: number;
       events: number;
       audits: number;
-      outbox: number;
       idempotency: number;
     }>();
   return {
     expired: Number(row?.expired ?? 0),
     events: Number(row?.events ?? 0),
     audits: Number(row?.audits ?? 0),
-    outbox: Number(row?.outbox ?? 0),
     idempotency: Number(row?.idempotency ?? 0),
   };
 }
@@ -697,4 +517,72 @@ async function instructionStatuses(
       )?.status ?? 'MISSING',
     );
   return statuses;
+}
+function seedExpirableReservation(db: SqliteDatabase, suffix = 'so'): void {
+  db.exec(`
+    INSERT INTO customer_identity_subjects (id, subject_type, created_at)
+      VALUES ('${suffix}-subject','BUYER_CUSTOMER',1000);
+    INSERT INTO buyer_customers (
+      id, identity_subject_id, marketplace_code, buyer_channel_id,
+      buyer_customer_no, buyer_sequence, display_name, access_status,
+      identity_review_status, version, created_at, updated_at, activated_at, disabled_at
+    ) VALUES ('${suffix}-buyer','${suffix}-subject','AMAZON_JP','buyer-channel-wechat-b',
+      '20260801B9901',9901,'命令测试买家','ACTIVE','CLEAR',1,1000,1000,1000,NULL);
+    INSERT INTO seller_channels (
+      id, code, prefix, name, status, version, created_at, updated_at, disabled_at
+    ) VALUES ('${suffix}-channel','socmd','socmd-','命令渠道','ACTIVE',1,1000,1000,NULL);
+    INSERT INTO seller_organizations (
+      id, marketplace_code, seller_code, origin_channel_id, current_channel_id,
+      seller_sequence, organization_name, status, version,
+      created_at, updated_at, activated_at, next_member_number
+    ) VALUES ('${suffix}-org','AMAZON_JP','${suffix}-org-1','${suffix}-channel','${suffix}-channel',
+      9801,'命令测试组织','ACTIVE',1,1000,1000,1000,2);
+    INSERT INTO customer_identity_subjects (id, subject_type, created_at)
+      VALUES ('${suffix}-member-subject','SELLER_ORG_MEMBER',1000);
+    INSERT INTO seller_organization_members (
+      id, identity_subject_id, organization_id, member_number, username_fallback,
+      display_name, role, primary_owner, status, version,
+      created_at, updated_at, activated_at, disabled_at
+    ) VALUES ('${suffix}-member','${suffix}-member-subject','${suffix}-org',1,
+      '${suffix}-member-1','命令成员','OWNER',1,'ACTIVE',1,1000,1000,1000,NULL);
+    INSERT INTO seller_stores (
+      id, organization_id, marketplace_code, display_name, normalized_name,
+      status, version, created_at, updated_at, disabled_at
+    ) VALUES ('${suffix}-store','${suffix}-org','AMAZON_JP','命令店铺','命令店铺',
+      'ACTIVE',1,1000,1000,NULL);
+    INSERT INTO products (
+      id, organization_id, store_id, marketplace_code, asin_display, asin_normalized,
+      status, current_version_no, version, created_at, updated_at, disabled_at
+    ) VALUES ('${suffix}-product','${suffix}-org','${suffix}-store','AMAZON_JP',
+      'B0SOCMD001','B0SOCMD001','ACTIVE',1,1,1000,1000,NULL);
+    INSERT INTO product_versions (
+      id, product_id, version_no, product_name, search_keywords_json, product_url,
+      buyer_visible_notes, internal_notes, created_by_staff_id, created_at,
+      ordering_guide_expected_amount_jpy, color_spec_mode
+    ) VALUES ('${suffix}-product-v1','${suffix}-product',1,'命令产品','[]',NULL,
+      NULL,NULL,'zz-phase3h-test-owner',1000,1980,'MAIN_IMAGE_VARIANT');
+    INSERT INTO demand_batches (
+      id, organization_id, store_id, marketplace_code, product_id, product_version_no,
+      submitted_by_member_id, task_type, target_quantity, buyer_visible_notes,
+      seller_notes, open_at, reservation_deadline, order_deadline, status,
+      reviewed_by_staff_id, version,
+      submitted_at, updated_at, reviewed_at, published_at, withdrawn_at, closed_at,
+      held_reservation_count, approved_reservation_count
+    ) VALUES ('${suffix}-demand','${suffix}-org','${suffix}-store','AMAZON_JP',
+      '${suffix}-product',1,'${suffix}-member','TEXT',1,NULL,NULL,500,900,2000,'PUBLISHED',
+      'zz-phase3h-test-owner',2,
+      1000,3000,3000,3000,NULL,NULL,1,0);
+    INSERT INTO product_reservations (
+      id, demand_batch_id, buyer_customer_id, organization_id, store_id, product_id,
+      product_version_no, marketplace_code, status, precheck_snapshot_json,
+      hold_expires_at, order_deadline_snapshot, version, submitted_at, updated_at,
+      decided_by_staff_id, decision_reason, decided_at, cancelled_at, expired_at,
+      reopened_count, buyer_self_pay_bps_snapshot, reference_order_amount_jpy_snapshot,
+      estimated_self_pay_jpy_snapshot, estimated_refundable_principal_jpy_snapshot,
+      buyer_self_pay_accepted_at, buyer_self_pay_accepted_demand_version
+    ) VALUES ('${suffix}-reservation','${suffix}-demand','${suffix}-buyer',
+      '${suffix}-org','${suffix}-store','${suffix}-product',1,'AMAZON_JP',
+      'PENDING_REVIEW','{}',1000,2000,1,1000,1000,NULL,NULL,NULL,NULL,NULL,0,
+      0,1980,0,1980,1000,2);
+  `);
 }

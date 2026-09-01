@@ -31,6 +31,14 @@ import {
   submitReservation as submitReservationService,
 } from './submit-reservation';
 import {
+  createReservationParticipationException,
+} from './create-participation-exception';
+import {
+  autoApproveReservation,
+  FORMAL_ORDER_AUTO_APPROVAL_PROTECTION_REASON_CODES,
+  readReservationAutoApproveConfig,
+} from './auto-approve';
+import {
   readStaffReservationSchedule,
 } from '../product-reservation-scheduling/read-model';
 import {
@@ -44,6 +52,14 @@ import type {
   BuyerReservationActor,
   ReservationStaffActor,
 } from './reservation-shared';
+import {
+  COLD_ARCHIVE_CONFIRMED_AT,
+  seedConfirmedColdArchiveOrder,
+  settleColdArchivePrincipal,
+} from '../../test-support/cold-archive-fixture';
+import {
+  readBuyerFormalOrderAutoApprovalProtection,
+} from '../staff-order-detail/responsibility';
 
 let database: SqliteDatabase | null = null;
 
@@ -387,7 +403,7 @@ describe('buyer reservations and atomic demand capacity', () => {
       .toEqual({ held: 1, approved: 0 });
   });
 
-  it('blocks an active reservation for the same product across batches', async () => {
+  it('blocks an active reservation for a different product in the same store', async () => {
     database = createMigratedTestDatabase();
     seedReservationFixture(database);
 
@@ -400,15 +416,70 @@ describe('buyer reservations and atomic demand capacity', () => {
     });
 
     await expect(submitReservation(database, {
-      demandBatchId: 'demand-2-same-product',
+      demandBatchId: 'demand-2',
     }, {
       actor: buyerActor('buyer-1'),
-      idempotencyKey: 'reservation:product-conflict:two',
+      idempotencyKey: 'reservation:store-conflict:two',
       now: 5100,
     })).rejects.toMatchObject({
-      code: 'BUYER_PRODUCT_RESERVATION_CONFLICT',
+      code: 'BUYER_STORE_RESERVATION_CONFLICT',
       status: 409,
     });
+  });
+
+  it('allows the same buyer to reserve products in different stores', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+
+    await submitReservation(database, { demandBatchId: 'demand-1' }, {
+      actor: buyerActor('buyer-1'), idempotencyKey: 'reservation:cross-store:one', now: 5000,
+    });
+    await expect(submitReservation(database, { demandBatchId: 'demand-3-other-store' }, {
+      actor: buyerActor('buyer-1'), idempotencyKey: 'reservation:cross-store:two', now: 5100,
+    })).resolves.toMatchObject({ status: 'PENDING_REVIEW' });
+  });
+
+  it('releases the store reservation guard after a terminal reservation', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    const reservation = await submitReservation(database, { demandBatchId: 'demand-1' }, {
+      actor: buyerActor('buyer-1'), idempotencyKey: 'reservation:terminal-release:one', now: 5000,
+    });
+    await decideReservation(database, {
+      reservationId: reservation.reservation_id,
+      expectedVersion: 1,
+      decision: 'REJECT',
+      rejectionReason: '测试终态释放',
+    }, {
+      actor: preSalesActor(), idempotencyKey: 'reservation:terminal-release:reject', now: 5100,
+    });
+
+    await expect(submitReservation(database, { demandBatchId: 'demand-2' }, {
+      actor: buyerActor('buyer-1'), idempotencyKey: 'reservation:terminal-release:two', now: 5200,
+    })).resolves.toMatchObject({ status: 'PENDING_REVIEW' });
+  });
+
+  it('keeps at most one active reservation when same-store requests race', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+
+    const results = await Promise.allSettled([
+      submitReservation(database, { demandBatchId: 'demand-1' }, {
+        actor: buyerActor('buyer-1'), idempotencyKey: 'reservation:store-race:one', now: 5000,
+      }),
+      submitReservation(database, { demandBatchId: 'demand-2' }, {
+        actor: buyerActor('buyer-1'), idempotencyKey: 'reservation:store-race:two', now: 5000,
+      }),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(await database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM product_reservations
+      WHERE buyer_customer_id='buyer-1'
+        AND store_id='store-1'
+        AND status IN ('PENDING_REVIEW','APPROVED')
+    `).first<{ count: number }>()).toEqual({ count: 1 });
   });
 
   it('approves or rejects and moves held capacity atomically', async () => {
@@ -498,6 +569,11 @@ describe('buyer reservations and atomic demand capacity', () => {
     });
     expect(await demandCounts(database, 'demand-1'))
       .toEqual({ held: 0, approved: 0 });
+    const cancelledItem = await database.prepare(`
+      SELECT status FROM staff_work_items
+      WHERE work_type='RESERVATION_DECISION' AND source_entity_id=?
+    `).bind(pending.reservation_id).first<{ status: string }>();
+    expect(cancelledItem?.status).toBe('CANCELLED');
 
     const approved = await submitReservation(
       database,
@@ -726,6 +802,747 @@ describe('buyer reservations and atomic demand capacity', () => {
   });
 });
 
+describe('reservation auto approve', () => {
+  const autoConfig = {
+    enabled: true,
+    maxPerWindow: 1,
+    windowMs: 24 * 3_600_000,
+  };
+
+  it('auto-approves a qualifying reservation, publishes the instruction and completes the work item', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    seedPublishedMainImage(database, 'product-1-v1');
+    seedAutoApproveDemand(database, 'demand-auto', 'store-1', 'product-1');
+
+    const submitted = await submitReservation(database, {
+      demandBatchId: 'demand-auto',
+      expectedDemandVersion: 1,
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:approve:first',
+      now: 5000,
+      autoApprove: autoConfig,
+    });
+    expect(submitted.status).toBe('PENDING_REVIEW');
+
+    const reservation = await database.prepare(`
+      SELECT status, decided_by_staff_id, decided_at, version
+      FROM product_reservations WHERE id=?
+    `).bind(submitted.reservation_id).first<{
+      status: string;
+      decided_by_staff_id: string;
+      decided_at: number;
+      version: number;
+    }>();
+    expect(reservation).toMatchObject({
+      status: 'APPROVED',
+      decided_by_staff_id: 'system-reservation-auto-approve',
+      decided_at: 5000,
+      version: 2,
+    });
+
+    const instruction = await database.prepare(`
+      SELECT instruction.status, instruction.current_version_no,
+        instruction.published_at, instruction.initial_deadline_at,
+        version.content_hash, version.published_by_staff_id
+      FROM order_instructions instruction
+      JOIN order_instruction_versions version
+        ON version.instruction_id=instruction.id
+        AND version.version_no=1
+      WHERE instruction.reservation_id=?
+    `).bind(submitted.reservation_id).first<{
+      status: string;
+      current_version_no: number;
+      published_at: number;
+      initial_deadline_at: number;
+      content_hash: string;
+      published_by_staff_id: string;
+    }>();
+    expect(instruction).toMatchObject({
+      status: 'ACTIVE',
+      current_version_no: 1,
+      published_at: 5000,
+      initial_deadline_at: 5000 + 6 * 3_600_000,
+      published_by_staff_id: 'system-reservation-auto-approve',
+    });
+
+    const demand = await database.prepare(`
+      SELECT held_reservation_count, approved_reservation_count
+      FROM demand_batches WHERE id='demand-auto'
+    `).first<{
+      held_reservation_count: number;
+      approved_reservation_count: number;
+    }>();
+    expect(demand).toEqual({
+      held_reservation_count: 0,
+      approved_reservation_count: 1,
+    });
+
+    const workItem = await database.prepare(`
+      SELECT status FROM staff_work_items
+      WHERE work_type='RESERVATION_DECISION'
+        AND source_entity_id=?
+    `).bind(submitted.reservation_id).first<{ status: string }>();
+    expect(workItem?.status).toBe('COMPLETED');
+
+    const systemEvent = await database.prepare(`
+      SELECT actor_type, actor_id, next_status FROM reservation_events
+      WHERE reservation_id=? AND event_type='RESERVATION_APPROVED'
+    `).bind(submitted.reservation_id).first<{
+      actor_type: string;
+      actor_id: string;
+      next_status: string;
+    }>();
+    expect(systemEvent).toEqual({
+      actor_type: 'SYSTEM',
+      actor_id: 'reservation-auto-approve',
+      next_status: 'APPROVED',
+    });
+
+    const systemStaff = await database.prepare(`
+      SELECT status FROM staff_users WHERE id='system-reservation-auto-approve'
+    `).first<{ status: string }>();
+    expect(systemStaff?.status).toBe('DISABLED');
+  });
+
+  it('permanently blocks the second reservation after approval (D-056 §5)', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    seedPublishedMainImage(database, 'product-1-v1');
+    seedPublishedMainImage(database, 'product-3-v1');
+    seedAutoApproveDemand(database, 'demand-auto', 'store-1', 'product-1');
+
+    const first = await submitReservation(database, {
+      demandBatchId: 'demand-auto',
+      expectedDemandVersion: 1,
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:window:first',
+      now: 5000,
+      autoApprove: autoConfig,
+    });
+    const firstRow = await database.prepare(`
+      SELECT status FROM product_reservations WHERE id=?
+    `).bind(first.reservation_id).first<{ status: string }>();
+    expect(firstRow?.status).toBe('APPROVED');
+
+    // D-056：APPROVED 即算参加过，同卖家组织跨店铺禁止再次预约（稳定错误码）。
+    await expect(submitReservation(database, {
+      demandBatchId: 'demand-3-other-store',
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:window:second',
+      now: 5100,
+      autoApprove: autoConfig,
+    })).rejects.toMatchObject({
+      code: 'RESERVATION_HISTORY_PARTICIPATION',
+      status: 409,
+    });
+
+    // 一次性人工例外按批次放行，并在提交同一事务内消费。
+    const exception = await createReservationParticipationException(database, {
+      buyerCustomerId: 'buyer-1',
+      demandBatchId: 'demand-3-other-store',
+      reason: '售前人工批准再次参与',
+      validUntil: 9_999,
+    }, {
+      actor: preSalesActor(),
+      idempotencyKey: 'exception:buyer-1:once',
+      now: 5_200,
+    });
+    expect(exception.used).toBe(false);
+    const second = await submitReservation(database, {
+      demandBatchId: 'demand-3-other-store',
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:window:second-retry',
+      now: 5_300,
+      autoApprove: autoConfig,
+    });
+    const consumed = await database.prepare(`
+      SELECT used_at, used_by_reservation_id
+      FROM reservation_participation_exceptions WHERE id=?
+    `).bind(exception.exception_id).first<{
+      used_at: number; used_by_reservation_id: string;
+    }>();
+    expect(consumed?.used_at).not.toBeNull();
+    expect(consumed?.used_by_reservation_id).toBe(second.reservation_id);
+
+    // 已用例外不可复用：再次预约回到稳定拒绝。
+    await expect(submitReservation(database, {
+      demandBatchId: 'demand-1',
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:window:third',
+      now: 5_400,
+    })).rejects.toMatchObject({
+      code: 'RESERVATION_HISTORY_PARTICIPATION',
+    });
+    // 已消费的例外行不可删除（触发器级 append-only）。
+    expect(() => database!.exec(`
+      DELETE FROM reservation_participation_exceptions WHERE id='${exception.exception_id}'
+    `)).toThrow();
+  });
+
+  it('replays the same auto-approval submission without duplicating approval side effects', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    seedPublishedMainImage(database, 'product-1-v1');
+    seedAutoApproveDemand(database, 'demand-auto', 'store-1', 'product-1');
+    const command = {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:idempotency:same-key',
+      now: 5000,
+      autoApprove: { ...autoConfig, maxPerWindow: 10 },
+    };
+    const first = await submitReservation(database, {
+      demandBatchId: 'demand-auto',
+      expectedDemandVersion: 1,
+    }, command);
+    const replay = await submitReservation(database, {
+      demandBatchId: 'demand-auto',
+      expectedDemandVersion: 1,
+    }, command);
+    expect(replay).toMatchObject({
+      reservation_id: first.reservation_id,
+      status: 'PENDING_REVIEW',
+      replayed: true,
+    });
+    expect(await demandCounts(database, 'demand-auto')).toEqual({
+      held: 0,
+      approved: 1,
+    });
+    const sideEffects = await database.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM order_instructions WHERE reservation_id=?) AS instructions,
+        (SELECT COUNT(*) FROM reservation_events
+          WHERE reservation_id=? AND event_type='RESERVATION_APPROVED') AS approvals,
+        (SELECT COUNT(*) FROM staff_work_items
+          WHERE source_entity_id=? AND work_type='RESERVATION_DECISION'
+            AND status='COMPLETED') AS completed_work
+    `).bind(
+      first.reservation_id,
+      first.reservation_id,
+      first.reservation_id,
+    ).first<{
+      instructions: number;
+      approvals: number;
+      completed_work: number;
+    }>();
+    expect(sideEffects).toEqual({
+      instructions: 1,
+      approvals: 1,
+      completed_work: 1,
+    });
+    await expect(autoApproveReservation(database, {
+      reservationId: first.reservation_id,
+    }, {
+      config: { ...autoConfig, maxPerWindow: 10 },
+      idempotencyKey: 'auto:idempotency:retry-after-approval',
+      now: 5001,
+    })).resolves.toBeNull();
+    expect(await demandCounts(database, 'demand-auto')).toEqual({
+      held: 0,
+      approved: 1,
+    });
+  });
+
+  it('keeps one approval and one hold release when automatic approval calls race', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    seedPublishedMainImage(database, 'product-1-v1');
+    seedAutoApproveDemand(database, 'demand-auto', 'store-1', 'product-1');
+    const submitted = await submitReservation(database, {
+      demandBatchId: 'demand-auto',
+      expectedDemandVersion: 1,
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:concurrency:submit',
+      now: 5000,
+    });
+    const attempts = await Promise.allSettled([
+      autoApproveReservation(database, {
+        reservationId: submitted.reservation_id,
+      }, {
+        config: { ...autoConfig, maxPerWindow: 10 },
+        idempotencyKey: 'auto:concurrency:first',
+        now: 5000,
+      }),
+      autoApproveReservation(database, {
+        reservationId: submitted.reservation_id,
+      }, {
+        config: { ...autoConfig, maxPerWindow: 10 },
+        idempotencyKey: 'auto:concurrency:second',
+        now: 5000,
+      }),
+    ]);
+    const approvedAttempts = attempts.filter(
+      (attempt) => attempt.status === 'fulfilled'
+        && attempt.value?.status === 'APPROVED',
+    );
+    expect(approvedAttempts).toHaveLength(1);
+    expect(await demandCounts(database, 'demand-auto')).toEqual({
+      held: 0,
+      approved: 1,
+    });
+    const sideEffects = await database.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM order_instructions WHERE reservation_id=?) AS instructions,
+        (SELECT COUNT(*) FROM reservation_events
+          WHERE reservation_id=? AND event_type='RESERVATION_APPROVED') AS approvals,
+        (SELECT COUNT(*) FROM staff_work_items
+          WHERE source_entity_id=? AND work_type='RESERVATION_DECISION'
+            AND status='COMPLETED') AS completed_work
+    `).bind(
+      submitted.reservation_id,
+      submitted.reservation_id,
+      submitted.reservation_id,
+    ).first<{
+      instructions: number;
+      approvals: number;
+      completed_work: number;
+    }>();
+    expect(sideEffects).toEqual({
+      instructions: 1,
+      approvals: 1,
+      completed_work: 1,
+    });
+  });
+
+  it('falls back to manual review when the version has no main image', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    seedAutoApproveDemand(database, 'demand-auto', 'store-1', 'product-1');
+
+    const submitted = await submitReservation(database, {
+      demandBatchId: 'demand-auto',
+      expectedDemandVersion: 1,
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:no-main-image',
+      now: 5000,
+      autoApprove: autoConfig,
+    });
+    const row = await database.prepare(`
+      SELECT status FROM product_reservations WHERE id=?
+    `).bind(submitted.reservation_id).first<{ status: string }>();
+    expect(row?.status).toBe('PENDING_REVIEW');
+    const workItem = await database.prepare(`
+      SELECT status FROM staff_work_items
+      WHERE work_type='RESERVATION_DECISION' AND source_entity_id=?
+    `).bind(submitted.reservation_id).first<{ status: string }>();
+    expect(workItem?.status).toBe('OPEN');
+  });
+
+  it('never auto-approves when the switch is off', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    seedPublishedMainImage(database, 'product-1-v1');
+    seedAutoApproveDemand(database, 'demand-auto', 'store-1', 'product-1');
+
+    const submitted = await submitReservation(database, {
+      demandBatchId: 'demand-auto',
+      expectedDemandVersion: 1,
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:disabled',
+      now: 5000,
+      autoApprove: { ...autoConfig, enabled: false },
+    });
+    const row = await database.prepare(`
+      SELECT status FROM product_reservations WHERE id=?
+    `).bind(submitted.reservation_id).first<{ status: string }>();
+    expect(row?.status).toBe('PENDING_REVIEW');
+  });
+
+  it('does not treat pending order materials as a formal-order protection condition', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    seedPublishedMainImage(database, 'product-1-v1');
+    seedAutoApproveDemand(database, 'demand-auto', 'store-1', 'product-1');
+    seedPublishedMainImage(database, 'product-3-v1');
+    seedAutoApproveDemand(
+      database,
+      'demand-auto-material-target',
+      'store-2',
+      'product-3',
+    );
+    const now = 5000;
+    const submitted = await submitReservation(database, {
+      demandBatchId: 'demand-auto',
+      expectedDemandVersion: 1,
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:protection:pending-material-submit',
+      now,
+    });
+    await decideReservation(database, {
+      reservationId: submitted.reservation_id,
+      expectedVersion: 1,
+      decision: 'APPROVE',
+    }, {
+      actor: preSalesActor(),
+      idempotencyKey: 'auto:protection:pending-material-first-approve',
+      now: now + 1,
+    });
+    database.prepare(`
+      INSERT INTO order_evidence_submissions(
+        id,reservation_id,buyer_customer_id,marketplace_code,status,
+        current_version_no,version,public_change_reason,internal_review_note,
+        submitted_at,updated_at,verified_by_staff_id,verified_at,withdrawn_at,
+        consumed_at,created_at
+      ) VALUES(?,?,?,'AMAZON_JP','PENDING_VERIFICATION',1,1,NULL,NULL,?,?,NULL,NULL,NULL,NULL,?)
+    `).bind(
+      'auto-approve-pending-material-001',
+      submitted.reservation_id,
+      'buyer-1',
+      now + 2,
+      now + 2,
+      now + 2,
+    ).run();
+    const exception = await createReservationParticipationException(database, {
+      buyerCustomerId: 'buyer-1',
+      demandBatchId: 'demand-auto-material-target',
+      reason: '测试待核对订单资料不阻断自动审核',
+      validUntil: 10_000,
+    }, {
+      actor: preSalesActor(),
+      idempotencyKey: 'auto:protection:pending-material-exception',
+      now: now + 3,
+    });
+    expect(exception.used).toBe(false);
+    const target = await submitReservation(database, {
+      demandBatchId: 'demand-auto-material-target',
+      expectedDemandVersion: 1,
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:protection:pending-material-target',
+      now: now + 4,
+      autoApprove: { ...autoConfig, maxPerWindow: 10 },
+    });
+    const targetReservation = await database.prepare(
+      'SELECT status FROM product_reservations WHERE id=?',
+    ).bind(target.reservation_id).first<{ status: string }>();
+    expect(targetReservation?.status).toBe('APPROVED');
+  });
+
+  it('does not treat internal finance exceptions as a buyer-level protection condition', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    const formalOrder = await seedConfirmedColdArchiveOrder(
+      database,
+      'auto-approve-finance-only',
+      { buyerCustomerId: 'buyer-1' },
+    );
+    database.exec(`
+      CREATE TEMP TABLE internal_finance_exceptions (
+        formal_order_id TEXT,
+        seller_organization_id TEXT,
+        store_id TEXT,
+        finance_status TEXT,
+        exception_code TEXT,
+        suggested_action TEXT
+      );
+      INSERT INTO internal_finance_exceptions(
+        formal_order_id,seller_organization_id,store_id,finance_status,
+        exception_code,suggested_action
+      ) VALUES(
+        '${formalOrder.formalOrderId}',
+        '${formalOrder.sellerOrganizationId}',
+        'cold-store-auto-approve-finance-only',
+        'MISSING_FINANCIAL_SNAPSHOT',
+        'MISSING_FINANCIAL_SNAPSHOT',
+        'REVIEW_FORMAL_ORDER_SNAPSHOT'
+      );
+    `);
+    await expect(readBuyerFormalOrderAutoApprovalProtection(
+      database,
+      'buyer-1',
+      COLD_ARCHIVE_CONFIRMED_AT,
+    )).resolves.toBeNull();
+  });
+
+  it('keeps auto approval in manual review for a buyer-global overdue formal order from another seller organization', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    seedPublishedMainImage(database, 'product-1-v1');
+    seedAutoApproveDemand(database, 'demand-auto', 'store-1', 'product-1');
+    const now = COLD_ARCHIVE_CONFIRMED_AT + 1;
+    setAutoApproveWindow(database, 'demand-auto', now);
+    const formalOrder = await seedConfirmedColdArchiveOrder(database, 'auto-approve-overdue', {
+      buyerCustomerId: 'buyer-1',
+    });
+
+    const submitted = await submitReservation(database, {
+      demandBatchId: 'demand-auto',
+      expectedDemandVersion: 1,
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:protection:overdue',
+      now,
+      autoApprove: { ...autoConfig, maxPerWindow: 10 },
+    });
+    const reservation = await database.prepare(
+      'SELECT status FROM product_reservations WHERE id=?',
+    ).bind(submitted.reservation_id).first<{ status: string }>();
+    expect(reservation?.status).toBe('PENDING_REVIEW');
+    expect(await demandCounts(database, 'demand-auto')).toEqual({
+      held: 1,
+      approved: 0,
+    });
+    const workItem = await database.prepare(
+      `SELECT status FROM staff_work_items
+       WHERE work_type='RESERVATION_DECISION' AND source_entity_id=?`,
+    ).bind(submitted.reservation_id).first<{ status: string }>();
+    expect(workItem?.status).toBe('OPEN');
+    const autoApproval = await autoApproveReservation(database, {
+      reservationId: submitted.reservation_id,
+    }, {
+      config: { ...autoConfig, maxPerWindow: 10 },
+      idempotencyKey: 'auto:protection:overdue:retry',
+      now,
+    });
+    expect(autoApproval).toEqual({
+      reservation_id: submitted.reservation_id,
+      status: 'MANUAL_REVIEW',
+      reason_code:
+        FORMAL_ORDER_AUTO_APPROVAL_PROTECTION_REASON_CODES.OVERDUE_FORMAL_ORDER,
+    });
+    database.prepare(`
+      INSERT INTO formal_order_operational_events(
+        id,formal_order_id,event_type,reason,actor_staff_id,created_at
+      ) VALUES(?,?,'MANUAL_INVESTIGATION',?,'cold-archive-owner',?)
+    `).bind(
+      'auto-approve-overdue-event-001',
+      formalOrder.formalOrderId,
+      '逾期订单需要人工调查',
+      now,
+    ).run();
+    await expect(autoApproveReservation(database, {
+      reservationId: submitted.reservation_id,
+    }, {
+      config: { ...autoConfig, maxPerWindow: 10 },
+      idempotencyKey: 'auto:protection:overdue:both-priority',
+      now,
+    })).resolves.toMatchObject({
+      status: 'MANUAL_REVIEW',
+      reason_code:
+        FORMAL_ORDER_AUTO_APPROVAL_PROTECTION_REASON_CODES.OVERDUE_FORMAL_ORDER,
+    });
+    expect(JSON.stringify(submitted)).not.toContain(
+      FORMAL_ORDER_AUTO_APPROVAL_PROTECTION_REASON_CODES.OVERDUE_FORMAL_ORDER,
+    );
+    expect(JSON.stringify(submitted)).not.toContain('MANUAL_INVESTIGATION');
+  });
+
+  it('keeps auto approval in manual review for an OPEN formal-order operational risk from another seller organization and recovers after RESOLVED', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    seedPublishedMainImage(database, 'product-1-v1');
+    seedAutoApproveDemand(database, 'demand-auto', 'store-1', 'product-1');
+    const now = COLD_ARCHIVE_CONFIRMED_AT + 30_000;
+    setAutoApproveWindow(database, 'demand-auto', now);
+    const formalOrder = await seedConfirmedColdArchiveOrder(database, 'auto-approve-open-risk', {
+      buyerCustomerId: 'buyer-1',
+    });
+    await settleColdArchivePrincipal(database, {
+      suffix: 'auto-approve-open-risk',
+      formalOrderId: formalOrder.formalOrderId,
+      sellerOrganizationId: formalOrder.sellerOrganizationId,
+      proofBytes: new Uint8Array([1, 2, 3]),
+    });
+    database.prepare(`
+      INSERT INTO formal_order_operational_events(
+        id,formal_order_id,event_type,reason,actor_staff_id,created_at
+      ) VALUES(?,?,'PLATFORM_CANCELLED',?,'cold-archive-owner',?)
+    `).bind(
+      'auto-approve-open-risk-event-001',
+      formalOrder.formalOrderId,
+      '平台取消待人工调查',
+      now,
+    ).run();
+
+    const submitted = await submitReservation(database, {
+      demandBatchId: 'demand-auto',
+      expectedDemandVersion: 1,
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:protection:open-risk',
+      now,
+      autoApprove: { ...autoConfig, maxPerWindow: 10 },
+    });
+    const reservation = await database.prepare(
+      'SELECT status FROM product_reservations WHERE id=?',
+    ).bind(submitted.reservation_id).first<{ status: string }>();
+    expect(reservation?.status).toBe('PENDING_REVIEW');
+    expect(await demandCounts(database, 'demand-auto')).toEqual({
+      held: 1,
+      approved: 0,
+    });
+    const autoApproval = await autoApproveReservation(database, {
+      reservationId: submitted.reservation_id,
+    }, {
+      config: { ...autoConfig, maxPerWindow: 10 },
+      idempotencyKey: 'auto:protection:open-risk:retry',
+      now,
+    });
+    expect(autoApproval).toEqual({
+      reservation_id: submitted.reservation_id,
+      status: 'MANUAL_REVIEW',
+      reason_code:
+        FORMAL_ORDER_AUTO_APPROVAL_PROTECTION_REASON_CODES.OPEN_FORMAL_ORDER_RISK,
+    });
+    expect(JSON.stringify(submitted)).not.toContain(
+      FORMAL_ORDER_AUTO_APPROVAL_PROTECTION_REASON_CODES.OPEN_FORMAL_ORDER_RISK,
+    );
+    expect(JSON.stringify(submitted)).not.toContain('PLATFORM_CANCELLED');
+
+    database.prepare(`
+      INSERT INTO formal_order_operational_events(
+        id,formal_order_id,event_type,reason,actor_staff_id,created_at
+      ) VALUES(?,?,'RESOLVED',?,'cold-archive-owner',?)
+    `).bind(
+      'auto-approve-open-risk-resolved-001',
+      formalOrder.formalOrderId,
+      '运营异常已处理',
+      now + 1,
+    ).run();
+    seedPublishedMainImage(database, 'product-3-v1');
+    seedAutoApproveDemand(database, 'demand-auto-resolved', 'store-2', 'product-3');
+    setAutoApproveWindow(database, 'demand-auto-resolved', now + 2);
+    const recovered = await submitReservation(database, {
+      demandBatchId: 'demand-auto-resolved',
+      expectedDemandVersion: 1,
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:protection:resolved-recovery',
+      now: now + 2,
+      autoApprove: { ...autoConfig, maxPerWindow: 10 },
+    });
+    const recoveredReservation = await database.prepare(
+      'SELECT status FROM product_reservations WHERE id=?',
+    ).bind(recovered.reservation_id).first<{ status: string }>();
+    expect(recoveredReservation?.status).toBe('APPROVED');
+  });
+
+  it('allows authorized staff to approve a protected reservation manually', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    seedPublishedMainImage(database, 'product-1-v1');
+    seedAutoApproveDemand(database, 'demand-auto', 'store-1', 'product-1');
+    const now = COLD_ARCHIVE_CONFIRMED_AT;
+    setAutoApproveWindow(database, 'demand-auto', now);
+    const formalOrder = await seedConfirmedColdArchiveOrder(database, 'auto-approve-manual', {
+      buyerCustomerId: 'buyer-1',
+    });
+    database.prepare(`
+      INSERT INTO formal_order_operational_events(
+        id,formal_order_id,event_type,reason,actor_staff_id,created_at
+      ) VALUES(?,?,'RETURN_REFUND',?,'cold-archive-owner',?)
+    `).bind(
+      'auto-approve-manual-risk-event-001',
+      formalOrder.formalOrderId,
+      '退货退款待人工处理',
+      now,
+    ).run();
+
+    const submitted = await submitReservation(database, {
+      demandBatchId: 'demand-auto',
+      expectedDemandVersion: 1,
+    }, {
+      actor: buyerActor('buyer-1'),
+      idempotencyKey: 'auto:protection:manual-submit',
+      now,
+      autoApprove: { ...autoConfig, maxPerWindow: 10 },
+    });
+    const approved = await decideReservation(database, {
+      reservationId: submitted.reservation_id,
+      expectedVersion: 1,
+      decision: 'APPROVE',
+    }, {
+      actor: preSalesActor(),
+      idempotencyKey: 'auto:protection:manual-approve',
+      now: now + 1,
+    });
+    expect(approved).toMatchObject({
+      reservation_id: submitted.reservation_id,
+      status: 'APPROVED',
+      version: 2,
+      replayed: false,
+    });
+    expect(await demandCounts(database, 'demand-auto')).toEqual({
+      held: 0,
+      approved: 1,
+    });
+    const workItem = await database.prepare(
+      `SELECT status FROM staff_work_items
+       WHERE work_type='RESERVATION_DECISION' AND source_entity_id=?`,
+    ).bind(submitted.reservation_id).first<{ status: string }>();
+    expect(workItem?.status).toBe('COMPLETED');
+  });
+
+  it('recognizes every specified current formal-order operational risk type', async () => {
+    database = createMigratedTestDatabase();
+    seedReservationFixture(database);
+    const now = COLD_ARCHIVE_CONFIRMED_AT + 30_000;
+    const formalOrder = await seedConfirmedColdArchiveOrder(database, 'auto-approve-all-risk-types', {
+      buyerCustomerId: 'buyer-1',
+    });
+    await settleColdArchivePrincipal(database, {
+      suffix: 'auto-approve-all-risk-types',
+      formalOrderId: formalOrder.formalOrderId,
+      sellerOrganizationId: formalOrder.sellerOrganizationId,
+      proofBytes: new Uint8Array([4, 5, 6]),
+    });
+    const riskTypes = [
+      'PLATFORM_CANCELLED',
+      'RETURN_REFUND',
+      'BUSINESS_VOID',
+      'MANUAL_INVESTIGATION',
+    ] as const;
+    for (const [index, eventType] of riskTypes.entries()) {
+      database.prepare(`
+        INSERT INTO formal_order_operational_events(
+          id,formal_order_id,event_type,reason,actor_staff_id,created_at
+        ) VALUES(?,?,?,?,?,?)
+      `).bind(
+        'auto-approve-risk-' + eventType.toLowerCase() + '-001',
+        formalOrder.formalOrderId,
+        eventType,
+        '风险类型 ' + eventType,
+        'cold-archive-owner',
+        now + index,
+      ).run();
+      await expect(readBuyerFormalOrderAutoApprovalProtection(
+        database,
+        'buyer-1',
+        now + index,
+      )).resolves.toEqual({
+        reason_code:
+          FORMAL_ORDER_AUTO_APPROVAL_PROTECTION_REASON_CODES.OPEN_FORMAL_ORDER_RISK,
+      });
+    }
+  });
+
+  it('config reader reflects the environment switches', () => {
+    expect(readReservationAutoApproveConfig({})).toEqual({
+      enabled: false,
+      maxPerWindow: 1,
+      windowMs: 24 * 3_600_000,
+    });
+    expect(readReservationAutoApproveConfig({
+      RESERVATION_AUTO_APPROVE_ENABLED: 'true',
+      RESERVATION_AUTO_APPROVE_MAX_PER_WINDOW: '2',
+      RESERVATION_AUTO_APPROVE_WINDOW_HOURS: '48',
+    })).toEqual({
+      enabled: true,
+      maxPerWindow: 2,
+      windowMs: 48 * 3_600_000,
+    });
+  });
+});
+
 function submitReservation(
   database: SqliteDatabase,
   input: { demandBatchId: string; expectedDemandVersion?: number },
@@ -738,7 +1555,7 @@ function submitReservation(
   }, command);
 }
 
-function seedReservationFixture(
+export function seedReservationFixture(
   database: SqliteDatabase,
   options: {
     targetQuantity?: number;
@@ -768,26 +1585,6 @@ function seedReservationFixture(
     ) VALUES ('scope-reservation-pre-jp','staff-pre-sales','pre_sales',
       'AMAZON_JP','ACTIVE','zz-phase3h-test-owner',1000,NULL,
       'TEST_PRIMARY',1000,1000,'PRIMARY');
-    INSERT INTO staff_departments (
-      id, code, name, status, version, created_at, updated_at, disabled_at
-    ) VALUES ('department-pre-sales','pre-sales','Pre Sales',
-      'ACTIVE',1,1000,1000,NULL);
-    INSERT INTO staff_teams (
-      id, department_id, code, name, status, version,
-      created_at, updated_at, disabled_at
-    ) VALUES ('team-pre-sales','department-pre-sales','pre-sales',
-      'Pre Sales','ACTIVE',1,1000,1000,NULL);
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES ('staff-pre-sales','team-pre-sales','ACTIVE',1000,NULL,1000,1000);
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES ('zz-phase3h-test-owner','team-pre-sales','ACTIVE',1000,NULL,1000,1000);
-    INSERT INTO staff_team_leaders (
-      staff_id, team_id, status, assigned_by_staff_id,
-      assigned_at, revoked_at, created_at, updated_at
-    ) VALUES ('staff-pre-sales','team-pre-sales','ACTIVE',
-      'zz-phase3h-test-owner',1000,NULL,1000,1000);
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,
@@ -796,7 +1593,7 @@ function seedReservationFixture(
       version, created_at, updated_at,
       activated_at, disabled_at, next_member_number
     ) VALUES (
-      'seller-org-1', 'JP', 'ido-mango-9001',
+      'seller-org-1', 'AMAZON_JP', 'ido-mango-9001',
       'seller-channel-ido-mango',
       'seller-channel-ido-mango',
       9001, '预约卖家', 'ACTIVE',
@@ -823,37 +1620,29 @@ function seedReservationFixture(
       1000, 1000, 1000, NULL
     );
 
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-b', 'B', '预约买家渠道',
-      'ACTIVE', 1, 1, 1000, 1000, NULL
-    );
-
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code,
       buyer_channel_id, buyer_customer_no,
-      buyer_sequence, first_valid_order_business_date,
+      buyer_sequence,
       display_name, access_status,
       identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
       (
-        'buyer-1', 'buyer-subject-1', 'JP',
-        'buyer-channel-b', NULL, NULL, NULL,
+        'buyer-1', 'buyer-subject-1', 'AMAZON_JP',
+        'buyer-channel-wechat-b', '19700101B0001', 1,
         '买家一', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       ),
       (
-        'buyer-2', 'buyer-subject-2', 'JP',
-        'buyer-channel-b', NULL, NULL, NULL,
+        'buyer-2', 'buyer-subject-2', 'AMAZON_JP',
+        'buyer-channel-wechat-b', '19700101B0002', 2,
         '买家二', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       ),
       (
-        'buyer-3', 'buyer-subject-3', 'JP',
-        'buyer-channel-b', NULL, NULL, NULL,
+        'buyer-3', 'buyer-subject-3', 'AMAZON_JP',
+        'buyer-channel-wechat-b', '19700101B0003', 3,
         '买家三', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       );
@@ -863,8 +1652,17 @@ function seedReservationFixture(
       display_name, normalized_name, status,
       version, created_at, updated_at, disabled_at
     ) VALUES (
-      'store-1', 'seller-org-1', 'JP',
+      'store-1', 'seller-org-1', 'AMAZON_JP',
       '预约店铺', '预约店铺', 'ACTIVE',
+      1, 1000, 1000, NULL
+    );
+    INSERT INTO seller_stores (
+      id, organization_id, marketplace_code,
+      display_name, normalized_name, status,
+      version, created_at, updated_at, disabled_at
+    ) VALUES (
+      'store-2', 'seller-org-1', 'AMAZON_JP',
+      '预约店铺二', '预约店铺二', 'ACTIVE',
       1, 1000, 1000, NULL
     );
 
@@ -875,13 +1673,18 @@ function seedReservationFixture(
       created_at, updated_at, disabled_at
     ) VALUES
       (
-        'product-1', 'seller-org-1', 'store-1', 'JP',
+        'product-1', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'B0RESERVE1', 'B0RESERVE1', 'ACTIVE',
         1, 1, 1000, 1000, NULL
       ),
       (
-        'product-2', 'seller-org-1', 'store-1', 'JP',
+        'product-2', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'B0RESERVE2', 'B0RESERVE2', 'ACTIVE',
+        1, 1, 1000, 1000, NULL
+      ),
+      (
+        'product-3', 'seller-org-1', 'store-2', 'AMAZON_JP',
+        'B0RESERVE3', 'B0RESERVE3', 'ACTIVE',
         1, 1, 1000, 1000, NULL
       );
 
@@ -910,6 +1713,13 @@ function seedReservationFixture(
         '公开说明二', '内部说明二',
         'staff-pre-sales', 1000
       ,
+          1980, 'MAIN_IMAGE_VARIANT', 1000, 1, 3),
+      (
+        'product-3-v1', 'product-3', 1,
+        '预约产品三', '["关键词三"]',
+        'https://www.amazon.co.jp/reservation-three',
+        '公开说明三', '内部说明三',
+        'staff-pre-sales', 1000,
           1980, 'MAIN_IMAGE_VARIANT', 1000, 1, 3);
 
     INSERT INTO demand_batches (
@@ -931,7 +1741,7 @@ function seedReservationFixture(
       buyer_self_pay_override_reason
     ) VALUES
       (
-        'demand-1', 'seller-org-1', 'store-1', 'JP',
+        'demand-1', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'product-1', 1, 'seller-owner', 'IMAGE',
         ${targetQuantity}, '公开说明', '内部说明',
         4000, 10000, 20000,
@@ -942,7 +1752,7 @@ function seedReservationFixture(
       ),
       (
         'demand-2-same-product',
-        'seller-org-1', 'store-1', 'JP',
+        'seller-org-1', 'store-1', 'AMAZON_JP',
         'product-1', 1, 'seller-owner', 'TEXT',
         3, '公开说明', '内部说明',
         4000, 10000, 20000,
@@ -952,7 +1762,7 @@ function seedReservationFixture(
         0, 0, 1000, 'PRODUCT_DEFAULT', NULL
       ),
       (
-        'demand-2', 'seller-org-1', 'store-1', 'JP',
+        'demand-2', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'product-2', 1, 'seller-owner', 'VIDEO',
         3, '公开说明', '内部说明',
         4000, 10000, 20000,
@@ -962,7 +1772,7 @@ function seedReservationFixture(
         0, 0, 1000, 'PRODUCT_DEFAULT', NULL
       ),
       (
-        'demand-future', 'seller-org-1', 'store-1', 'JP',
+        'demand-future', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'product-2', 1, 'seller-owner', 'RATING',
         3, '公开说明', '内部说明',
         8000, 10000, 20000,
@@ -970,8 +1780,30 @@ function seedReservationFixture(
         'staff-pre-sales', NULL,
         2, 1000, 3000, 3000, 3000, NULL, NULL,
         0, 0, 1000, 'PRODUCT_DEFAULT', NULL
+      ),
+      (
+        'demand-3-other-store', 'seller-org-1', 'store-2', 'AMAZON_JP',
+        'product-3', 1, 'seller-owner', 'TEXT',
+        3, '公开说明', '内部说明',
+        4000, 10000, 20000,
+        'PUBLISHED', NULL, NULL,
+        'staff-pre-sales', NULL,
+        2, 1000, 3000, 3000, 3000, NULL, NULL,
+        0, 0, 1000, 'PRODUCT_DEFAULT', NULL
       );
   `);
+  database.exec(`
+    INSERT INTO buyer_staff_assignments (
+      id, buyer_customer_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason, version,
+      created_at, updated_at, revoked_at
+    )
+    SELECT 'buyer-pre-binding-'||id, id, 'BUYER_PRE_SALES_OWNER',
+      'staff-pre-sales', 'ACTIVE', 'AUTO_INITIAL',
+      'STAFF', 'zz-phase3h-test-owner', NULL, 1, 1000, 1000, NULL
+    FROM buyer_customers;
+`);
+
 }
 
 class CommitWindowRaceDatabase implements SqlDatabase {
@@ -1001,12 +1833,12 @@ class CommitWindowRaceDatabase implements SqlDatabase {
   }
 }
 
-function buyerActor(
+export function buyerActor(
   buyerCustomerId: string,
 ): BuyerReservationActor {
   return {
     buyerCustomerId,
-    marketplaceCode: 'JP',
+    marketplaceCode: 'AMAZON_JP',
     accessStatus: 'ACTIVE',
     identityReviewStatus: 'CLEAR',
   };
@@ -1100,26 +1932,21 @@ async function orderFinanceCounts(database: SqliteDatabase): Promise<{
   evidence: number;
   formalOrders: number;
   snapshots: number;
-  moneySnapshots: number;
 }> {
   const row = await database.prepare(`
     SELECT
       (SELECT COUNT(*) FROM order_evidence_submissions) AS evidence,
       (SELECT COUNT(*) FROM formal_orders) AS formalOrders,
-      (SELECT COUNT(*) FROM formal_order_financial_snapshots) AS snapshots,
-      (SELECT COUNT(*) FROM formal_order_marketplace_money_snapshots)
-        AS moneySnapshots
+      (SELECT COUNT(*) FROM formal_order_financial_snapshots) AS snapshots
   `).first<{
     evidence: number;
     formalOrders: number;
     snapshots: number;
-    moneySnapshots: number;
   }>();
   return {
     evidence: Number(row?.evidence ?? 0),
     formalOrders: Number(row?.formalOrders ?? 0),
     snapshots: Number(row?.snapshots ?? 0),
-    moneySnapshots: Number(row?.moneySnapshots ?? 0),
   };
 }
 
@@ -1148,4 +1975,125 @@ async function demandCounts(
     held: Number(row.held),
     approved: Number(row.approved),
   };
+}
+
+function seedPublishedMainImage(
+  database: SqliteDatabase,
+  productVersionId: string,
+): void {
+  const intentId = `intent-${productVersionId}-main`;
+  const objectId = `object-${productVersionId}-main`;
+  const linkId = `link-${productVersionId}-main`;
+  database.exec(`
+    INSERT INTO file_upload_intents (
+      id, owner_actor_type, owner_actor_id, purpose, visibility, status,
+      requested_file_count, manifest_hash, version, expires_at, failure_code,
+      created_at, updated_at, completed_at
+    ) VALUES (
+      '${intentId}', 'STAFF', 'staff-pre-sales', 'PRODUCT_IMAGE',
+      'SELLER_VISIBLE', 'ISSUED', 1,
+      '${'d'.repeat(64)}', 1, 9000000, NULL, 1000, 1000, NULL
+    );
+    INSERT INTO file_objects (
+      id, upload_intent_id, slot_no, purpose, visibility, object_key,
+      client_file_name, extension, declared_mime, expected_byte_size, status,
+      upload_token_hash, upload_expires_at, uploaded_byte_size, detected_mime,
+      uploaded_sha256, failure_code, version, created_at, updated_at,
+      uploaded_at, verified_at, deleted_at
+    ) VALUES (
+      '${objectId}', '${intentId}', 1, 'PRODUCT_IMAGE', 'SELLER_VISIBLE',
+      'files/v1/2026/08/${objectId.padEnd(30, 'x')}',
+      'main.webp', 'webp', 'image/webp', 100, 'RESERVED',
+      '${'e'.repeat(64)}', 9000000, NULL, NULL,
+      NULL, NULL, 1, 1000, 1000, NULL, NULL, NULL
+    );
+    UPDATE file_upload_intents
+      SET status='VERIFIED', completed_at=1001, updated_at=1001
+      WHERE id='${intentId}';
+    UPDATE file_objects
+      SET status='VERIFIED', uploaded_byte_size=100, detected_mime='image/webp',
+        uploaded_sha256='${'f'.repeat(64)}', uploaded_at=1001, verified_at=1001,
+        updated_at=1001
+      WHERE id='${objectId}';
+    INSERT INTO file_entity_links (
+      id, file_object_id, entity_type, entity_id, purpose, visibility,
+      linked_by_actor_type, linked_by_actor_id, created_at,
+      authorization_mode, expires_at, revoked_at
+    ) VALUES (
+      '${linkId}', '${objectId}', 'PRODUCT_VERSION', '${productVersionId}',
+      'PRODUCT_IMAGE', 'SELLER_VISIBLE', 'STAFF', 'staff-pre-sales', 1000,
+      'EXPLICIT_AUDIENCES', NULL, NULL
+    );
+    INSERT INTO file_entity_audience_grants (
+      id, file_entity_link_id, subject_type, buyer_customer_id,
+      seller_organization_id, staff_permission_code, staff_scope_type,
+      staff_team_id, granted_by_actor_type, granted_by_actor_id,
+      created_at, expires_at, revoked_at
+    ) VALUES (
+      'grant-${productVersionId}-seller', '${linkId}', 'SELLER_ORGANIZATION',
+      NULL, 'seller-org-1', NULL, NULL, NULL, 'STAFF', 'staff-pre-sales',
+      1000, NULL, NULL
+    ), (
+      'grant-${productVersionId}-staff', '${linkId}', 'STAFF_INTERNAL',
+      NULL, NULL, 'PRODUCT_VIEW', 'GLOBAL', NULL, 'STAFF', 'staff-pre-sales',
+      1000, NULL, NULL
+    );
+    INSERT INTO product_version_main_images (
+      product_version_id, file_entity_link_id, created_by_staff_id, created_at
+    ) VALUES ('${productVersionId}', '${linkId}', 'staff-pre-sales', 1000);
+  `);
+}
+
+function setAutoApproveWindow(
+  database: SqliteDatabase,
+  demandId: string,
+  now: number,
+): void {
+  database.prepare(
+    `UPDATE demand_batches
+     SET open_at=?, reservation_deadline=?, order_deadline=?
+     WHERE id=?`,
+  ).bind(
+    now - 1,
+    now + 24 * 3_600_000,
+    now + 48 * 3_600_000,
+    demandId,
+  ).run();
+}
+
+function seedAutoApproveDemand(
+  database: SqliteDatabase,
+  demandId: string,
+  storeId: string,
+  productId: string,
+): void {
+  database.exec(`
+    INSERT INTO demand_batches (
+      id, organization_id, store_id, marketplace_code,
+      product_id, product_version_no,
+      submitted_by_member_id, task_type,
+      target_quantity, buyer_visible_notes,
+      seller_notes, open_at,
+      reservation_deadline, order_deadline,
+      status, review_reason, close_reason,
+      reviewed_by_staff_id, closed_by_staff_id,
+      version, submitted_at, updated_at,
+      reviewed_at, published_at,
+      withdrawn_at, closed_at,
+      held_reservation_count,
+      approved_reservation_count,
+      buyer_self_pay_bps_snapshot,
+      buyer_self_pay_source,
+      buyer_self_pay_override_reason
+    ) VALUES (
+      '${demandId}', 'seller-org-1', '${storeId}', 'AMAZON_JP',
+      '${productId}', 1, 'seller-owner', 'IMAGE',
+      5, '公开说明', '内部说明',
+      4000, 10000000, 90000000,
+      'PUBLISHED', NULL, NULL,
+      'staff-pre-sales', NULL,
+      1, 1000, 3000, 3000, 3000, NULL, NULL,
+      0, 0, 1000, 'PRODUCT_DEFAULT', NULL
+    );
+  `);
 }

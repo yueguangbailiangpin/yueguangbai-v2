@@ -18,10 +18,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   CatalogError,
   cleanCatalogIdentifier,
   normalizeCatalogError,
@@ -33,7 +29,7 @@ import {
 interface ProductStoreSource {
   store_id: string;
   organization_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   store_status: string;
   organization_status: string;
 }
@@ -48,7 +44,7 @@ export interface CreateApprovedProductResult {
   product_version_id: string;
   seller_organization_id: string;
   store_id: string;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   asin: string;
   current_version_no: 1;
   product_version: ProductVersionFields;
@@ -140,23 +136,6 @@ export async function createApprovedProduct(
       status: 'ACTIVE',
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `product-created:${productId}`,
-      eventType: 'PRODUCT_CREATED',
-      aggregateType: 'PRODUCT',
-      aggregateId: productId,
-      payload: {
-        product_id: productId,
-        seller_organization_id: store.organization_id,
-        store_id: store.store_id,
-        marketplace_code: store.marketplace_code,
-        asin,
-        current_version_no: 1,
-        product_name: version.productName,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -270,7 +249,6 @@ export async function createApprovedProduct(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

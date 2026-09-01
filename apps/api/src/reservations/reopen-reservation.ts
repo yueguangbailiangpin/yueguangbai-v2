@@ -16,10 +16,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   cleanReservationIdentifier,
   cleanReservationReason,
   insertReservationEventStatement,
@@ -33,6 +29,7 @@ interface ReopenSource {
   reservation_id: string;
   demand_batch_id: string;
   buyer_customer_id: string;
+  store_id: string;
   product_id: string;
   status: ReservationStatus;
   version: number;
@@ -157,7 +154,7 @@ export async function reopenReservation(
       SELECT id
       FROM product_reservations
       WHERE buyer_customer_id=?
-        AND product_id=?
+        AND store_id=?
         AND status IN (
           'PENDING_REVIEW',
           'APPROVED'
@@ -166,12 +163,12 @@ export async function reopenReservation(
       LIMIT 1
     `).bind(
       source.buyer_customer_id,
-      source.product_id,
+      source.store_id,
       reservationId,
     ).first<{ id: string }>();
     if (activeConflict) {
       throw new ReservationError(
-        'BUYER_PRODUCT_RESERVATION_CONFLICT',
+        'BUYER_STORE_RESERVATION_CONFLICT',
         409,
       );
     }
@@ -187,16 +184,6 @@ export async function reopenReservation(
       reason,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey:
-        `reservation-reopened:${reservationId}:${nextReopenedCount}`,
-      eventType: 'RESERVATION_REOPENED',
-      aggregateType: 'RESERVATION',
-      aggregateId: reservationId,
-      payload: response,
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -214,11 +201,25 @@ export async function reopenReservation(
         WHERE id=?
           AND status=?
           AND version=?
+          AND NOT EXISTS (
+            SELECT 1
+            FROM product_reservations active_store_reservation
+            WHERE active_store_reservation.buyer_customer_id=?
+              AND active_store_reservation.store_id=?
+              AND active_store_reservation.id<>?
+              AND active_store_reservation.status IN (
+                'PENDING_REVIEW',
+                'APPROVED'
+              )
+          )
       `).bind(
         now,
         reservationId,
         source.status,
         source.version,
+        source.buyer_customer_id,
+        source.store_id,
+        reservationId,
       ),
       database.prepare(`
         UPDATE demand_batches
@@ -274,7 +275,6 @@ export async function reopenReservation(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,
@@ -321,6 +321,7 @@ async function requireReopenSource(
       reservation.id AS reservation_id,
       reservation.demand_batch_id,
       reservation.buyer_customer_id,
+      reservation.store_id,
       reservation.product_id,
       reservation.status,
       reservation.version,

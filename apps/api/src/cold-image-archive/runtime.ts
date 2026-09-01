@@ -1,35 +1,59 @@
-import type { DriveArchiveAdapter } from '@ygb/contracts';
-import { GoogleDriveArchiveAdapter } from './drive-adapter';
+import type { ArchiveQueueMessage, DriveArchiveClient } from '@ygb/contracts';
+import { googleDriveArchiveClientFromEnv, type GoogleDriveEnvBindings } from './drive-http-client';
 
-export interface DriveArchiveRuntimeBindings {
-  DRIVE_ARCHIVE_ADAPTER?: DriveArchiveAdapter;
-  DRIVE_ARCHIVE_ENABLED?: string;
-  DRIVE_ARCHIVE_COPY_ENABLED?: string;
-  DRIVE_ARCHIVE_PROXY_READ_ENABLED?: string;
-  DRIVE_ARCHIVE_R2_DELETE_ENABLED?: string;
-  GOOGLE_DRIVE_CLIENT_ID?: string;
-  GOOGLE_DRIVE_CLIENT_SECRET?: string;
-  GOOGLE_DRIVE_REFRESH_TOKEN?: string;
-  GOOGLE_DRIVE_FOLDER_ID?: string;
-  GOOGLE_DRIVE_OWNER_ACCOUNT_KEY?: string;
+/**
+ * Queue producer port. The real Cloudflare Queue binding is template-only
+ * this stage (wrangler.example.jsonc); tests and local runs inject a fake.
+ * Messages carry only the opaque envelope allowed on the wire.
+ */
+export interface ArchiveQueueProducer {
+  send(message: ArchiveQueueMessage): Promise<void>;
 }
 
-export function resolveDriveArchiveAdapter(bindings:DriveArchiveRuntimeBindings):DriveArchiveAdapter|null {
-  if(bindings.DRIVE_ARCHIVE_ENABLED!=='true') return null;
-  if(bindings.DRIVE_ARCHIVE_ADAPTER) return bindings.DRIVE_ARCHIVE_ADAPTER;
-  const values=[bindings.GOOGLE_DRIVE_CLIENT_ID,bindings.GOOGLE_DRIVE_CLIENT_SECRET,
-    bindings.GOOGLE_DRIVE_REFRESH_TOKEN,bindings.GOOGLE_DRIVE_FOLDER_ID,
-    bindings.GOOGLE_DRIVE_OWNER_ACCOUNT_KEY];
-  if(values.some((value)=>typeof value!=='string'||value.length<1)) return null;
-  try{
-    return new GoogleDriveArchiveAdapter({clientId:values[0]!,clientSecret:values[1]!,refreshToken:values[2]!,
-      folderId:values[3]!,ownerAccountKey:values[4]!});
-  }catch{return null;}
+export interface ArchiveRuntimeBindings extends GoogleDriveEnvBindings {
+  ARCHIVE_DRIVE_CLIENT?: DriveArchiveClient;
+  ARCHIVE_QUEUE?: ArchiveQueueProducer;
+  ARCHIVE_SELECTOR_ENABLED?: string;
+  ARCHIVE_DRIVE_UPLOAD_ENABLED?: string;
+  ARCHIVE_HOT_DELETE_ENABLED?: string;
+  ARCHIVE_RESTORE_WORKER_ENABLED?: string;
 }
 
-export function driveArchiveRuntime(bindings:DriveArchiveRuntimeBindings){
-  return {adapter:resolveDriveArchiveAdapter(bindings),enabled:bindings.DRIVE_ARCHIVE_ENABLED==='true',
-    copyEnabled:bindings.DRIVE_ARCHIVE_COPY_ENABLED==='true',
-    proxyReadEnabled:bindings.DRIVE_ARCHIVE_PROXY_READ_ENABLED==='true',
-    r2DeleteEnabled:bindings.DRIVE_ARCHIVE_R2_DELETE_ENABLED==='true'};
+export interface ArchiveRuntime {
+  client: DriveArchiveClient | null;
+  queue: ArchiveQueueProducer | null;
+  selectorEnabled: boolean;
+  driveUploadEnabled: boolean;
+  hotDeleteEnabled: boolean;
+  restoreWorkerEnabled: boolean;
+}
+
+/**
+ * Resolve the archive runtime from bindings. Every switch defaults OFF; the
+ * D1 archive_runtime_controls table is the second, independent gate (the
+ * scheduled runner checks both). The production Google Drive HTTP client is
+ * built from GOOGLE_DRIVE_* env/secret vars when they are configured
+ * (stage 6.5); an explicit ARCHIVE_DRIVE_CLIENT injection still wins for
+ * tests/local. A missing or partial Drive configuration resolves to NO
+ * client, which keeps every upload path disabled — the adapter itself makes
+ * zero HTTP requests unless the pipeline invokes it behind both gates.
+ */
+export function archiveRuntime(bindings: ArchiveRuntimeBindings): ArchiveRuntime {
+  return {
+    client: bindings.ARCHIVE_DRIVE_CLIENT ?? googleDriveArchiveClientFromEnv(bindings) ?? null,
+    queue: bindings.ARCHIVE_QUEUE ?? null,
+    selectorEnabled: bindings.ARCHIVE_SELECTOR_ENABLED === 'true',
+    driveUploadEnabled: bindings.ARCHIVE_DRIVE_UPLOAD_ENABLED === 'true',
+    hotDeleteEnabled: bindings.ARCHIVE_HOT_DELETE_ENABLED === 'true',
+    restoreWorkerEnabled: bindings.ARCHIVE_RESTORE_WORKER_ENABLED === 'true',
+  };
+}
+
+/** In-memory producer used by tests and local drain wiring. */
+export class CapturingArchiveQueueProducer implements ArchiveQueueProducer {
+  readonly sent: ArchiveQueueMessage[] = [];
+
+  async send(message: ArchiveQueueMessage): Promise<void> {
+    this.sent.push(message);
+  }
 }

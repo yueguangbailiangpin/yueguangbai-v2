@@ -4,13 +4,12 @@ import {
   type StaffAuthProviderBindings,
   type StaffDataScope,
   type ObjectStorageAdapter,
-  type DriveArchiveAdapter,
   type SqlDatabase,
 } from '@ygb/contracts';
 import { Hono } from 'hono';
 import type { AssignmentStaffAuthorization } from './staff-assignment';
 import type { StaffSessionRow } from './staff-auth';
-import type { StaffMcpProductionRuntimeBindings } from './staff-mcp/runtime';
+import type { ArchiveQueueProducer } from './cold-image-archive/runtime';
 import { errorLogEvent, routeGroup, writeErrorLog } from './observability';
 import {
   recordWorker5xxSignal,
@@ -20,34 +19,27 @@ import {
 import { installSellerMemberPrivilegeSessionRotation } from './seller-portal/member-privilege-session-rotation';
 import type { OperationalAlertServiceBinding } from './operational-readiness/alert-sink-contract';
 
-export type AppBindings = StaffAuthProviderBindings &
-  StaffMcpProductionRuntimeBindings & {
+export type AppBindings = StaffAuthProviderBindings & {
     DB: SqlDatabase;
     APP_ENVIRONMENT?: string;
     APP_RELEASE_SHA?: string;
-    KEYWORD_IMAGE_GENERATOR?: unknown;
-    KEYWORD_GENERATOR_SHARED_SECRET?: string;
-    KEYWORD_HMAC_SECRET?: string;
     FILE_OBJECT_STORAGE?: ObjectStorageAdapter;
-    DRIVE_ARCHIVE_ADAPTER?: DriveArchiveAdapter;
-    DRIVE_ARCHIVE_ENABLED?: string;
-    DRIVE_ARCHIVE_COPY_ENABLED?: string;
-    DRIVE_ARCHIVE_PROXY_READ_ENABLED?: string;
-    DRIVE_ARCHIVE_R2_DELETE_ENABLED?: string;
+    ARCHIVE_DRIVE_CLIENT?: import('@ygb/contracts').DriveArchiveClient;
+    ARCHIVE_QUEUE?: ArchiveQueueProducer;
+    ARCHIVE_SELECTOR_ENABLED?: string;
+    ARCHIVE_DRIVE_UPLOAD_ENABLED?: string;
+    ARCHIVE_HOT_DELETE_ENABLED?: string;
+    ARCHIVE_RESTORE_WORKER_ENABLED?: string;
+    GOOGLE_DRIVE_FOLDER_ID?: string;
+    GOOGLE_DRIVE_SHARED_DRIVE_ID?: string;
     GOOGLE_DRIVE_CLIENT_ID?: string;
     GOOGLE_DRIVE_CLIENT_SECRET?: string;
     GOOGLE_DRIVE_REFRESH_TOKEN?: string;
-    GOOGLE_DRIVE_FOLDER_ID?: string;
-    GOOGLE_DRIVE_OWNER_ACCOUNT_KEY?: string;
+    GOOGLE_DRIVE_ACCESS_TOKEN?: string;
     CUSTOMER_SESSION_SECRET?: string;
     CUSTOMER_SECURITY_TOKEN_SECRET?: string;
-    OUTBOX_DELIVERY_ADAPTER?: {
-      deliver(event: { id: string; eventType: string; payloadJson: string }): Promise<void>;
-    };
-    OUTBOX_DELIVERY_ENABLED?: string;
     SCHEDULED_OPERATIONS_ENABLED?: string;
     SCHEDULED_OPERATIONS_DISABLED_JOBS?: string;
-    ACQUISITION_MAINTENANCE_ENABLED?: string;
     OPERATIONAL_ALERT_SINK?: OperationalAlertSink | OperationalAlertServiceBinding;
     OPERATIONAL_ALERT_MODE?: string;
     OPERATIONAL_ALERT_SINK_SERVICE?: string;

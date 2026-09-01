@@ -16,10 +16,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   requireCurrentInstructionForEvidence,
   clearResubmissionDeadlineStatements,
 } from '../order-instructions/evidence-integration';
@@ -64,7 +60,7 @@ export async function submitOrderEvidence(
   input: {
     reservationId: string;
     expectedVersion: number;
-    marketplace: 'JP';
+    marketplace: 'AMAZON_JP';
     amazonOrderNumber: string;
     amazonOrderDate: string;
     finalPaidJpy: number;
@@ -87,7 +83,7 @@ export async function submitOrderEvidence(
     input.expectedVersion,
     { allowZero: true },
   );
-  if (input.marketplace !== 'JP'
+  if (input.marketplace !== 'AMAZON_JP'
     || input.marketplace !== command.actor.marketplaceCode) {
     throw new OrderEvidenceError('VALIDATION_ERROR', 400);
   }
@@ -227,23 +223,6 @@ export async function submitOrderEvidence(
     const eventType = source === null
       ? 'ORDER_EVIDENCE_SUBMITTED'
       : 'ORDER_EVIDENCE_RESUBMITTED';
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey:
-        `order-evidence-submitted:${submissionId}:${evidenceVersionNo}`,
-      eventType,
-      aggregateType: 'ORDER_EVIDENCE',
-      aggregateId: submissionId,
-      payload: {
-        submission_id: submissionId,
-        reservation_id: reservationId,
-        buyer_customer_id: command.actor.buyerCustomerId,
-        evidence_version_id: evidenceVersionId,
-        evidence_version_no: evidenceVersionNo,
-        file_count: preparedFiles.length,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [];
     if (source === null) {
@@ -267,7 +246,6 @@ export async function submitOrderEvidence(
       amazonOrderDate,
       finalPaidJpy,
       buyerNote,
-      evidenceFileObjectId: preparedFiles[0]!.object.id,
       instruction,
       now,
     }));
@@ -360,7 +338,6 @@ export async function submitOrderEvidence(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,
@@ -499,7 +476,7 @@ function insertSubmissionStatement(
     submissionId: string;
     reservationId: string;
     buyerCustomerId: string;
-    marketplace: 'JP';
+    marketplace: 'AMAZON_JP';
     now: number;
   },
 ): SqlStatement {
@@ -543,14 +520,13 @@ function insertEvidenceVersionStatement(
     submissionId: string;
     reservationId: string;
     buyerCustomerId: string;
-    marketplace: 'JP';
+    marketplace: 'AMAZON_JP';
     evidenceVersionNo: number;
     orderNumberRaw: string;
     orderNumberNormalized: string;
     amazonOrderDate: string;
     finalPaidJpy: number;
     buyerNote: string | null;
-    evidenceFileObjectId: string;
     instruction: {
         instructionId: string;
         instructionVersionId: string;
@@ -586,10 +562,9 @@ function insertEvidenceVersionStatement(
       buyer_self_pay_bps_snapshot, buyer_self_pay_jpy,
       buyer_refundable_principal_jpy, price_mismatch,
       price_difference_jpy, submitted_before_deadline,
-      evidence_file_object_id,
       created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     input.evidenceVersionId,
     input.submissionId,
@@ -613,7 +588,6 @@ function insertEvidenceVersionStatement(
     input.instruction.priceMismatch ? 1 : 0,
     input.instruction.priceDifferenceJpy,
     input.instruction.submittedBeforeDeadline,
-    input.evidenceFileObjectId,
     input.now,
   );
 }

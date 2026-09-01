@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   candidateProvenance,
   commandEnvironment,
+  assertReleaseScriptsExist,
+  missingReleaseScripts,
   RELEASE_COMMANDS,
   runReleaseCommands,
 } from './release-check.mjs';
@@ -22,12 +25,41 @@ describe('release aggregate gate', () => {
   });
 
   it('covers every required local release family', () => {
-    expect(RELEASE_COMMANDS).toEqual(expect.arrayContaining([
-      'check', 'verify:final-production-go:local', 'verify:cloudflare-release',
-      'dry-run:cloudflare-release', 'check:production-readiness', 'check:drive-archive',
+    expect(RELEASE_COMMANDS).toEqual([
+      'verify:openspec:strict',
+      'audit:dependencies',
+      'check',
+      'preflight:drive-archive',
+      'verify:staff-auth-composition',
+      'verify:cloudflare-release',
+      'dry-run:cloudflare-release',
+      'verify:final-production-go:local',
+      'test:browser',
+    ]);
+    expect(RELEASE_COMMANDS).not.toEqual(expect.arrayContaining([
+      'check:production-readiness', 'check:drive-archive',
       'check:staff-auth-production', 'test:wave14a:browser',
     ]));
-    expect(RELEASE_COMMANDS).not.toContain('check:staff-mcp-production');
+  });
+
+  it('declares only npm scripts that exist in the root package manifest', () => {
+    const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    const missing = missingReleaseScripts(packageJson);
+
+    expect(missing, `missing npm scripts: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('fails closed with every missing release script when the manifest drifts', () => {
+    const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    const scripts = { ...packageJson.scripts };
+    delete scripts['preflight:drive-archive'];
+    scripts['verify:staff-auth-composition'] = '  ';
+
+    expect(missingReleaseScripts({ ...packageJson, scripts })).toEqual([
+      'preflight:drive-archive', 'verify:staff-auth-composition',
+    ]);
+    expect(() => assertReleaseScriptsExist({ ...packageJson, scripts }))
+      .toThrow('preflight:drive-archive, verify:staff-auth-composition');
   });
 
   it('runs in order and stops on the first failed sub-gate', () => {
@@ -39,7 +71,7 @@ describe('release aggregate gate', () => {
 
   it('isolates the release browser server on a configurable loopback port', () => {
     const environment = { RELEASE_BROWSER_PORT: '4300', EXISTING: 'preserved' };
-    expect(commandEnvironment('test:wave14a:browser', environment)).toEqual({
+    expect(commandEnvironment('test:browser', environment)).toEqual({
       ...environment,
       PLAYWRIGHT_PORT: '4300',
     });

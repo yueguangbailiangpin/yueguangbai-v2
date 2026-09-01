@@ -2,6 +2,7 @@ import {
   BUYER_REFUND_PORTAL_DEFAULT_PAGE_SIZE,
   BUYER_REFUND_PORTAL_MAX_PAGE_SIZE,
 } from '@ygb/contracts';
+import { decodeBase64UrlJson, encodeBase64UrlJson } from '../foundation/cursor-codec';
 import { BuyerRefundPortalError } from './errors';
 
 export interface BuyerRefundPortalCursor {
@@ -26,18 +27,12 @@ export function parseBuyerRefundPortalPageLimit(
 export function encodeBuyerRefundPortalCursor(
   cursor: BuyerRefundPortalCursor,
 ): string {
-  const bytes = new TextEncoder().encode(JSON.stringify({
+  return encodeBase64UrlJson({
     v: 1,
     kind: 'buyer-refund',
     at: cursor.updatedAt,
     id: cursor.id,
-  }));
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary)
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replace(/=+$/u, '');
+  });
 }
 
 export function decodeBuyerRefundPortalCursor(
@@ -46,16 +41,7 @@ export function decodeBuyerRefundPortalCursor(
   if (value === undefined) return null;
   if (value.length < 1 || value.length > 1000) return validationError();
   try {
-    const base64 = value
-      .replaceAll('-', '+')
-      .replaceAll('_', '/')
-      .padEnd(Math.ceil(value.length / 4) * 4, '=');
-    const binary = atob(base64);
-    const bytes = Uint8Array.from(
-      binary,
-      (character) => character.charCodeAt(0),
-    );
-    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+    const parsed = decodeBase64UrlJson(value);
     if (!isCursorPayload(parsed)) return validationError();
     return { updatedAt: parsed.at, id: parsed.id };
   } catch {

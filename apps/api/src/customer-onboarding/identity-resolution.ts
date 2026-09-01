@@ -1,6 +1,6 @@
 import type { SqlDatabase } from '@ygb/contracts';
 import { normalizeWechatId } from '@ygb/domain';
-import { hashNormalizedWechat } from '../acquisition/privacy';
+import { hashNormalizedWechat } from './wechat-identity-crypto';
 import { createAuditEventStatement } from '../foundation/audit';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { resolveStaffMarketplaceCodes } from '../staff-assignment/data-scope';
@@ -152,7 +152,7 @@ export async function searchIdentityResolutionCandidates(
   const rows = await database
     .prepare(
       `SELECT DISTINCT organization.id AS subject_id,organization.organization_name AS display_name,
-      CASE organization.marketplace_code WHEN 'JP' THEN 'AMAZON_JP' ELSE organization.marketplace_code END AS marketplace_code,
+      CASE organization.marketplace_code WHEN 'AMAZON_JP' THEN 'AMAZON_JP' ELSE organization.marketplace_code END AS marketplace_code,
       organization.seller_code AS reference_code,
       (SELECT COUNT(*) FROM formal_orders formal_order WHERE formal_order.seller_organization_id=organization.id) AS order_count
     FROM seller_organizations organization
@@ -303,7 +303,7 @@ async function assertSubject(
           .first<any>()
       : await database
           .prepare(
-            `SELECT id,CASE marketplace_code WHEN 'JP' THEN 'AMAZON_JP' ELSE marketplace_code END AS market
+            `SELECT id,CASE marketplace_code WHEN 'AMAZON_JP' THEN 'AMAZON_JP' ELSE marketplace_code END AS market
       FROM seller_organizations WHERE id=?`,
           )
           .bind(clean(id))

@@ -198,6 +198,8 @@ test('rejects unknown workflows, dangerous triggers, shell indirection, and unre
 });
 
 test('rejects a health workflow context or command drift',()=>{
+  assert.throws(()=>verify({health:canonicalHealth.replace('  workflow_dispatch:\n','  schedule:\n    - cron: \'17 * * * *\'\n  workflow_dispatch:\n')}),/manual-only|triggers/u);
+  assert.throws(()=>verify({health:canonicalHealth.replace('description: 仅手动诊断；Stage 8 正式部署并确认 production readiness URL 后方可恢复每小时定时探测','description: 验收模式')}),/simulation is not canonical/u);
   assert.throws(()=>verify({health:canonicalHealth.replace('    timeout-minutes: 2\n','    environment: production\n    timeout-minutes: 2\n')}),/health job keys|environment/u);
   assert.throws(()=>verify({health:canonicalHealth.replace('run: node scripts/production-health-monitor.mjs','run: node scripts/production-deploy.mjs')}),/canonical monitor|health monitor/u);
 });

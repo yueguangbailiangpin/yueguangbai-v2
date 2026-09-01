@@ -13,11 +13,13 @@ function demand(
   }> = {},
 ) {
   const amount = input.amount ?? String(2_980 + index * 1_327);
+  const remaining = input.remaining ?? Math.max(0, 7 - index);
   return {
     demand_id: `review-buyer-demand-${String(index).padStart(3, '0')}`,
     demand_version: 1,
-    marketplace_code: 'JP' as const,
+    marketplace_code: 'AMAZON_JP' as const,
     product_name: input.product_name ?? `Demo 日本站产品 ${index}`,
+    main_image: null,
     reference_order_amount_jpy: amount,
     buyer_self_pay_bps: index % 3 === 0 ? 1500 : 0,
     estimated_buyer_self_pay_jpy: index % 3 === 0 ? String(Math.round(Number(amount) * 0.15)) : '0',
@@ -27,10 +29,14 @@ function demand(
     store_display_name: index % 2 === 0 ? 'TEST 日本店 B' : 'TEST 日本店 A',
     task_type: input.task_type ?? (['RATING', 'TEXT', 'IMAGE', 'VIDEO'] as const)[(index - 1) % 4],
     target_quantity: 8,
-    remaining_quantity: input.remaining ?? Math.max(0, 7 - index),
+    remaining_quantity: remaining,
     open_at: NOW - DAY,
     reservation_deadline: NOW + (input.deadlineDays ?? index + 1) * DAY,
     order_deadline: NOW + (input.deadlineDays ?? index + 1) * DAY + 7 * DAY,
+    reservation_eligibility: (remaining > 0 ? 'ELIGIBLE' : 'INELIGIBLE_ACTIVE_STORE_RESERVATION') as
+      | 'ELIGIBLE'
+      | 'INELIGIBLE_ACTIVE_STORE_RESERVATION',
+    reservation_ineligibility_reason: remaining > 0 ? null : 'ACTIVE_STORE_RESERVATION',
   };
 }
 
@@ -61,6 +67,9 @@ function reservationDemand(source: (typeof demands)[number]) {
     target_quantity: _target,
     remaining_quantity: _remaining,
     open_at: _open,
+    main_image: _mainImage,
+    reservation_eligibility: _eligibility,
+    reservation_ineligibility_reason: _reason,
     ...value
   } = source;
   return value;
@@ -128,13 +137,13 @@ function evidence(
     reservation: {
       reservation_id: source.reservation_id,
       demand_id: source.demand.demand_id,
-      marketplace_code: 'JP' as const,
+      marketplace_code: 'AMAZON_JP' as const,
       product_name: source.demand.product_name,
       store_display_name: source.demand.store_display_name,
       review_type: source.demand.task_type,
       order_deadline: source.demand.order_deadline,
     },
-    marketplace: 'JP' as const,
+    marketplace: 'AMAZON_JP' as const,
     amazon_order_number_display: `503-000000${index}-000000${index}`,
     amazon_order_date: `2026-08-${String(3 + index).padStart(2, '0')}`,
     final_paid_jpy: finalPaid,
@@ -179,7 +188,7 @@ const evidences = [
 function formalOrder(index: number, reviewType: 'RATING' | 'TEXT' | 'IMAGE' | 'VIDEO' = 'IMAGE') {
   return {
     formal_order_id: `review-buyer-order-${String(index).padStart(3, '0')}`,
-    marketplace: 'JP' as const,
+    marketplace: 'AMAZON_JP' as const,
     amazon_order_number: `503-100000${index}-900000${index}`,
     amazon_order_date: `2026-08-0${index}`,
     product_name: demands[index + 1]!.product_name,
@@ -223,7 +232,7 @@ function review(
     review_case_id: `review-buyer-review-${String(index).padStart(3, '0')}`,
     order: {
       formal_order_id: order.formal_order_id,
-      marketplace: 'JP' as const,
+      marketplace: 'AMAZON_JP' as const,
       amazon_order_number: order.amazon_order_number,
       amazon_order_date: order.amazon_order_date,
       product_name: order.product_name,
@@ -289,11 +298,16 @@ function refund(index: number, status: 'DUE' | 'PARTIALLY_PAID' | 'PAID' | 'OVER
     ...balance,
     order: {
       formal_order_id: order.formal_order_id,
-      marketplace: 'JP' as const,
+      marketplace: 'AMAZON_JP' as const,
       amazon_order_number: order.amazon_order_number,
       product_name: order.product_name,
       review_type: order.review_type,
       status: 'CONFIRMED' as const,
+    },
+    reminder: {
+      reminder_count: 0,
+      last_reminded_at: null,
+      next_reminder_at: null,
     },
     allowed_actions: [] as [],
     activities:
@@ -313,25 +327,53 @@ function refund(index: number, status: 'DUE' | 'PARTIALLY_PAID' | 'PAID' | 'OVER
 }
 const refunds = [refund(1, 'DUE'), refund(2, 'PARTIALLY_PAID'), refund(3, 'PAID')];
 
-function sellerOrder(index: number, completion: 'IN_PROGRESS' | 'COMPLETE', paymentAmount: string) {
+interface DemoCommunicationScreenshot {
+  file_object_id: string;
+  file_version: number;
+  purpose: 'ORDER_COMMUNICATION_SCREENSHOT';
+  visibility: 'SELLER_VISIBLE';
+  uploaded_at: number;
+  uploaded_by_staff_id: string | null;
+  uploaded_by_staff_name?: string | null;
+}
+
+function demoCommunicationScreenshot(
+  index: number,
+  shot: number,
+): DemoCommunicationScreenshot {
+  return {
+    file_object_id: `review-comm-shot-${index}-${shot}`,
+    file_version: 1,
+    purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
+    visibility: 'SELLER_VISIBLE',
+    uploaded_at: NOW - index * DAY - shot * 3_600_000,
+    uploaded_by_staff_id: `review-staff-${shot}`,
+    uploaded_by_staff_name: shot === 1 ? 'Demo 员工' : null,
+  };
+}
+
+function sellerOrder(
+  index: number,
+  completion: 'IN_PROGRESS' | 'COMPLETE',
+  paymentAmount: string,
+  communicationScreenshots: readonly DemoCommunicationScreenshot[],
+) {
+  // business_completion 只含评论/卖家本金/服务费三段（买家返款不属于卖家视角）。
   const parts =
     completion === 'COMPLETE'
       ? {
           review: 'COMPLETE',
-          buyer_refund: 'COMPLETE',
           seller_principal: 'COMPLETE',
           seller_service_fee: 'COMPLETE',
         }
       : index % 3 === 0
         ? {
             review: 'COMPLETE',
-            buyer_refund: 'COMPLETE',
             seller_principal: 'PENDING',
             seller_service_fee: 'PENDING',
           }
         : {
             review: index % 2 === 0 ? 'COMPLETE' : 'PENDING',
-            buyer_refund: index % 2 === 0 ? 'COMPLETE' : 'PENDING',
             seller_principal: 'PENDING',
             seller_service_fee: 'PENDING',
           };
@@ -345,14 +387,11 @@ function sellerOrder(index: number, completion: 'IN_PROGRESS' | 'COMPLETE', paym
     },
     platform_product_identifier: `B0DEMO00${index}X`,
     product_name: demands[index % demands.length]!.product_name,
-    chat_screenshot: {
-      status: index % 2 ? ('AVAILABLE' as const) : ('NONE' as const),
-      file_version: index % 2 ? 1 : null,
-    },
+    main_image: null,
+    order_screenshot: null,
+    communication_screenshots: communicationScreenshots,
     confirmed_at: NOW - index * DAY,
-    legacy_projection: 'AMAZON' as const,
-    marketplace_code: 'JP' as const,
-    canonical_marketplace_code: 'AMAZON_JP' as const,
+    marketplace_code: 'AMAZON_JP' as const,
     amazon_order_number: `503-777000${index}-000300${index}`,
     asin: `B0DEMO00${index}X`,
     product_version: { id: `review-product-version-${index}`, version_no: 1 },
@@ -370,7 +409,7 @@ function sellerOrder(index: number, completion: 'IN_PROGRESS' | 'COMPLETE', paym
       payment_currency_code: 'JPY' as const,
       base_rate_version_id: 'review-base-rate',
       base_rate_business_date: '2026-08-01',
-      base_rate_confirmed_at: NOW - 10 * DAY,
+      base_rate_created_at: NOW - 10 * DAY,
       base_rate_value: '485000',
       base_rate_scale: '100000000',
       policy_version_id: 'review-policy',
@@ -378,7 +417,7 @@ function sellerOrder(index: number, completion: 'IN_PROGRESS' | 'COMPLETE', paym
       policy_seller_organization_id: null,
       policy_version_no: 2,
       policy_effective_from: NOW - 30 * DAY,
-      policy_confirmed_at: NOW - 20 * DAY,
+      policy_created_at: NOW - 20 * DAY,
       markup_rate_value: '1500000',
       markup_rate_scale: '100000000',
       final_rate_value: '500000',
@@ -392,7 +431,7 @@ function sellerOrder(index: number, completion: 'IN_PROGRESS' | 'COMPLETE', paym
       review_type: 'IMAGE',
       service_fee_cny_fen: String(2_000 + index * 275),
       effective_from: NOW - 30 * DAY,
-      confirmed_at: NOW - 20 * DAY,
+      created_at: NOW - 20 * DAY,
       marketplace_code: 'AMAZON_JP' as const,
       currency_code: 'CNY' as const,
       currency_exponent: 2 as const,
@@ -414,13 +453,14 @@ function createDemoData() {
       id: index % 2 ? 'review-store-b' : 'review-store-a',
       display_name: index % 2 ? 'TEST 日本店 B' : 'TEST 日本店 A',
     },
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     asin: `B0DEMOAPP${index}`,
     product_name: `Demo 商品申请 ${index + 1}`,
     search_keywords: ['Demo', '日本'],
     product_url: 'https://example.invalid/product',
     buyer_visible_notes: 'Demo 买家可见说明',
     seller_notes: 'Demo 卖家内部备注',
+    ordering_guide_expected_amount_jpy: 2_980 + index * 1_500,
     status,
     review_reason: reason,
     product_id: status === 'APPROVED' ? `review-product-${index}` : null,
@@ -445,7 +485,7 @@ function createDemoData() {
         search_keywords: ['Demo', '评审'],
         product_url: 'https://example.invalid/product',
       },
-      marketplace_code: 'JP',
+      marketplace_code: 'AMAZON_JP',
       task_type: (['RATING', 'TEXT', 'IMAGE', 'VIDEO'] as const)[index % 4],
       target_quantity: 12 + index,
       held_quantity: index,
@@ -478,12 +518,15 @@ function createDemoData() {
     sellerApplications,
     sellerDemands,
     sellerOrders: [
-      sellerOrder(1, 'IN_PROGRESS', '3480'),
-      sellerOrder(2, 'IN_PROGRESS', '21800'),
-      sellerOrder(3, 'IN_PROGRESS', '123456'),
-      sellerOrder(4, 'IN_PROGRESS', '9850'),
-      sellerOrder(5, 'COMPLETE', '64999'),
-      sellerOrder(6, 'COMPLETE', '198000'),
+      sellerOrder(1, 'IN_PROGRESS', '3480', [
+        demoCommunicationScreenshot(1, 1),
+        demoCommunicationScreenshot(1, 2),
+      ]),
+      sellerOrder(2, 'IN_PROGRESS', '21800', [demoCommunicationScreenshot(2, 1)]),
+      sellerOrder(3, 'IN_PROGRESS', '123456', []),
+      sellerOrder(4, 'IN_PROGRESS', '9850', []),
+      sellerOrder(5, 'COMPLETE', '64999', []),
+      sellerOrder(6, 'COMPLETE', '198000', []),
     ],
   };
 }

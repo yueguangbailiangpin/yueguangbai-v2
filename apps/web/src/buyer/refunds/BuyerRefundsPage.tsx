@@ -9,6 +9,7 @@ import { formatCnyFen } from '../shared/format';
 import { BuyerEmpty, BuyerLoading, BuyerQueryError } from '../shared/BuyerStates';
 import { BuyerJourney } from '../shared/BuyerJourney';
 import { statusLabel, statusTone } from '../shared/status';
+import { StageContactCard, STAGE_FOR_ROUTE } from '../shared/StageContactCard';
 
 export function BuyerRefundsPage(): React.JSX.Element {
   const client = useQueryClient();
@@ -20,18 +21,19 @@ export function BuyerRefundsPage(): React.JSX.Element {
   });
   return (
     <section className="buyer-page buyer-flow-page buyer-list-page">
-      <BuyerJourney current={null} />
+      <BuyerJourney current="refund" />
       <PageHeader
         eyebrow="返款阶段"
         title="返款记录"
-        description="查看返款金额、付款和冲正记录。"
+        description="查看返款金额和每笔付款记录。"
       />
+      <StageContactCard stage={STAGE_FOR_ROUTE['/buyer/refunds']} />
       {pages.isInitialPending ? (
         <BuyerLoading />
       ) : pages.initialError ? (
         <BuyerQueryError error={pages.initialError} />
       ) : pages.items.length === 0 ? (
-        <BuyerEmpty title="暂无返款记录" description="评论审核通过并形成返款义务后会显示。" />
+        <BuyerEmpty title="暂无返款记录" description="评论审核通过后，返款记录会显示在这里。" />
       ) : (
         <div className="buyer-card-list">
           {pages.items.map((item) => (

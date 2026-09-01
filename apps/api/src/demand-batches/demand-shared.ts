@@ -10,6 +10,12 @@ import type {
 import {
   isDemandTaskType,
 } from '@ygb/contracts';
+import {
+  addCalendarDays,
+  beijingDateFromEpochMs,
+  canWriteSellerOperations,
+  validateOrderCadence,
+} from '@ygb/domain';
 
 export interface SellerDemandActor {
   memberId: string;
@@ -34,6 +40,12 @@ export interface BuyerDemandContext {
   identityReviewStatus: 'CLEAR' | 'REVIEW_REQUIRED';
 }
 
+/** Safe, field-scoped failure detail exposed through the API error envelope. */
+export interface DemandBatchErrorDetail {
+  readonly field: string;
+  readonly reason?: string;
+}
+
 export class DemandBatchError extends Error {
   constructor(
     public readonly code:
@@ -53,20 +65,88 @@ export class DemandBatchError extends Error {
       | 'REQUEST_IN_PROGRESS'
       | 'DEPENDENCY_UNAVAILABLE',
     public readonly status: 400 | 403 | 404 | 409 | 503,
+    public readonly details: DemandBatchErrorDetail | null = null,
   ) {
     super(code);
     this.name = 'DemandBatchError';
   }
 }
 
+export const SELLER_DEMAND_SCHEDULE_POLICY = Object.freeze({
+  version: 1,
+  reservationWindowDays: 7,
+  orderDeadlineBufferDays: 30,
+});
+
+export interface SellerDemandSchedule {
+  openAt: number;
+  reservationDeadline: number;
+  orderDeadline: number;
+  policyVersion: number;
+}
+
+/** Seller submits business intent; the server owns operational windows. */
+export function deriveSellerDemandSchedule(input: {
+  now: number;
+  targetQuantity: number;
+  orderIntervalDays: number | null;
+  ordersPerRun: number | null;
+}): SellerDemandSchedule {
+  if (!Number.isSafeInteger(input.now) || input.now < 0) {
+    throw new DemandBatchError('VALIDATION_ERROR', 400);
+  }
+  validateTargetQuantity(input.targetQuantity);
+  if (input.orderIntervalDays === null || input.ordersPerRun === null) {
+    throw new DemandBatchError('VALIDATION_ERROR', 409, {
+      field: 'order_cadence',
+      reason: '产品版本的下单频率未配置，需先补齐后再提交投放。',
+    });
+  }
+  const orderIntervalDays = Number(input.orderIntervalDays);
+  const ordersPerRun = Number(input.ordersPerRun);
+  try {
+    validateOrderCadence({ orderIntervalDays, ordersPerRun });
+  } catch {
+    throw new DemandBatchError('VALIDATION_ERROR', 409, {
+      field: 'order_cadence',
+      reason: '产品版本的下单频率无效，需先修正后再提交投放。',
+    });
+  }
+  const runCount = Math.ceil(input.targetQuantity / ordersPerRun);
+  const estimatedOrderDays = (runCount - 1) * orderIntervalDays;
+  const baseDate = beijingDateFromEpochMs(input.now);
+  const reservationDate = addCalendarDays(
+    baseDate,
+    SELLER_DEMAND_SCHEDULE_POLICY.reservationWindowDays,
+  );
+  const orderDate = addCalendarDays(
+    baseDate,
+    Math.max(
+      SELLER_DEMAND_SCHEDULE_POLICY.reservationWindowDays + 1,
+      estimatedOrderDays + SELLER_DEMAND_SCHEDULE_POLICY.orderDeadlineBufferDays,
+    ),
+  );
+  const toEpoch = (date: string): number => {
+    const epoch = Date.parse(`${date}T00:00:00+08:00`);
+    if (!Number.isSafeInteger(epoch) || epoch < 0) {
+      throw new DemandBatchError('VALIDATION_ERROR', 400);
+    }
+    return epoch;
+  };
+  const schedule = {
+    openAt: input.now,
+    reservationDeadline: toEpoch(reservationDate),
+    orderDeadline: toEpoch(orderDate),
+    policyVersion: SELLER_DEMAND_SCHEDULE_POLICY.version,
+  };
+  validateDemandSchedule(schedule);
+  return schedule;
+}
+
 export function requireSellerDemandPermission(
   actor: SellerDemandActor,
 ): void {
-  if (!actor.canManageProducts
-    || (
-      actor.role !== 'OWNER'
-      && actor.role !== 'OPERATIONS'
-    )) {
+  if (!actor.canManageProducts || !canWriteSellerOperations(actor.role)) {
     throw new DemandBatchError('FORBIDDEN', 403);
   }
 }
@@ -264,6 +344,7 @@ export function demandAuditState(input: {
   openAt: number;
   reservationDeadline: number;
   orderDeadline: number;
+  schedulePolicyVersion?: number | null;
 }): Record<string, unknown> {
   return {
     status: input.status,
@@ -273,6 +354,7 @@ export function demandAuditState(input: {
     open_at: input.openAt,
     reservation_deadline: input.reservationDeadline,
     order_deadline: input.orderDeadline,
+    schedule_policy_version: input.schedulePolicyVersion ?? null,
   };
 }
 

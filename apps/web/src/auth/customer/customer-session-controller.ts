@@ -88,6 +88,7 @@ export function useCustomerSessionController(
     retry: false,
     staleTime: 0,
     refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
     enabled: cleanup.state === 'IDLE'
       && unauthenticatedCleanup.state === 'IDLE'
       && invalidationAllowsSessionRead,

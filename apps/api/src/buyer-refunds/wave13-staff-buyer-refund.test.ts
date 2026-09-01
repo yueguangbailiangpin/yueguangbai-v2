@@ -6,6 +6,7 @@ import {
   type StaffBuyerRefundDetailDto,
   type StaffBuyerRefundListItemDto,
 } from '@ygb/contracts';
+import { addChinaBusinessDays } from '@ygb/domain';
 import { createMigratedTestDatabase } from '@ygb/testkit';
 import {
   loginThroughDefaultApp,
@@ -178,13 +179,20 @@ describe('Wave 13 Staff Buyer Refund API', () => {
         overpaid_amount_cny_fen: '0',
         reminder_count: 2,
         last_reminded_at: Date.parse('2026-07-31T16:00:00.000Z') + 50,
+        // P7c：承诺期限 = 评论通过 + 7 个工作日（周五 7/31 通过 → 8/11 周二），
+        // 未结清按该期限升序、已结清沉底（见下方顺序断言）。
+        review_approved_at: Date.parse('2026-07-31T16:00:00.000Z') - 5_000,
+        promise_deadline_at: addChinaBusinessDays(
+          Date.parse('2026-07-31T16:00:00.000Z') - 5_000,
+          7,
+        ),
         buyer: {
           buyer_customer_id: 'runtime-buyer',
           buyer_customer_no: 'P202608020001',
         },
         order: {
           formal_order_id: 'runtime-formal-order',
-          marketplace: 'JP',
+          marketplace: 'AMAZON_JP',
           amazon_order_number_normalized: '123-1234567-1234567',
           product_id: 'runtime-product',
           asin: 'B0RT000001',

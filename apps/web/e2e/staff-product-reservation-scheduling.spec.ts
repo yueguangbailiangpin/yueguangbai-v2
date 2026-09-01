@@ -19,7 +19,7 @@ function staff(role: 'owner'|'buyer_refund') {
 
 function productItem() {
   return { product_id: 'product-1', seller_organization_id: 'seller-1', store_id: 'store-1',
-    store_name: '东京店铺', marketplace_code: 'JP', asin: 'B0SCHEDULE', status: 'ACTIVE',
+    store_name: '东京店铺', marketplace_code: 'AMAZON_JP', asin: 'B0SCHEDULE', status: 'ACTIVE',
     aggregate_version: 2, current_version_no: 2, product_name: '月光测试产品',
     cadence: { order_interval_days: 1, orders_per_run: 2 }, updated_at: 1_786_161_600_000 };
 }
@@ -30,6 +30,8 @@ function version() {
     color_spec_mode: 'MAIN_IMAGE_VARIANT', default_buyer_self_pay_bps: 1000,
     product_url: 'https://example.test/product', buyer_visible_notes: '买家说明',
     internal_notes: '内部说明', cadence: { order_interval_days: 1, orders_per_run: 2 },
+    main_image: { file_object_id: 'file-main-1', file_version: 1,
+      client_file_name: 'main.png', bound_at: 1_786_161_600_000 },
     created_at: 1_786_161_600_000 };
 }
 
@@ -44,13 +46,16 @@ function schedule() {
 function schedulePage() {
   return { demand: { demand_batch_id: 'demand-1', product_id: 'product-1',
     product_name: '月光测试产品', target_quantity: 20, effective_reservation_count: 2,
-    order_deadline: 1_786_838_400_000, demand_version: 4, schedule: schedule() },
+    order_deadline: 1_786_838_400_000, demand_version: 4,
+    status: 'PUBLISHED', can_close: true, schedule: schedule() },
   items: [
     { reservation_id: 'reservation-1', status: 'APPROVED', submitted_at: 1000,
+      decision_source: 'STAFF', version: 2,
       rank: 1, planned_order_date: '2026-08-10', buyer_reference: 'B0001',
       buyer_customer_id: 'buyer-1', buyer_display_name: '范围内买家',
       actual_order_status: null, actual_order_date: null },
     { reservation_id: 'reservation-2', status: 'PENDING_REVIEW', submitted_at: 1001,
+      decision_source: null, version: 1,
       rank: 2, planned_order_date: '2026-08-10', buyer_reference: 'B0002',
       buyer_customer_id: null, buyer_display_name: null,
       actual_order_status: null, actual_order_date: null },
@@ -80,6 +85,13 @@ async function mock(page: Page, role: 'owner'|'buyer_refund', observed?: Observe
           demand_version: 4, schedule_version: 1, first_order_date: '2026-08-10' }],
         timezone: 'Asia/Shanghai', data_as_of: 1_786_161_600_000 } }));
     }
+    if (path === '/api/staff/me/work-items/summary') {
+      return json(route, success({ summary: {
+        open_count: 0, due_today_count: 0, overdue_count: 0,
+        exception_order_count: 0, refund_due_today_cny_fen: null,
+        recent: [],
+      } }));
+    }
     if (path === '/api/staff/me/work-items') {
       return json(route, success({ work_items: [{
         work_item_id: 'work-demand', work_type: 'DEMAND_REVIEW',
@@ -89,7 +101,22 @@ async function mock(page: Page, role: 'owner'|'buyer_refund', observed?: Observe
         assigned_staff_id: 'browser-owner', status: 'OPEN', version: 1,
         created_at: 1_786_161_600_000, updated_at: 1_786_161_600_000,
         completed_at: null, cancelled_at: null,
+        sla_due_at: 1_786_161_600_000 + 172_800_000, is_overdue: false,
+        overdue_since: null, next_action: 'REVIEW_DEMAND',
+        responsible_role: 'seller_ops', responsible_staff_name: '总管理员',
+        priority: 'NORMAL',
       }], next_cursor: null }));
+    }
+    if (path === '/api/staff/me/work-items/work-demand') {
+      return json(route, success({ work_item: {
+        work_item_id: 'work-demand', work_type: 'DEMAND_REVIEW',
+        source_entity_type: 'DEMAND_BATCH', source_entity_id: 'demand-review-1',
+        buyer_customer_id: null, seller_organization_id: 'seller-1', store_id: 'store-1',
+        duty_code: 'SELLER_ACCOUNT_MANAGER', fixed_assignment_id: 'assignment-demand',
+        assigned_staff_id: 'browser-owner', status: 'OPEN', version: 1,
+        created_at: 1_786_161_600_000, updated_at: 1_786_161_600_000,
+        completed_at: null, cancelled_at: null,
+      } }));
     }
     if (path === '/api/staff/demand-batches/demand-review-1/review-context') {
       return json(route, success({ review_context: {
@@ -99,6 +126,10 @@ async function mock(page: Page, role: 'owner'|'buyer_refund', observed?: Observe
         target_quantity: 20, reservation_deadline: 1_786_161_600_000,
         order_deadline: 1_786_838_400_000,
         cadence: { order_interval_days: 2, orders_per_run: 5 },
+        main_image: null,
+        ordering_guide_expected_amount_jpy: 1980,
+        color_spec_mode: 'ANY_VARIANT',
+        buyer_self_pay_bps_snapshot: null,
         can_publish: true,
         timezone: 'Asia/Shanghai', data_as_of: 1_786_161_600_000,
       } }));
@@ -152,7 +183,7 @@ test('product and reservation deep links are Chinese, responsive and keyboard us
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/staff/products?q=%E6%9C%88%E5%85%89');
   await expect(page).toHaveURL(/\/staff\/products\?q=/u);
-  await expect(page.getByRole('heading', { name: '产品库', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '产品与预约', exact: true })).toBeVisible();
   await expect(page.getByRole('table', { name: '员工产品库' })).toBeVisible();
   await page.getByRole('link', { name: '查看详情' }).click();
   await expect(page).toHaveURL(/\/staff\/products\/product-1$/u);
@@ -182,14 +213,14 @@ test('buyer_refund direct route exposes neither navigation nor schedule data', a
   await mock(page, 'buyer_refund', observed);
   await page.goto('/staff/demands/demand-1/reservations');
   await expect(page.getByText('当前角色无权查看产品排期')).toBeVisible();
-  await expect(page.getByRole('link', { name: '产品库' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '产品与投放' })).toHaveCount(0);
   expect(observed.schedule).toBe(0);
 });
 
 test('demand review deep link publishes the authoritative version with a first order date', async ({ page }) => {
   const observed: ObservedRequests = { schedule: 0 };
   await mock(page, 'owner', observed);
-  await page.goto('/staff?work_item=work-demand');
+  await page.goto('/staff/work/work-demand');
   await expect(page.getByRole('heading', { name: '需求发布事实' })).toBeVisible();
   await expect(page.getByText('月光测试产品 · v2')).toBeVisible();
   await expect(page.getByText('每 2 天 / 5 单')).toBeVisible();

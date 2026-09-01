@@ -11,7 +11,6 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import { createOutboxStatements, prepareOutboxEvent } from '../foundation/outbox';
 import { createExplicitAudienceFileLinkStatements } from '../files/explicit-audience-links';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import {
@@ -136,21 +135,6 @@ export async function recordSellerPayment(
       paymentId,
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `seller-payment-recorded:${paymentId}`,
-      eventType: 'SELLER_PAYMENT_RECORDED',
-      aggregateType: 'SELLER_PAYMENT',
-      aggregateId: paymentId,
-      payload: {
-        seller_organization_id: sellerOrganizationId,
-        payment_id: paymentId,
-        amount_cny_fen: String(amountCnyFen),
-        paid_at: paidAt,
-        recorded_at: now,
-      },
-      createdAt: now,
-    });
     const statements: SqlStatement[] = [
       database.prepare(`
         INSERT INTO seller_payments (
@@ -230,7 +214,6 @@ export async function recordSellerPayment(
         },
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(database, acquired.claim, response, {
         resultReferences: { payment_id: paymentId },
         now,

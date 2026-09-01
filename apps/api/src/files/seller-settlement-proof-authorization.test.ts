@@ -74,7 +74,7 @@ function scenario(overrides: Partial<Scenario> = {}): Scenario {
     directOrganizationId: 'seller-1',
     teamOrganizationId: null,
     marketplaceCodes: ['AMAZON_JP'],
-    resourceMarketplace: 'JP',
+    resourceMarketplace: 'AMAZON_JP',
     staffAudienceGrantActive: true,
     ...overrides,
   };

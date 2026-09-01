@@ -6,16 +6,16 @@
 > `LOCAL PASS` ≠ `CI PASS`；`STAGING PASS` ≠ `PRODUCTION PASS`。任何 `PASS` 必须有真实、可回读、带日期的证据；不得使用"应该""预计""代码已存在所以 PASS"作为证据。
 > 本文件只记录真实状态与判定，不授权执行任何生产动作；每项执行仍须单独批准。
 
-## 当前判定（2026-08-20）
+## 当前判定（2026-08-31）
 
 | Gate | Requirement | Evidence Scope | Evidence | Status | Blocker / Next Action |
 |---|---|---|---|---|---|
-| G0 | Release candidate / CI 冻结 | LOCAL | 2026-08-18：6 个 closure PR（#103/#102/#104/#105/#106/#107）已按 owner 豁免合并；其代码验证树为 `ace731918f2e29d7ff1f60e6095d549eba43c4c2`。随后 PR #109 以 docs-only 形式合并，当前远端 `main=f61527e04533a9053e237be2bd6bbcce8b2219c8`；PR #109 未改变代码。上述代码验证树上的本地 0 TS 错误、1746/1746 测试、187/187 e2e、check:ci:static PASS、build PASS、`release:check` PASS（LOCAL_RELEASE_EVIDENCE=COMPLETE，2026-08-18） | NOT VERIFIED | 缺远程 CI 证据（GitHub Actions budget 有意 $0 → BLOCKED_BY_BILLING_POLICY）；最终候选 `release:check` 需在 main 干净候选上绑定 40 位 SHA 回读；受保护 CI 或已批准人工发布控制未配置 |
+| G0 | Release candidate / CI 冻结 | LOCAL | 历史快照（2026-08-18）：6 个 closure PR（#103/#102/#104/#105/#106/#107）已按 owner 豁免合并；其代码验证树为 `ace731918f2e29d7ff1f60e6095d549eba43c4c2`。随后 PR #109 以 docs-only 形式合并，记录的远端 `main=f61527e04533a9053e237be2bd6bbcce8b2219c8`；PR #109 未改变代码。上述代码验证树上的本地 0 TS 错误、1746/1746 测试、187/187 e2e、check:ci:static PASS、build PASS、`release:check` PASS（LOCAL_RELEASE_EVIDENCE=COMPLETE） | NOT VERIFIED | 缺当前候选的 Remote CI 回读证据；仓库记录的 billing 阻断已于 2026-08-21 解除，不再是当前阻断。最终候选 `release:check` 仍需在干净候选上绑定 40 位 SHA 回读；受保护 CI 或已批准人工发布控制未配置 |
 | G1 | Owner / privacy approvals | — | Owner 于 2026-08-20 在对话中直接批准 G1，并明确豁免另行签名；隐私、AI 处理、保留/删除、备份与平台政策风险均按该批准记录为已批准。姓名/邮箱未提供，未虚构 | PASS | 后续 Production operational preparation 中补齐五个责任角色的姓名与邮箱；不阻塞当前 G1 PASS；本批准不授权 G2–G6 或 Production GO |
 | G2 | Production Cloudflare configuration | — | 未创建正式生产配置。`app.yueguangbai.net` 未文档化部署已按 Owner 决定于 2026-08-20 清理完成；Worker、生产 D1/R2、自定义域名绑定均已删除，staging 未触碰（详见 `docs/runbooks/PRODUCTION_CLEANUP_APP_YUEGUANGBAI_NET.md`） | NOT VERIFIED | Managed production resources have not yet been created and accepted；清理完成不等于生产配置或上线验收通过 |
-| G3 | Production database migration + backup | STAGING / LOCAL | T10 备份/恢复证据（隔离 staging：bundle + attestation + restored.sqlite，2026-08-16，Production accessed: false）；本地 db:verify 70 migrations / schema 70 | NOT VERIFIED | 无生产 D1 ledger 只读核验、无迁移窗口、无 release-bound 生产备份与隔离恢复证据 |
+| G3 | Production database migration + backup | STAGING / LOCAL | T10 备份/恢复证据（隔离 staging：bundle + attestation + restored.sqlite，2026-08-16，Production accessed: false）；本地 `db:verify` 41 migrations / Schema 41 | NOT VERIFIED | 无生产 D1 ledger 只读核验、无迁移窗口、无 release-bound 生产备份与隔离恢复证据 |
 | G4 | R2 / file / archive readiness | LOCAL | Drive 冷归档本地实现、dry-run、模板写侧关闭；R2 delete 保持关闭（合规） | NOT VERIFIED | 无真实 Drive OAuth/MFA/专用目录/shadow copy/read-back/Manifest/proxy/rehydration/R2-delete 验收（M10 P0-02） |
-| G5 | External integration readiness | LOCAL | Staff MCP production-capable runtime 本地就绪、开关默认关闭；Rakuten/TikTok Adapter 未接入核心运行入口 | NOT VERIFIED | 无真实 OAuth 2.1/JWKS/token-status/ChatGPT 注册/分阶段启用（M10 P0-03）；Provider 本地准备 ≠ Provider 可用 |
+| G5 | External integration readiness | LOCAL | Staff MCP 源码、传输与五张表已删除；发布侧仅保留禁 `STAFF_MCP_*` 绑定/变量的防复活墓碑。Rakuten/TikTok Provider Adapter 与平台平行订单模型已删除，仅保留历史/隔离材料和失败关闭守卫 | NOT VERIFIED | 无真实外部集成验收；已删除的 Staff MCP/Rakuten/TikTok 能力不得恢复或写成可用 |
 | G6 | Core business flow acceptance | STAGING | T9 register：62 PASS / 3 CONFLICT（A01–A03 治理固有）/ 2 BLOCKED（H05、H07），证据 2026-08-16/17；A–H 67 项逐项映射见 `docs/acceptance/V2_ACCEPTANCE_MATRIX.md` | NOT VERIFIED | staging 证据充分但属 STAGING scope；生产层未执行任何真实业务验收（生产测试账号、越权 404、权限/财务可见性、恢复/回滚演练） |
 | G7 | Historical data migration | LOCAL | 仅 dry-run 工具与设计文档（historical order / seller-partner import 等） | NOT VERIFIED | 无真实 PREVIEW、无 owner 批准、无 reconciliation（M10 P0-07）；dry-run / tooling ≠ production import approval |
 | G8 | China mainland network validation | — | 无证据（T9 H05 = BLOCKED，需真实大陆运营商/微信网络） | FAIL | 必选阻塞项未满足：三网（移动/联通/电信）+ 微信内置浏览器实测必须由外部操作者完成 |
@@ -34,9 +34,9 @@
 
 - [ ] 总控完成当前收口 Changes 审查、本地提交、干净 Integration 与非强制快进；重新 fetch 并记录最终 `origin/main` 40 位 SHA。
 - [ ] 在最终干净候选执行 `npm run release:check`，把其动态输出的 commit 与 tree 绑定到不可变证据；不得沿用历史文档 SHA。
-- [ ] 确认工作树干净、无未审查变更、无 open PR、依赖 audit 0、`0001`–`0070` 连续且尾部为 `0070_buyer_refund_reminders.sql`、全量本地/Chromium/OpenSpec 门禁通过。
+- [ ] 确认工作树干净、无未审查变更、无 open PR、依赖 audit 0、`0001`–`0041` 连续且尾部为 `0041_owner_alias_yueguangbai_ygbceping.sql`、全量本地/Chromium/OpenSpec 门禁通过。
 - [ ] 确认已归档 `pre-wave13-baseline-conformance-audit` 的本地任务状态和仍未完成的外部阻断被分别读取；不得把 archive 状态写成 active，也不得伪勾真实生产项。
-- [ ] 选择并批准发布控制：受保护 CI，或有时间戳、双人复核和不可变日志的人工流程。远程 CI 当前 BLOCKED_BY_BILLING_POLICY（Actions budget 有意 $0），因此该项当前 NOT VERIFIED。
+- [ ] 选择并批准发布控制：受保护 CI，或有时间戳、双人复核和不可变日志的人工流程。仓库记录显示 GitHub-hosted CI 的 billing 阻断已于 2026-08-21 解除；当前仍缺最终候选的 Remote CI 回读或已批准人工控制，因此该项当前 NOT VERIFIED。
 
 G0 未通过：`NO-GO`。
 
@@ -72,7 +72,7 @@ G2 未通过：`NO-GO`。
 
 1. [ ] 冻结写入，记录当前线上 Worker SHA、配置快照、D1 ledger、R2/Drive Manifest 和所有开关。
 2. [ ] 若目标 D1 已有任何数据，先做迁移前完整导出、加密、SHA-256/Manifest/attestation，并在全新隔离目标恢复通过；恢复目标不得覆盖。
-3. [ ] 只读比较线上 ledger 与 release SHA 的完整 `0001`–`0070` 链（尾部为 `0070_buyer_refund_reminders.sql`）；线上可以是该链的连续前缀，但发现未知、跳号、重复、并行或部分 Migration 立即停止。
+3. [ ] 只读比较线上 ledger 与 release SHA 的完整 `0001`–`0041` 链（尾部为 `0041_owner_alias_yueguangbai_ygbceping.sql`）；线上可以是该链的连续前缀，但发现未知、跳号、重复、并行或部分 Migration 立即停止。
 4. [ ] 老板单独批准 Migration 窗口；只按连续顺序应用尚未应用的 Migration，逐步核验 schema_version、integrity、foreign keys、关键表/触发器/视图和权限事实。
 5. [ ] 生成迁移后、绑定最终 release SHA 的 D1 加密备份，并再次在新隔离目标恢复；核对 schema、全表行数、关键财务聚合、Staff/Buyer/Seller/订单/文件/调度 smoke。
 6. [ ] 保持所有外部开关关闭，老板另行批准部署 schema-compatible API Worker 与 Web 制品。
@@ -95,9 +95,11 @@ G3 未通过：`NO-GO`。
 
 G4 未通过：`NO-GO`，R2 delete 必须关闭。
 
-## G5：OpenAI/ChatGPT Staff MCP 与外部集成
+## G5：外部集成与已删除能力边界
 
-`staff-mcp-production-transport-oauth` 已补齐本地可构造、默认关闭的 production-capable runtime；当前仍没有已部署的公开 `/mcp`、真实 issuer/JWKS/token-status service 或 ChatGPT 注册，因此 Gate 仍未开始，不能把本地 `productionActivationSupported=true` 写成已激活。
+Staff MCP 的源码、传输与五张表已删除；发布侧仅保留禁 `STAFF_MCP_*` 绑定/变量的防复活墓碑。Rakuten/TikTok Provider Adapter 与平台平行订单模型也已删除，历史 OpenSpec、导入隔离规则和失败关闭守卫仅用于追溯，不构成可激活能力；因此不得把旧的 production-capable 文字写成当前能力或恢复入口。
+
+> 下列旧的 Staff MCP 激活条目仅保留其历史 Gate 语义，不是当前待办，也不得执行。任何未来重新引入都必须先取得新的明确决定、独立 OpenSpec Change 和总控批准；在此之前保持删除状态和防复活墓碑。
 
 - [ ] 老板批准 OpenAI/ChatGPT workspace、应用、数据控制、工具白名单、字段白名单、保存/删除和外部 AI 隐私。
 - [ ] 部署 HTTPS MCP resource 与 OAuth 2.1 authorization server/discovery，完成 PKCE S256、issuer/audience/resource/expiry/scope/JWKS/rotation 验证；一个 token 只映射一个 ACTIVE Staff。
@@ -109,9 +111,9 @@ G4 未通过：`NO-GO`，R2 delete 必须关闭。
 - [ ] 返款、结算、审核、汇率、订单关闭等正式动作只能返回受控 Web 相对路径；员工必须回网页重新授权、读取最新版本并点击确认。
 - [ ] 显式启用并验证有界 replay/rate/revocation cleanup；保留期为 replay 24 小时、rate 到窗口结束、revocation 到 token expiry，每表每次最多 100（可配、硬上限 1000），不得清理 subject binding/runtime control/audit。再验证 durable rate/replay/audit/kill switch、异常流量、连接/断开/撤销/过期和 Provider outage；cleanup 或 MCP 关闭不得影响 Web。
 - [ ] 老板单独批准有限读取、再批准草稿；任何正式写工具必须另建 Change。
-- [ ] Rakuten / TikTok Provider Adapter：接入核心 Worker 运行入口前不得视为 Provider 可用（单独 Change 与验收）。
+- [ ] Rakuten / TikTok Provider Adapter：当前已删除，不得恢复或视为 Provider 可用；未来如业务需要，必须由新的独立 Change 重新定义并验收。
 
-G5 未通过：`NO-GO`，Staff MCP 必须关闭。
+G5 未通过：`NO-GO`，Staff MCP/Rakuten/TikTok 保持删除状态，防复活墓碑必须保留。
 
 ## G6：核心业务流程验收（生产层）
 

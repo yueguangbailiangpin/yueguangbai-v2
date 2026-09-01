@@ -1,14 +1,14 @@
 import type { QueryClient } from '@tanstack/react-query';
 import {
-  SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS,
-  type SellerOrderChatScreenshotReadIntentRequest,
+  ORDER_COMMUNICATION_SCREENSHOT_HTTP_PATHS,
+  type SellerOrderCommunicationScreenshotReadIntentRequest,
 } from '@ygb/contracts';
 import { z } from 'zod';
 import { FrontendApiError } from '../api/errors';
 import { operationHeaders } from '../api/idempotency';
 import { identityApiRequest } from '../api/identity-request';
 import type { RequestIdentity } from '../api/identity-request';
-import { createIdentityFileReadIntent } from './file-read-api';
+import { createIdentityFileReadIntentCoalesced } from './file-read-api';
 import {
   fileReadIntentResponseSchema,
   safeFileReferenceSchema,
@@ -31,6 +31,12 @@ export type CreatedFileReadIntent = Readonly<{
 
 export interface FileReadIntentProvider {
   readonly identity: RequestIdentity;
+  /**
+   * Stable session-cache key for the underlying immutable bytes, or null
+   * when the provider cannot prove content identity (no version pin).
+   * Keys must scope by identity, entity and content version.
+   */
+  cacheKey?(): string | null;
   create(
     client: QueryClient,
     idempotencyKey: string,
@@ -57,8 +63,14 @@ export class GenericBuyerFileReadIntentAdapter implements FileReadIntentProvider
     trustProvider(this);
   }
 
+  cacheKey(): string {
+    return `provider:buyer:file:${this.reference.file_object_id}:${this.reference.file_version}`;
+  }
+
   async create(client: QueryClient, idempotencyKey: string, signal: AbortSignal): Promise<CreatedFileReadIntent> {
-    const result = await createIdentityFileReadIntent({
+    // 走合并器入口：同 commit 挂载的 N 张买家图共享一次批量签发，
+    // 与 identity 直连路径（FileReadController.start）行为一致。
+    const result = await createIdentityFileReadIntentCoalesced({
       client,
       identity: 'buyer',
       reference: this.reference,
@@ -75,15 +87,20 @@ implements FileReadIntentProvider {
   private readonly path: string;
   private readonly expectedVersion: number;
 
-  constructor(formalOrderId: string, version: number) {
-    this.path = SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS.sellerReadIntent
-      .replace(':id', encodeURIComponent(identifier(formalOrderId)));
+  constructor(formalOrderId: string, fileObjectId: string, version: number) {
+    this.path = ORDER_COMMUNICATION_SCREENSHOT_HTTP_PATHS.sellerReadIntent
+      .replace(':id', encodeURIComponent(identifier(formalOrderId)))
+      .replace(':fileObjectId', encodeURIComponent(identifier(fileObjectId)));
     this.expectedVersion = positiveInteger(version);
     trustProvider(this);
   }
 
+  cacheKey(): string {
+    return `provider:seller:chat:${this.path}:${this.expectedVersion}`;
+  }
+
   async create(client: QueryClient, idempotencyKey: string, signal: AbortSignal): Promise<CreatedFileReadIntent> {
-    const body: SellerOrderChatScreenshotReadIntentRequest = {
+    const body: SellerOrderCommunicationScreenshotReadIntentRequest = {
       expected_file_version: this.expectedVersion,
     };
     const result = await identityApiRequest('seller', client, {
@@ -94,7 +111,7 @@ implements FileReadIntentProvider {
       headers: operationHeaders({ key: idempotencyKey, body }),
       signal,
     });
-    const intent = result.data.read_intent;
+    const intent = result.data;
     assertTokenAvailability(intent, result.requestId);
     if (intent.replayed) malformed(result.requestId);
     return Object.freeze({
@@ -169,6 +186,10 @@ abstract class EntityFileReadIntentAdapter implements FileReadIntentProvider {
     private readonly expectedVersion: number,
   ) {
     trustProvider(this);
+  }
+
+  cacheKey(): string {
+    return `provider:buyer:entity:${this.path}:${this.expectedVersion}`;
   }
 
   async create(client: QueryClient, idempotencyKey: string, signal: AbortSignal): Promise<CreatedFileReadIntent> {

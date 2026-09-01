@@ -6,21 +6,20 @@ const root = path.resolve(import.meta.dirname, '../../../..');
 const read = (file: string) => readFileSync(path.join(root, file), 'utf8');
 
 describe('second layer hardening freeze', () => {
-  it('keeps production release authority on schema 70, Access and release-bound readiness', () => {
+  it('keeps production release authority on schema 41, Access and release-bound readiness', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(70);
-    expect(migrations.at(-1)).toBe('0070_buyer_refund_reminders.sql');
+    expect(migrations).toHaveLength(41);
+    expect(migrations.at(-1)).toBe('0041_owner_alias_yueguangbai_ygbceping.sql');
     const template = read('apps/api/wrangler.production.template.jsonc');
     expect(template).toContain('"APP_RELEASE_SHA": "REQUIRED_RELEASE_COMMIT_SHA"');
     expect(template).toContain('"SCHEDULED_OPERATIONS_ENABLED": "true"');
-    expect(template).toContain('"ACQUISITION_MAINTENANCE_ENABLED": "true"');
     expect(template).toContain('STAFF_ACCESS_TEAM_DOMAIN');
     expect(template).toContain('STAFF_ACCESS_AUD');
     expect(template).not.toContain('FEISHU_WORKBENCH_APP_ID');
     const readiness = read('apps/api/src/operational-readiness/routes.ts');
-    expect(readiness).toContain('const TARGET_SCHEMA = 70');
+    expect(readiness).toContain('const TARGET_SCHEMA = 41');
     expect(readiness).toContain('APP_RELEASE_SHA');
     expect(readiness).toContain('last_backlog_count');
     expect(readiness).toContain('staff_access');
@@ -28,6 +27,36 @@ describe('second layer hardening freeze', () => {
     expect(verifier).toContain('external_calls:0');
     expect(verifier).not.toContain('fetchImpl');
     expect(read('scripts/probe-production-readiness.mjs')).toContain('fetchImpl=fetch');
+  });
+
+  it('keeps pricing maintenance single-save with the rate-maintainer actor gate', () => {
+    // Stage 6.6 (D-056): every rate/fee/policy write is one immediate-effect
+    // save behind requireRateMaintainer; the submit/confirm/reject dual
+    // approval routes must stay deleted.
+    for (const moduleFile of [
+      'apps/api/src/pricing/buyer-daily-exchange-rates.ts',
+      'apps/api/src/pricing/seller-service-fees.ts',
+      'apps/api/src/pricing/seller-principal-rate-policy.ts',
+    ]) {
+      const source = read(moduleFile);
+      expect(source).toContain('requireRateMaintainer(command.actor)');
+      expect(source).not.toContain('/submit');
+      expect(source).not.toContain('/confirm');
+      expect(source).not.toContain('/reject');
+    }
+    const guard = read('apps/api/src/pricing/pricing-shared.ts');
+    expect(guard).toContain('export function requireRateMaintainer');
+    for (const routesFile of [
+      'apps/api/src/pricing/rate-center-routes.ts',
+      'apps/api/src/pricing/seller-service-fee-routes.ts',
+      'apps/api/src/pricing/routes.ts',
+    ]) {
+      const routes = read(routesFile);
+      expect(routes).not.toContain('/submit');
+      expect(routes).not.toContain('/confirm');
+      expect(routes).not.toContain('/reject');
+      expect(routes).not.toContain('/apply-defaults');
+    }
   });
 
   it('keeps Staff authority role-market based without Team, GRANT or legacy mutation expansion', () => {
@@ -57,10 +86,11 @@ describe('second layer hardening freeze', () => {
     expect(route).toContain('acquireIdempotency');
     expect(route).toContain('proof_files');
     expect(route).toContain('buyer_advance_principal_entry_files');
-    const guard = read('migrations/0062_runtime_authority_and_privilege_guards.sql');
+    // Guard triggers re-anchored on the stage 3 baseline domain files.
+    const guard = read('migrations/0011_review_workflow.sql') + read('migrations/0010_formal_orders.sql');
     expect(guard).toContain('trg_review_approval_requires_normal_order');
     expect(guard).toContain('trg_formal_order_financial_adjustment_profit_only');
-    const proof = read('migrations/0063_advance_principal_proof_and_overpayment.sql');
+    const proof = read('migrations/0012_buyer_refunds_advance.sql');
     expect(proof).toContain('buyer_advance_principal_overpayments');
     expect(proof).toContain('BUYER_REFUND_PROOF');
     const settlement = read('apps/api/src/buyer-refunds/advance-principal-settlement.ts');
@@ -71,21 +101,10 @@ describe('second layer hardening freeze', () => {
     expect(contract).not.toContain("'BUYER_REFUND_DUE'");
   });
 
-  it('keeps channel labels immutable and v4 acquisition machine scope active', () => {
-    const admin = read('apps/api/src/acquisition/admin.ts');
-    expect(admin).toContain("input.leadType !== 'BUYER' && input.leadType !== 'SELLER'");
-    const privacy = read('apps/api/src/acquisition/channel-privacy.ts');
-    expect(privacy).not.toContain('staffLabel:');
-    expect(privacy).toContain('intakeWechatLabel');
-    expect(read('apps/web/src/staff/acquisition/AcquisitionCoreWorkbench.tsx')).toContain(
-      'function AcquisitionCoreWorkbench',
-    );
-    const machine = read('apps/api/src/acquisition/machine-routes.ts');
-    expect(machine).toContain('authenticateAcquisitionMachine');
-    expect(machine).not.toContain('ACQUISITION_MACHINE_SHARED_SECRET');
-    const credential = read('apps/api/src/acquisition/machine-credentials.ts');
-    expect(credential).toContain('acquisition_machine_rate_buckets');
-    expect(credential).toContain('requireMachineScope');
+  it('retires the acquisition CRM sources entirely (D-056)', () => {
+    expect(existsSync(path.join(root, 'apps/api/src/acquisition'))).toBe(false);
+    expect(existsSync(path.join(root, 'apps/web/src/staff/acquisition'))).toBe(false);
+    expect(existsSync(path.join(root, 'packages/contracts/src/acquisition.ts'))).toBe(false);
   });
 
   it('keeps real Seller UI, multi-persona session safety and truthful Marketplace-local dates', () => {
@@ -94,14 +113,14 @@ describe('second layer hardening freeze', () => {
     expect(seller).toContain("timeZone: 'Asia/Tokyo'");
     expect(seller).toContain('withdrawApplication');
     expect(seller).toContain('SellerOrderChatScreenshotReadIntentAdapter');
-    const sessionGuard = read('migrations/0062_runtime_authority_and_privilege_guards.sql');
+    const sessionGuard = read('migrations/0003_customer_master_data.sql');
     expect(sessionGuard).toContain('trg_customer_persona_privilege_session_bump');
     const market = read('packages/contracts/src/marketplace-runtime.ts');
     expect(market).toContain("business_timezone:'Asia/Tokyo'");
     expect(market).toContain("business_timezone:'America/Los_Angeles'");
     expect(market).toContain("reporting_timezone:'Asia/Shanghai'");
-    const dateTruth = read('migrations/0064_marketplace_local_date_truth.sql');
-    expect(dateTruth).toContain("canonical_marketplace_code='AMAZON_US'");
-    expect(dateTruth).toContain('ELSE NULL');
+    const dateTruth = read('migrations/0010_formal_orders.sql');
+    expect(dateTruth).toContain('trg_formal_order_non_jp_local_date_required');
+    expect(dateTruth).toContain('formal_order_marketplace_business_date_required');
   });
 });

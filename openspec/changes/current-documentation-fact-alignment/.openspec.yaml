@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-08-31
+skip_specs: true
+goal: Keep current-state documentation fact-first without rewriting historical
+  records or changing runtime behavior.

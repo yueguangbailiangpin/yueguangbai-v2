@@ -172,7 +172,7 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
         data: {
           buyer: {
             display_name: '买家一',
-            marketplace_code: 'JP',
+            marketplace_code: 'AMAZON_JP',
             identity_review_status: 'CLEAR',
           },
         },
@@ -190,6 +190,12 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
       expect(firstBody.data.items[0]).toMatchObject({
         demand_id: 'demand-projection',
         product_name: '门户产品一',
+        main_image: {
+          file_object_id: 'portal-main-image-object',
+          file_version: 3,
+          purpose: 'PRODUCT_IMAGE',
+          visibility: 'SELLER_VISIBLE',
+        },
         task_type: 'IMAGE',
         target_quantity: 3,
         remaining_quantity: 1,
@@ -213,6 +219,7 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
       );
       expect(detail.status).toBe(200);
       const detailText = JSON.stringify(await json(detail));
+      expect(detailText).toContain('portal-main-image-object');
       for (const forbidden of [
         'asin',
         'product_url',
@@ -226,6 +233,8 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
         'seller-org-1',
         'buyer_customer_id',
         'audit',
+        'object_key',
+        'files/v1/',
       ]) {
         expect(detailText).not.toContain(forbidden);
       }
@@ -308,7 +317,7 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
   });
 
   for (const decision of ['PENDING_REVIEW', 'APPROVED'] as const) {
-    it(`does not list or disclose another demand for a product with a ${decision} reservation`, async () => {
+    it(`lists another same-store demand as ineligible with a ${decision} reservation`, async () => {
       database = createMigratedTestDatabase();
       fixtureNow = Date.now();
       seedPortalFixture(database, fixtureNow);
@@ -336,11 +345,23 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
       const list = await request(app, '/api/buyer-portal/demands', {
         headers: { Cookie: cookie },
       });
-      expect((await json<any>(list)).data.items.map((item: { demand_id: string }) => item.demand_id))
-        .not.toContain('demand-final');
-      expect((await request(app, '/api/buyer-portal/demands/demand-final', {
+      expect((await json<any>(list)).data.items).toContainEqual(expect.objectContaining({
+        demand_id: 'demand-final',
+        reservation_eligibility: 'INELIGIBLE_ACTIVE_STORE_RESERVATION',
+        reservation_ineligibility_reason: 'ACTIVE_STORE_RESERVATION',
+      }));
+      const detail = await request(app, '/api/buyer-portal/demands/demand-final', {
         headers: { Cookie: cookie },
-      })).status).toBe(404);
+      });
+      expect(detail.status).toBe(200);
+      await expect(json(detail)).resolves.toMatchObject({
+        data: {
+          demand: {
+            reservation_eligibility: 'INELIGIBLE_ACTIVE_STORE_RESERVATION',
+            reservation_ineligibility_reason: 'ACTIVE_STORE_RESERVATION',
+          },
+        },
+      });
     });
   }
 
@@ -472,7 +493,10 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
           body: reservationAcceptanceBody(),
         },
       );
-      expect(duplicateSource.status).toBe(201);
+      expect(duplicateSource.status).toBe(409);
+      await expect(json(duplicateSource)).resolves.toMatchObject({
+        error: { code: 'BUYER_STORE_RESERVATION_CONFLICT' },
+      });
 
       const duplicate = await request(
         app,
@@ -489,7 +513,7 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
       );
       expect(duplicate.status).toBe(409);
       await expect(json(duplicate)).resolves.toMatchObject({
-        error: { code: 'RESERVATION_ALREADY_EXISTS' },
+        error: { code: 'BUYER_STORE_RESERVATION_CONFLICT' },
       });
 
       const finalSlotLost = await request(
@@ -683,7 +707,111 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
     },
   );
 
-  it('retains the schema 26 history beneath current schema 27', async () => {
+  it('saves and re-reads the buyer refund account through the me projection', async () => {
+    database = createMigratedTestDatabase();
+    fixtureNow = Date.now();
+    seedPortalFixture(database, fixtureNow);
+    const app = testApp();
+    const cookie = await buyerCookie('1');
+
+    const before = await request(app, '/api/buyer-portal/me', {
+      headers: { Cookie: cookie },
+    });
+    expect(before.status).toBe(200);
+    await expect(json(before)).resolves.toMatchObject({
+      data: {
+        buyer: {
+          refund_account_name: null,
+          refund_account_identifier: null,
+        },
+      },
+    });
+
+    const missingOrigin = await request(
+      app,
+      '/api/buyer-portal/me/refund-account',
+      {
+        method: 'PATCH',
+        headers: {
+          ...stateHeaders(),
+          Cookie: cookie,
+          Origin: 'https://evil.example.test',
+        },
+        body: JSON.stringify({
+          account_name: '买家一',
+          account_identifier: 'buyer@example.test',
+        }),
+      },
+    );
+    expect(missingOrigin.status).toBe(403);
+
+    const invalid = await request(
+      app,
+      '/api/buyer-portal/me/refund-account',
+      {
+        method: 'PATCH',
+        headers: { ...stateHeaders(), Cookie: cookie },
+        body: JSON.stringify({ account_name: '买家一' }),
+      },
+    );
+    expect(invalid.status).toBe(400);
+    await expect(json(invalid)).resolves.toMatchObject({
+      error: { code: 'VALIDATION_ERROR' },
+    });
+
+    const saved = await request(
+      app,
+      '/api/buyer-portal/me/refund-account',
+      {
+        method: 'PATCH',
+        headers: { ...stateHeaders(), Cookie: cookie },
+        body: JSON.stringify({
+          account_name: ' 买家一 ',
+          account_identifier: 'buyer@example.test',
+        }),
+      },
+    );
+    expect(saved.status).toBe(200);
+    await expect(json(saved)).resolves.toMatchObject({
+      data: {
+        buyer: {
+          refund_account_name: '买家一',
+          refund_account_identifier: 'buyer@example.test',
+        },
+      },
+    });
+
+    // 幂等重放：同值重复提交结果一致；响应与库里一致。
+    const replay = await request(
+      app,
+      '/api/buyer-portal/me/refund-account',
+      {
+        method: 'PATCH',
+        headers: { ...stateHeaders(), Cookie: cookie },
+        body: JSON.stringify({
+          account_name: '买家一',
+          account_identifier: 'buyer@example.test',
+        }),
+      },
+    );
+    expect(replay.status).toBe(200);
+    await expect(json(replay)).resolves.toMatchObject({
+      data: {
+        buyer: { refund_account_name: '买家一' },
+      },
+    });
+
+    const stored = await database.prepare(`
+      SELECT refund_account_name, refund_account_identifier
+      FROM buyer_customers WHERE id='buyer-1'
+    `).first<{ refund_account_name: string; refund_account_identifier: string }>();
+    expect(stored).toEqual({
+      refund_account_name: '买家一',
+      refund_account_identifier: 'buyer@example.test',
+    });
+  });
+
+  it('applies the stage 3 clean baseline 0001-0019', async () => {
     database = createMigratedTestDatabase();
     const repositoryRoot = path.resolve(
       import.meta.dirname,
@@ -694,18 +822,16 @@ describe('Phase 4B1 buyer portal HTTP API', () => {
     )
       .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(70);
+    expect(migrations).toHaveLength(41);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations[42]).toBe('0043_seller_principal_rate_integrity_hardening.sql');
-    expect(migrations.at(-1)).toBe('0070_buyer_refund_reminders.sql');
+    expect(migrations.at(-1)).toBe('0041_owner_alias_yueguangbai_ygbceping.sql');
 
     const state = await database.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(state?.schema_version)).toBe(70);
+    expect(Number(state?.schema_version)).toBe(41);
   });
 });
 
@@ -731,15 +857,6 @@ function seedPortalFixture(
       'staff-pre-sales', '售前', 'ACTIVE', 1,
       1, 1000, 1000, NULL
     );
-    INSERT INTO staff_departments (
-      id, code, name, status, version, created_at, updated_at, disabled_at
-    ) VALUES ('department-portal-pre-sales','portal-pre-sales','Portal Pre Sales',
-      'ACTIVE',1,1000,1000,NULL);
-    INSERT INTO staff_teams (
-      id, department_id, code, name, status, version,
-      created_at, updated_at, disabled_at
-    ) VALUES ('team-portal-pre-sales','department-portal-pre-sales','portal-pre-sales',
-      'Portal Pre Sales','ACTIVE',1,1000,1000,NULL);
     INSERT INTO staff_role_assignments (
       staff_id, role_code, status, assigned_by_staff_id, assigned_at,
       revoked_at, created_at, updated_at
@@ -750,16 +867,6 @@ function seedPortalFixture(
     ) VALUES ('scope-buyer-portal-pre-jp','staff-pre-sales','pre_sales',
       'AMAZON_JP','ACTIVE','zz-phase3h-test-owner',1000,NULL,
       'TEST_PRIMARY',1000,1000,'PRIMARY');
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES
-      ('staff-pre-sales','team-portal-pre-sales','ACTIVE',1000,NULL,1000,1000),
-      ('zz-phase3h-test-owner','team-portal-pre-sales','ACTIVE',1000,NULL,1000,1000);
-    INSERT INTO staff_team_leaders (
-      staff_id, team_id, status, assigned_by_staff_id,
-      assigned_at, revoked_at, created_at, updated_at
-    ) VALUES ('staff-pre-sales','team-portal-pre-sales','ACTIVE',
-      'zz-phase3h-test-owner',1000,NULL,1000,1000);
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,
@@ -768,7 +875,7 @@ function seedPortalFixture(
       version, created_at, updated_at,
       activated_at, disabled_at, next_member_number
     ) VALUES (
-      'seller-org-1', 'JP', 'ido-mango-9901',
+      'seller-org-1', 'AMAZON_JP', 'ido-mango-9901',
       'seller-channel-ido-mango',
       'seller-channel-ido-mango',
       9901, '门户卖家', 'ACTIVE',
@@ -795,37 +902,29 @@ function seedPortalFixture(
       1000, 1000, 1000, NULL
     );
 
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-p', 'P', '门户买家渠道',
-      'ACTIVE', 1, 1, 1000, 1000, NULL
-    );
-
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code,
       buyer_channel_id, buyer_customer_no,
-      buyer_sequence, first_valid_order_business_date,
+      buyer_sequence,
       display_name, access_status,
       identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
       (
-        'buyer-1', 'buyer-subject-1', 'JP',
-        'buyer-channel-p', NULL, NULL, NULL,
+        'buyer-1', 'buyer-subject-1', 'AMAZON_JP',
+        'buyer-channel-wechat-b', '19700101B0001', 1,
         '买家一', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       ),
       (
-        'buyer-2', 'buyer-subject-2', 'JP',
-        'buyer-channel-p', NULL, NULL, NULL,
+        'buyer-2', 'buyer-subject-2', 'AMAZON_JP',
+        'buyer-channel-wechat-b', '19700101B0002', 2,
         '买家二', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       ),
       (
-        'buyer-3', 'buyer-subject-3', 'JP',
-        'buyer-channel-p', NULL, NULL, NULL,
+        'buyer-3', 'buyer-subject-3', 'AMAZON_JP',
+        'buyer-channel-wechat-b', '19700101B0003', 3,
         '买家三', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       );
@@ -862,7 +961,7 @@ function seedPortalFixture(
       display_name, normalized_name, status,
       version, created_at, updated_at, disabled_at
     ) VALUES (
-      'store-1', 'seller-org-1', 'JP',
+      'store-1', 'seller-org-1', 'AMAZON_JP',
       '门户店铺', '门户店铺', 'ACTIVE',
       1, 1000, 1000, NULL
     );
@@ -873,16 +972,16 @@ function seedPortalFixture(
       current_version_no, version,
       created_at, updated_at, disabled_at
     ) VALUES
-      ('product-1', 'seller-org-1', 'store-1', 'JP',
+      ('product-1', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'B0PORTAL01', 'B0PORTAL01', 'ACTIVE', 1, 1,
        1000, 1000, NULL),
-      ('product-2', 'seller-org-1', 'store-1', 'JP',
+      ('product-2', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'B0PORTAL02', 'B0PORTAL02', 'ACTIVE', 1, 1,
        1000, 1000, NULL),
-      ('product-3', 'seller-org-1', 'store-1', 'JP',
+      ('product-3', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'B0PORTAL03', 'B0PORTAL03', 'ACTIVE', 1, 1,
        1000, 1000, NULL),
-      ('product-4', 'seller-org-1', 'store-1', 'JP',
+      ('product-4', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'B0PORTAL04', 'B0PORTAL04', 'ACTIVE', 1, 1,
        1000, 1000, NULL);
 
@@ -931,7 +1030,7 @@ function seedPortalFixture(
       buyer_self_pay_override_reason
     ) VALUES
       (
-        'demand-projection', 'seller-org-1', 'store-1', 'JP',
+        'demand-projection', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'product-1', 1, 'seller-member-1', 'IMAGE',
         3, '需求公开说明一', '需求内部说明一',
         ${openAt}, ${reservationDeadlineBase}, ${orderDeadlineBase},
@@ -940,7 +1039,7 @@ function seedPortalFixture(
         0, 'PRODUCT_DEFAULT', NULL
       ),
       (
-        'demand-final', 'seller-org-1', 'store-1', 'JP',
+        'demand-final', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'product-2', 1, 'seller-member-1', 'TEXT',
         1, '需求公开说明二', '需求内部说明二',
         ${openAt}, ${reservationDeadlineBase + 1000},
@@ -950,7 +1049,7 @@ function seedPortalFixture(
         0, 'PRODUCT_DEFAULT', NULL
       ),
       (
-        'demand-pending', 'seller-org-1', 'store-1', 'JP',
+        'demand-pending', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'product-3', 1, 'seller-member-1', 'RATING',
         2, '需求公开说明三', '需求内部说明三',
         ${openAt}, ${reservationDeadlineBase + 2000},
@@ -960,7 +1059,7 @@ function seedPortalFixture(
         0, 'PRODUCT_DEFAULT', NULL
       ),
       (
-        'demand-approved', 'seller-org-1', 'store-1', 'JP',
+        'demand-approved', 'seller-org-1', 'store-1', 'AMAZON_JP',
         'product-4', 1, 'seller-member-1', 'VIDEO',
         2, '需求公开说明四', '需求内部说明四',
         ${openAt}, ${reservationDeadlineBase + 3000},
@@ -969,6 +1068,84 @@ function seedPortalFixture(
         2, 1300, 1300, 1300, 1300, NULL, NULL, 0, 0,
         0, 'PRODUCT_DEFAULT', NULL
       );
+  `);
+  database!.exec(`
+    INSERT INTO buyer_staff_assignments (
+      id, buyer_customer_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason, version,
+      created_at, updated_at, revoked_at
+    )
+    SELECT 'buyer-pre-binding-'||id, id, 'BUYER_PRE_SALES_OWNER',
+      'staff-pre-sales', 'ACTIVE', 'AUTO_INITIAL',
+      'STAFF', 'zz-phase3h-test-owner', NULL, 1, 1000, 1000, NULL
+    FROM buyer_customers;
+`);
+
+  seedPortalMainImage(target);
+}
+
+function seedPortalMainImage(target: SqliteDatabase): void {
+  target.exec(`
+    INSERT INTO file_upload_intents (
+      id, owner_actor_type, owner_actor_id, purpose, visibility,
+      status, requested_file_count, manifest_hash, version, expires_at,
+      failure_code, created_at, updated_at, completed_at
+    ) VALUES (
+      'portal-main-image-intent', 'STAFF', 'staff-pre-sales',
+      'PRODUCT_IMAGE', 'SELLER_VISIBLE', 'ISSUED', 1,
+      '${'a'.repeat(64)}', 1, 30000, NULL, 1000, 1000, NULL
+    );
+    INSERT INTO file_objects (
+      id, upload_intent_id, slot_no, purpose, visibility, object_key,
+      client_file_name, extension, declared_mime, expected_byte_size,
+      status, upload_token_hash, upload_expires_at, uploaded_byte_size,
+      detected_mime, uploaded_sha256, failure_code, delete_attempt_count,
+      next_delete_at, version, created_at, updated_at, uploaded_at,
+      verified_at, deleted_at
+    ) VALUES (
+      'portal-main-image-object', 'portal-main-image-intent', 1,
+      'PRODUCT_IMAGE', 'SELLER_VISIBLE',
+      'files/v1/2026/08/portalmainimageobjectkeyxxxxxxxxxxxxxxxx',
+      'portal-main.png', 'png', 'image/png', 4, 'RESERVED',
+      '${'b'.repeat(64)}', 30000, NULL, NULL, NULL,
+      NULL, 0, NULL, 3, 1000, 1000, NULL, NULL, NULL
+    );
+    UPDATE file_upload_intents
+    SET status='VERIFIED', updated_at=1001, completed_at=1001
+    WHERE id='portal-main-image-intent';
+    UPDATE file_objects
+    SET status='VERIFIED', uploaded_byte_size=4, detected_mime='image/png',
+        uploaded_sha256='${'c'.repeat(64)}', updated_at=1001,
+        uploaded_at=1001, verified_at=1001
+    WHERE id='portal-main-image-object';
+    INSERT INTO file_entity_links (
+      id, file_object_id, entity_type, entity_id, purpose, visibility,
+      linked_by_actor_type, linked_by_actor_id, created_at,
+      authorization_mode, expires_at, revoked_at
+    ) VALUES (
+      'portal-main-image-link', 'portal-main-image-object',
+      'PRODUCT_VERSION', 'product-1-v1', 'PRODUCT_IMAGE',
+      'SELLER_VISIBLE', 'STAFF', 'staff-pre-sales', 1002,
+      'EXPLICIT_AUDIENCES', NULL, NULL
+    );
+    INSERT INTO file_entity_audience_grants (
+      id, file_entity_link_id, subject_type, buyer_customer_id,
+      seller_organization_id, staff_permission_code, staff_scope_type,
+      staff_team_id, granted_by_actor_type, granted_by_actor_id,
+      created_at, expires_at, revoked_at
+    ) VALUES
+      ('portal-main-image-seller-grant', 'portal-main-image-link',
+       'SELLER_ORGANIZATION', NULL, 'seller-org-1', NULL, NULL, NULL,
+       'STAFF', 'staff-pre-sales', 1002, NULL, NULL),
+      ('portal-main-image-staff-grant', 'portal-main-image-link',
+       'STAFF_INTERNAL', NULL, NULL, 'PRODUCT_VIEW', 'GLOBAL', NULL,
+       'STAFF', 'staff-pre-sales', 1002, NULL, NULL);
+    INSERT INTO product_version_main_images (
+      product_version_id, file_entity_link_id,
+      created_by_staff_id, created_at
+    ) VALUES (
+      'product-1-v1', 'portal-main-image-link', 'staff-pre-sales', 1002
+    );
   `);
 }
 

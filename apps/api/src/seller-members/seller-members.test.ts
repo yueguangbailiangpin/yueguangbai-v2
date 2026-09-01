@@ -53,7 +53,6 @@ describe('seller member lifecycle', () => {
         displayName: '运营成员',
         wechatId: 'seller_ops_member_01',
         role: 'OPERATIONS',
-        storeIds: ['store-2'],
       },
       {
         actor: sellerOpsActor(),
@@ -67,7 +66,6 @@ describe('seller member lifecycle', () => {
       member_number: 2,
       username_fallback: 'ido-mango-5001-2',
       role: 'OPERATIONS',
-      store_ids: ['store-2'],
       status: 'DISABLED',
       replayed: false,
     });
@@ -79,7 +77,6 @@ describe('seller member lifecycle', () => {
         displayName: '运营成员',
         wechatId: 'SELLER_OPS_MEMBER_01',
         role: 'OPERATIONS',
-        storeIds: ['store-2'],
       },
       {
         actor: sellerOpsActor(),
@@ -99,7 +96,6 @@ describe('seller member lifecycle', () => {
         displayName: '财务成员',
         wechatId: 'seller_finance_member_01',
         role: 'FINANCE',
-        storeIds: ['store-1', 'store-2'],
       },
       {
         actor: sellerOpsActor(),
@@ -141,7 +137,6 @@ describe('seller member lifecycle', () => {
         displayName: '待激活运营',
         wechatId: 'seller_member_login_01',
         role: 'OPERATIONS',
-        storeIds: ['store-2'],
       },
       {
         actor: sellerOpsActor(),
@@ -204,12 +199,11 @@ describe('seller member lifecycle', () => {
       database,
       created.seller_member_id,
     );
-    expect(access).toEqual({
+    expect(access).toMatchObject({
       memberId: created.seller_member_id,
       sellerOrganizationId: 'seller-org-1',
       role: 'OPERATIONS',
-      allActiveStores: false,
-      storeIds: ['store-2'],
+      allActiveStores: true,
       canManageProducts: true,
     });
   });
@@ -219,8 +213,8 @@ describe('seller member lifecycle', () => {
     seedSellerMemberFixture(database);
 
     await createBuyerCustomer(database, {
-      marketplaceCode: 'JP',
-      buyerChannelId: 'buyer-channel-b',
+      marketplaceCode: 'AMAZON_JP',
+      buyerChannelId: 'buyer-channel-wechat-b',
       displayName: '冲突买家',
       wechatId: 'shared_member_wechat_01',
     }, {
@@ -236,7 +230,6 @@ describe('seller member lifecycle', () => {
         displayName: '冲突成员',
         wechatId: ' SHARED_MEMBER_WECHAT_01 ',
         role: 'VIEWER',
-        storeIds: ['store-1'],
       },
       {
         actor: sellerOpsActor(),
@@ -249,47 +242,27 @@ describe('seller member lifecycle', () => {
     });
   });
 
-  it('rejects OWNER store scopes, cross-organization stores, and missing permission', async () => {
+  it('creates OWNER members without store scoping and rejects missing permission', async () => {
     database = createMigratedTestDatabase();
     seedSellerMemberFixture(database);
 
-    await expect(createSellerOrganizationMember(
+    // D-056 §4.4: creation no longer carries store scopes at all; an OWNER
+    // member can be created directly.
+    const ownerMember = await createSellerOrganizationMember(
       database,
       {
         sellerOrganizationId: 'seller-org-1',
         displayName: '次级负责人',
         wechatId: 'secondary_owner_01',
         role: 'OWNER',
-        storeIds: ['store-1'],
       },
       {
         actor: sellerOpsActor(),
-        idempotencyKey: 'seller-member:create:invalid-owner:0001',
+        idempotencyKey: 'seller-member:create:owner:0001',
         now: 2000,
       },
-    )).rejects.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      status: 400,
-    });
-
-    await expect(createSellerOrganizationMember(
-      database,
-      {
-        sellerOrganizationId: 'seller-org-1',
-        displayName: '跨组织成员',
-        wechatId: 'cross_org_member_01',
-        role: 'VIEWER',
-        storeIds: ['store-other-org'],
-      },
-      {
-        actor: sellerOpsActor(),
-        idempotencyKey: 'seller-member:create:cross-org:0001',
-        now: 2100,
-      },
-    )).rejects.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      status: 409,
-    });
+    );
+    expect(ownerMember.role).toBe('OWNER');
 
     await expect(createSellerOrganizationMember(
       database,
@@ -298,7 +271,6 @@ describe('seller member lifecycle', () => {
         displayName: '无权限成员',
         wechatId: 'forbidden_member_01',
         role: 'VIEWER',
-        storeIds: [],
       },
       {
         actor: {
@@ -325,7 +297,6 @@ describe('seller member lifecycle', () => {
         displayName: '审计成员',
         wechatId: 'audit_member_01',
         role: 'VIEWER',
-        storeIds: [],
       },
       {
         actor: sellerOpsActor(),
@@ -382,14 +353,20 @@ function seedSellerMemberFixture(
         'staff-pre-sales', 'pre_sales', 'ACTIVE', NULL,
         1000, NULL, 1000, 1000
       );
+    INSERT INTO staff_marketplace_scopes (
+      id, staff_id, role_code, marketplace_code, status,
+      assigned_by_staff_id, assigned_at, revoked_at, reason,
+      created_at, updated_at, scope_kind
+    ) VALUES ('scope-member-pre-sales-jp', 'staff-pre-sales', 'pre_sales',
+      'AMAZON_JP', 'ACTIVE', NULL, 1000, NULL, 'TEST',
+      1000, 1000, 'PRIMARY');
 
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-b', 'B', '买家渠道B',
-      'ACTIVE', 1, 1, 1000, 1000, NULL
-    );
+    -- Buyer numbers must be at least 13 characters (YYYYMMDD + B/C + 4+
+    -- digits), so seed the operational channel counter high enough for the
+    -- locally allocated numbers to satisfy the format.
+    UPDATE buyer_channels
+    SET next_sequence=1001
+    WHERE id='buyer-channel-wechat-b';
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,
@@ -399,14 +376,14 @@ function seedSellerMemberFixture(
       activated_at, disabled_at, next_member_number
     ) VALUES
       (
-        'seller-org-1', 'JP', 'ido-mango-5001',
+        'seller-org-1', 'AMAZON_JP', 'ido-mango-5001',
         'seller-channel-ido-mango',
         'seller-channel-ido-mango',
         5001, '卖家组织一', 'ACTIVE',
         1, 1000, 1000, 1000, NULL, 2
       ),
       (
-        'seller-org-2', 'JP', 'ygbceping-5001',
+        'seller-org-2', 'AMAZON_JP', 'ygbceping-5001',
         'seller-channel-ygbceping',
         'seller-channel-ygbceping',
         5001, '卖家组织二', 'ACTIVE',
@@ -449,17 +426,17 @@ function seedSellerMemberFixture(
       version, created_at, updated_at, disabled_at
     ) VALUES
       (
-        'store-1', 'seller-org-1', 'JP',
+        'store-1', 'seller-org-1', 'AMAZON_JP',
         '店铺一', '店铺一', 'ACTIVE',
         1, 1000, 1000, NULL
       ),
       (
-        'store-2', 'seller-org-1', 'JP',
+        'store-2', 'seller-org-1', 'AMAZON_JP',
         '店铺二', '店铺二', 'ACTIVE',
         1, 1000, 1000, NULL
       ),
       (
-        'store-other-org', 'seller-org-2', 'JP',
+        'store-other-org', 'seller-org-2', 'AMAZON_JP',
         '其他组织店铺', '其他组织店铺', 'ACTIVE',
         1, 1000, 1000, NULL
       );

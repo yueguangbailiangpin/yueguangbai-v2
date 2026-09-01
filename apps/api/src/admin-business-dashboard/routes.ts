@@ -1,8 +1,6 @@
 import {
   apiFailure,
   apiSuccess,
-  isDashboardDrillDownMetric,
-  isDashboardGranularity,
   isDashboardWindow,
   type ApiErrorCode,
 } from '@ygb/contracts';
@@ -15,20 +13,10 @@ import {
   validation,
 } from '../internal-finance/shared';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
-import { readFinancialReportingProjection } from './financial-projection';
-import { readAdminBusinessDashboardDrillDown, readAdminBusinessDashboardTrend } from './read-model';
-import { readFrozenAdminBusinessDashboardSummary } from './frozen-summary';
+import { readAdminBusinessDashboardSummary } from './read-model';
 
-const DEFAULT_LIMIT = 50,
-  MAX_LIMIT = 100;
 export function registerAdminBusinessDashboardRoutes(app: Hono<any>): void {
   app.get('/api/staff/admin-business-dashboard/summary', withErrors(summary));
-  app.get('/api/staff/admin-business-dashboard/trends', withErrors(trends));
-  app.get('/api/staff/admin-business-dashboard/drill-down', withErrors(drillDown));
-  app.get(
-    '/api/staff/admin-business-dashboard/financial-projection',
-    withErrors(financialProjection),
-  );
 }
 async function summary(context: Context<any>): Promise<Response> {
   requireActor(context);
@@ -37,56 +25,7 @@ async function summary(context: Context<any>): Promise<Response> {
   const window = url.searchParams.get('window') ?? 'TODAY';
   if (!isDashboardWindow(window)) validation();
   return success(context, {
-    summary: await readFrozenAdminBusinessDashboardSummary(context.env.DB, window),
-  });
-}
-async function trends(context: Context<any>): Promise<Response> {
-  requireActor(context);
-  const url = new URL(context.req.url);
-  assertExactQueryParameters(url, ['from_date', 'to_date', 'granularity']);
-  const fromDate = url.searchParams.get('from_date'),
-    toDate = url.searchParams.get('to_date'),
-    granularity = url.searchParams.get('granularity');
-  if (fromDate === null || toDate === null || !isDashboardGranularity(granularity)) validation();
-  return success(context, {
-    trend: await readAdminBusinessDashboardTrend(context.env.DB, { fromDate, toDate, granularity }),
-  });
-}
-async function drillDown(context: Context<any>): Promise<Response> {
-  requireActor(context);
-  const url = new URL(context.req.url);
-  assertExactQueryParameters(url, ['metric', 'from_date', 'to_date', 'limit', 'cursor']);
-  const metric = url.searchParams.get('metric'),
-    fromDate = url.searchParams.get('from_date'),
-    toDate = url.searchParams.get('to_date');
-  if (!isDashboardDrillDownMetric(metric) || fromDate === null || toDate === null) validation();
-  const rawLimit = url.searchParams.get('limit'),
-    limit = rawLimit === null ? DEFAULT_LIMIT : Number(rawLimit);
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_LIMIT) validation();
-  const cursor = url.searchParams.get('cursor');
-  if (cursor !== null && (cursor.length < 1 || cursor.length > 1000)) validation();
-  return success(context, {
-    drill_down: await readAdminBusinessDashboardDrillDown(context.env.DB, {
-      metric,
-      fromDate,
-      toDate,
-      limit,
-      cursor,
-    }),
-  });
-}
-async function financialProjection(context: Context<any>): Promise<Response> {
-  requireActor(context);
-  const url = new URL(context.req.url);
-  assertExactQueryParameters(url, ['from_date', 'to_date']);
-  const fromDate = url.searchParams.get('from_date'),
-    toDate = url.searchParams.get('to_date');
-  if (fromDate === null || toDate === null) validation();
-  return success(context, {
-    financial_projection: await readFinancialReportingProjection(context.env.DB, {
-      fromDate,
-      toDate,
-    }),
+    summary: await readAdminBusinessDashboardSummary(context.env.DB, window),
   });
 }
 function requireActor(context: Context<any>): AssignmentStaffAuthorization {

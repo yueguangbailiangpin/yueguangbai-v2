@@ -24,6 +24,7 @@ import {
   verifyOrderEvidence,
 } from '../order-evidence/review-order-evidence';
 import { seedPhase3GInstructionFixture } from '../../test-support/phase3g-test-fixtures';
+import { expireInstructionIfDue } from '../order-instructions/expiry';
 import { registerBuyerOrderEvidencePortalRoutes } from './routes';
 
 const ORIGIN = 'https://portal.local.test';
@@ -214,6 +215,26 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
         current_order_evidence_version: null,
         allowed_actions: ['SUBMIT'],
       });
+
+      await expireInstructionIfDue(
+        database!,
+        'phase3g-instruction-buyer-portal-b',
+        {
+          actorType: 'SYSTEM',
+          actorId: 'eligible-reservation-test',
+          now: fixtureNow + 7 * 60 * 60 * 1000,
+        },
+      );
+      const unpublished = await request(
+        app,
+        '/api/buyer-portal/order-evidence/eligible-reservations?limit=10',
+        { headers: { Cookie: cookie } },
+      );
+      expect(unpublished.status).toBe(200);
+      const unpublishedBody = await json<any>(unpublished);
+      expect(unpublishedBody.data.items.map(
+        (item: { reservation_id: string }) => item.reservation_id,
+      )).not.toContain('reservation-b');
 
       const serialized = JSON.stringify(items);
       for (const forbidden of [
@@ -1122,24 +1143,22 @@ describe('Phase 4B2 buyer order evidence HTTP API', () => {
     },
   );
 
-  it('keeps migration through 0026 and creates no actual refund, settlement, or profit', async () => {
+  it('keeps migration through 0029 and creates no actual refund, settlement, or profit', async () => {
     await setup();
     const root = path.resolve(import.meta.dirname, '../../../..');
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(70);
+    expect(migrations).toHaveLength(41);
     expect(migrations[0]).toMatch(/^0001_/u);
-    expect(migrations[25]).toBe('0026_financial_export_audit.sql');
-    expect(migrations[42]).toBe('0043_seller_principal_rate_integrity_hardening.sql');
-    expect(migrations.at(-1)).toBe('0070_buyer_refund_reminders.sql');
+    expect(migrations.at(-1)).toBe('0041_owner_alias_yueguangbai_ygbceping.sql');
 
     const schema = await database!.prepare(`
       SELECT schema_version
       FROM app_schema_state
       WHERE singleton_id=1
     `).first<{ schema_version: number }>();
-    expect(Number(schema?.schema_version)).toBe(70);
+    expect(Number(schema?.schema_version)).toBe(41);
 
     const forbiddenTables = await database!.prepare(`
       SELECT name
@@ -1356,15 +1375,6 @@ async function seedFixture(
       'staff-pre-sales', '售前', 'ACTIVE', 1,
       1, 1000, 1000, NULL
     );
-    INSERT INTO staff_departments (
-      id, code, name, status, version, created_at, updated_at, disabled_at
-    ) VALUES ('department-portal-order','portal-order','Portal Order',
-      'ACTIVE',1,1000,1000,NULL);
-    INSERT INTO staff_teams (
-      id, department_id, code, name, status, version,
-      created_at, updated_at, disabled_at
-    ) VALUES ('team-portal-order','department-portal-order','portal-order',
-      'Portal Order','ACTIVE',1,1000,1000,NULL);
     INSERT INTO staff_role_assignments (
       staff_id, role_code, status, assigned_by_staff_id, assigned_at,
       revoked_at, created_at, updated_at
@@ -1375,16 +1385,6 @@ async function seedFixture(
     ) VALUES ('scope-order-portal-pre-jp','staff-pre-sales','pre_sales',
       'AMAZON_JP','ACTIVE','zz-phase3h-test-owner',1000,NULL,
       'TEST_PRIMARY',1000,1000,'PRIMARY');
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES
-      ('staff-pre-sales','team-portal-order','ACTIVE',1000,NULL,1000,1000),
-      ('zz-phase3h-test-owner','team-portal-order','ACTIVE',1000,NULL,1000,1000);
-    INSERT INTO staff_team_leaders (
-      staff_id, team_id, status, assigned_by_staff_id,
-      assigned_at, revoked_at, created_at, updated_at
-    ) VALUES ('staff-pre-sales','team-portal-order','ACTIVE',
-      'zz-phase3h-test-owner',1000,NULL,1000,1000);
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,
@@ -1393,7 +1393,7 @@ async function seedFixture(
       version, created_at, updated_at,
       activated_at, disabled_at, next_member_number
     ) VALUES (
-      'seller-org-1', 'JP', 'ido-mango-9901',
+      'seller-org-1', 'AMAZON_JP', 'ido-mango-9901',
       'seller-channel-ido-mango',
       'seller-channel-ido-mango',
       9901, '订单资料卖家', 'ACTIVE',
@@ -1419,34 +1419,36 @@ async function seedFixture(
       1000, 1000, 1000, NULL
     );
 
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-evidence', 'E', '订单资料测试渠道',
-      'ACTIVE', 1, 1, 1000, 1000, NULL
-    );
-
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code,
       buyer_channel_id, buyer_customer_no,
-      buyer_sequence, first_valid_order_business_date,
+      buyer_sequence,
       display_name, access_status,
       identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES
       (
-        'buyer-1', 'buyer-subject-1', 'JP',
-        'buyer-channel-evidence', NULL, NULL, NULL,
+        'buyer-1', 'buyer-subject-1', 'AMAZON_JP',
+        'buyer-channel-wechat-b', '19700101B0001', 1,
         '买家一', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       ),
       (
-        'buyer-2', 'buyer-subject-2', 'JP',
-        'buyer-channel-evidence', NULL, NULL, NULL,
+        'buyer-2', 'buyer-subject-2', 'AMAZON_JP',
+        'buyer-channel-wechat-b', '19700101B0002', 2,
         '买家二', 'ACTIVE', 'CLEAR', 1,
         1000, 1000, 1000, NULL
       );
+
+    INSERT INTO buyer_staff_assignments (
+      id, buyer_customer_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason, version,
+      created_at, updated_at, revoked_at
+    )
+    SELECT 'buyer-pre-binding-'||id, id, 'BUYER_PRE_SALES_OWNER',
+      'staff-pre-sales', 'ACTIVE', 'AUTO_INITIAL',
+      'STAFF', 'zz-phase3h-test-owner', NULL, 1, 1000, 1000, NULL
+    FROM buyer_customers;
 
     INSERT INTO customer_login_accounts (
       id, identity_subject_id, account_type,
@@ -1475,7 +1477,7 @@ async function seedFixture(
       display_name, normalized_name, status,
       version, created_at, updated_at, disabled_at
     ) VALUES (
-      'store-1', 'seller-org-1', 'JP',
+      'store-1', 'seller-org-1', 'AMAZON_JP',
       '订单资料店铺', '订单资料店铺', 'ACTIVE',
       1, 1000, 1000, NULL
     );
@@ -1486,19 +1488,19 @@ async function seedFixture(
       current_version_no, version,
       created_at, updated_at, disabled_at
     ) VALUES
-      ('product-a', 'seller-org-1', 'store-1', 'JP',
+      ('product-a', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'B0EVIDA001', 'B0EVIDA001', 'ACTIVE', 1, 1,
        1000, 1000, NULL),
-      ('product-b', 'seller-org-1', 'store-1', 'JP',
+      ('product-b', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'B0EVIDB001', 'B0EVIDB001', 'ACTIVE', 1, 1,
        1000, 1000, NULL),
-      ('product-c', 'seller-org-1', 'store-1', 'JP',
+      ('product-c', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'B0EVIDC001', 'B0EVIDC001', 'ACTIVE', 1, 1,
        1000, 1000, NULL),
-      ('product-other', 'seller-org-1', 'store-1', 'JP',
+      ('product-other', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'B0EVIDO001', 'B0EVIDO001', 'ACTIVE', 1, 1,
        1000, 1000, NULL),
-      ('product-pending', 'seller-org-1', 'store-1', 'JP',
+      ('product-pending', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'B0EVIDP001', 'B0EVIDP001', 'ACTIVE', 1, 1,
        1000, 1000, NULL);
 
@@ -1546,31 +1548,31 @@ async function seedFixture(
       held_reservation_count,
       approved_reservation_count
     ) VALUES
-      ('demand-a', 'seller-org-1', 'store-1', 'JP',
+      ('demand-a', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'product-a', 1, 'seller-member-1', 'IMAGE',
        3, '公开需求A', '内部需求A',
        1000, ${orderDeadline - 10000}, ${orderDeadline + 100},
        'PUBLISHED', NULL, NULL, 'staff-pre-sales', NULL,
        2, 1000, 1000, 1000, 1000, NULL, NULL, 0, 1),
-      ('demand-b', 'seller-org-1', 'store-1', 'JP',
+      ('demand-b', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'product-b', 1, 'seller-member-1', 'TEXT',
        3, '公开需求B', '内部需求B',
        1000, ${orderDeadline - 9000}, ${orderDeadline + 200},
        'PUBLISHED', NULL, NULL, 'staff-pre-sales', NULL,
        2, 1100, 1100, 1100, 1100, NULL, NULL, 0, 1),
-      ('demand-c', 'seller-org-1', 'store-1', 'JP',
+      ('demand-c', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'product-c', 1, 'seller-member-1', 'VIDEO',
        3, '公开需求C', '内部需求C',
        1000, ${orderDeadline - 8000}, ${orderDeadline + 300},
        'PUBLISHED', NULL, NULL, 'staff-pre-sales', NULL,
        2, 1200, 1200, 1200, 1200, NULL, NULL, 0, 1),
-      ('demand-other', 'seller-org-1', 'store-1', 'JP',
+      ('demand-other', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'product-other', 1, 'seller-member-1', 'RATING',
        3, '公开需求O', '内部需求O',
        1000, ${orderDeadline - 7000}, ${orderDeadline + 400},
        'PUBLISHED', NULL, NULL, 'staff-pre-sales', NULL,
        2, 1300, 1300, 1300, 1300, NULL, NULL, 0, 1),
-      ('demand-pending', 'seller-org-1', 'store-1', 'JP',
+      ('demand-pending', 'seller-org-1', 'store-1', 'AMAZON_JP',
        'product-pending', 1, 'seller-member-1', 'IMAGE',
        3, '公开需求P', '内部需求P',
        1000, ${orderDeadline - 6000}, ${orderDeadline + 500},
@@ -1594,31 +1596,31 @@ async function seedFixture(
       buyer_self_pay_accepted_demand_version
     ) VALUES
       ('reservation-a', 'demand-a', 'buyer-1',
-       'seller-org-1', 'store-1', 'product-a', 1, 'JP',
+       'seller-org-1', 'store-1', 'product-a', 1, 'AMAZON_JP',
        'APPROVED', '{}', ${orderDeadline - 1000},
        ${orderDeadline + 100}, 2, 2000, 3000,
        'staff-pre-sales', NULL, 3000, NULL, NULL, 0,
        0, 1980, 0, 1980, 2000, 2),
       ('reservation-b', 'demand-b', 'buyer-1',
-       'seller-org-1', 'store-1', 'product-b', 1, 'JP',
+       'seller-org-1', 'store-1', 'product-b', 1, 'AMAZON_JP',
        'APPROVED', '{}', ${orderDeadline - 900},
        ${orderDeadline + 200}, 2, 2100, 3100,
        'staff-pre-sales', NULL, 3100, NULL, NULL, 0,
        0, 1980, 0, 1980, 2100, 2),
       ('reservation-c', 'demand-c', 'buyer-1',
-       'seller-org-1', 'store-1', 'product-c', 1, 'JP',
+       'seller-org-1', 'store-1', 'product-c', 1, 'AMAZON_JP',
        'APPROVED', '{}', ${orderDeadline - 800},
        ${orderDeadline + 300}, 2, 2200, 3200,
        'staff-pre-sales', NULL, 3200, NULL, NULL, 0,
        0, 1980, 0, 1980, 2200, 2),
       ('reservation-other', 'demand-other', 'buyer-2',
-       'seller-org-1', 'store-1', 'product-other', 1, 'JP',
+       'seller-org-1', 'store-1', 'product-other', 1, 'AMAZON_JP',
        'APPROVED', '{}', ${orderDeadline - 700},
        ${orderDeadline + 400}, 2, 2300, 3300,
        'staff-pre-sales', NULL, 3300, NULL, NULL, 0,
        0, 1980, 0, 1980, 2300, 2),
       ('reservation-pending', 'demand-pending', 'buyer-1',
-       'seller-org-1', 'store-1', 'product-pending', 1, 'JP',
+       'seller-org-1', 'store-1', 'product-pending', 1, 'AMAZON_JP',
        'PENDING_REVIEW', '{}', ${orderDeadline - 600},
        ${orderDeadline + 500}, 1, 2400, 2400,
        NULL, NULL, NULL, NULL, NULL, 0,

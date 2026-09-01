@@ -2,7 +2,7 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS } from '@ygb/contracts';
+import { ORDER_COMMUNICATION_SCREENSHOT_HTTP_PATHS } from '@ygb/contracts';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it } from 'vitest';
 import '../../test/msw/lifecycle';
@@ -17,7 +17,7 @@ import { SellerRoutePage } from '../routes/SellerRouteModule';
 afterEach(cleanup);
 
 describe('Seller formal-order chat screenshot UI', () => {
-  it('hides every settlement entry and route payload from OPERATIONS members', async () => {
+  it('shows OPERATIONS members the batch-only settlements page and hides every financial section', async () => {
     let settlementRequests = 0;
     server.use(
       http.get(apiUrl('/api/seller-portal/me'), () =>
@@ -38,11 +38,23 @@ describe('Seller formal-order chat screenshot UI', () => {
               outstanding_service_fee_cny_fen: '200',
               total_outstanding_cny_fen: '300',
               unallocated_credit_cny_fen: '0',
+              settlement_account_name: null,
+              settlement_account_identifier: null,
             },
           },
           meta: { request_id: 'unexpected-settlement' },
         });
       }),
+    );
+    // Stage 7.5R-2: the batches read is allowed for every member role, so
+    // OPERATIONS gets the batch-only page instead of a permission warning.
+    server.use(
+      http.get(apiUrl('/api/seller-portal/settlement/batches'), () =>
+        HttpResponse.json({
+          data: { batches: [], next_cursor: null },
+          meta: { request_id: 'seller-batches-ops' },
+        }),
+      ),
     );
     renderWithMsw(
       <SellerLayout>
@@ -50,9 +62,12 @@ describe('Seller formal-order chat screenshot UI', () => {
       </SellerLayout>,
       { route: '/seller/settlements' },
     );
-    expect(await screen.findByText('当前成员角色不能查看财务结算。')).toBeVisible();
-    expect(screen.queryByRole('link', { name: '结算' })).not.toBeInTheDocument();
-    expect(screen.queryByText('本金与服务费')).not.toBeInTheDocument();
+    expect(await screen.findByText('暂无已确认的结算批次。')).toBeVisible();
+    // The settlements entry stays reachable: batches are readable for all roles.
+    expect(screen.getAllByRole('link', { name: '结算' }).length).toBeGreaterThan(0);
+    // The financial sections stay owner/finance-only and issue no requests.
+    expect(screen.queryByText('结算摘要')).not.toBeInTheDocument();
+    expect(screen.queryByText('打款记录')).not.toBeInTheDocument();
     expect(settlementRequests).toBe(0);
   });
 
@@ -78,6 +93,8 @@ describe('Seller formal-order chat screenshot UI', () => {
               outstanding_service_fee_cny_fen: '0',
               total_outstanding_cny_fen: '0',
               unallocated_credit_cny_fen: '0',
+              settlement_account_name: null,
+              settlement_account_identifier: null,
             },
           },
           meta: { request_id: 'seller-settlement-finance' },
@@ -89,6 +106,12 @@ describe('Seller formal-order chat screenshot UI', () => {
           meta: { request_id: 'seller-payables-finance' },
         }),
       ),
+      http.get(apiUrl('/api/seller-portal/settlement/payments'), () =>
+        HttpResponse.json({
+          data: { items: [], page: { limit: 100, next_cursor: null } },
+          meta: { request_id: 'seller-payments-finance' },
+        }),
+      ),
     );
     renderWithMsw(
       <SellerLayout>
@@ -97,7 +120,7 @@ describe('Seller formal-order chat screenshot UI', () => {
       { route: '/seller/settlements' },
     );
     expect(
-      await screen.findByText('结算按已授权店铺范围汇总，不随当前店铺选择切换。'),
+      await screen.findByText('这里按你有权限的店铺汇总，不随上方店铺筛选变化。'),
     ).toBeVisible();
     expect(await screen.findAllByRole('link', { name: '结算' })).toHaveLength(2);
   });
@@ -127,7 +150,7 @@ describe('Seller formal-order chat screenshot UI', () => {
             items: [
               {
                 id: 'store-1',
-                marketplace_code: 'JP',
+                marketplace_code: 'AMAZON_JP',
                 display_name: '店铺一',
                 canonical_marketplace_code: 'AMAZON_JP',
                 transaction_currency_code: 'JPY',
@@ -141,7 +164,7 @@ describe('Seller formal-order chat screenshot UI', () => {
               },
               {
                 id: 'store-2',
-                marketplace_code: 'JP',
+                marketplace_code: 'AMAZON_JP',
                 display_name: '店铺二',
                 canonical_marketplace_code: 'AMAZON_JP',
                 transaction_currency_code: 'JPY',
@@ -168,6 +191,8 @@ describe('Seller formal-order chat screenshot UI', () => {
               outstanding_service_fee_cny_fen: '200',
               total_outstanding_cny_fen: '300',
               unallocated_credit_cny_fen: '0',
+              settlement_account_name: null,
+              settlement_account_identifier: null,
             },
           },
           meta: { request_id: 'seller-settlement-owner' },
@@ -180,6 +205,13 @@ describe('Seller formal-order chat screenshot UI', () => {
           meta: { request_id: 'seller-payables-owner' },
         });
       }),
+      http.get(apiUrl('/api/seller-portal/settlement/payments'), ({ request }) => {
+        settlementRequests.push(request.url);
+        return HttpResponse.json({
+          data: { items: [], page: { limit: 100, next_cursor: null } },
+          meta: { request_id: 'seller-payments-owner' },
+        });
+      }),
     );
 
     renderWithMsw(
@@ -190,20 +222,21 @@ describe('Seller formal-order chat screenshot UI', () => {
     );
     expect(
       await screen.findByText(
-        '结算为全组织财务历史范围，含已停用店铺的历史结算，不随当前店铺选择切换。',
+        '这里显示整个组织（含已停用店铺）的历史账目，不随上方店铺筛选变化。',
       ),
     ).toBeVisible();
-    expect(settlementRequests).toHaveLength(2);
+    expect(settlementRequests).toHaveLength(3);
     expect(settlementRequests.every((url) => !new URL(url).searchParams.has('store_id'))).toBe(
       true,
     );
     await userEvent.selectOptions(screen.getByRole('combobox', { name: '店铺' }), 'store-1');
     expect(screen.getByRole('combobox', { name: '店铺' })).toHaveValue('store-1');
-    expect(settlementRequests).toHaveLength(2);
+    expect(settlementRequests).toHaveLength(3);
   });
 
-  it('renders list status without issuing a screenshot read until the user asks', async () => {
+  it('renders every communication screenshot with an independent entry until the user asks', async () => {
     let readIntentRequests = 0;
+    const readIntentFiles: string[] = [];
     let contentRequests = 0;
     const originalCreateObjectUrl = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
     Object.defineProperty(URL, 'createObjectURL', {
@@ -219,7 +252,13 @@ describe('Seller formal-order chat screenshot UI', () => {
               {
                 ...formalOrder(),
                 formal_order_id: 'order-2',
-                chat_screenshot: { status: 'NONE', file_version: null },
+                main_image: {
+                  file_object_id: 'seller-main-image-1',
+                  file_version: 1,
+                  client_file_name: 'main.webp',
+                },
+                order_screenshot: null,
+                communication_screenshots: [],
               },
             ],
             page: { limit: 100, next_cursor: null },
@@ -229,27 +268,68 @@ describe('Seller formal-order chat screenshot UI', () => {
       ),
       http.post(
         apiUrl(
-          SELLER_ORDER_CHAT_SCREENSHOT_HTTP_PATHS.sellerReadIntent.replace(
+          ORDER_COMMUNICATION_SCREENSHOT_HTTP_PATHS.sellerReadIntent.replace(
             ':id',
             'order-1',
-          ) as `/api/${string}`,
+          ).replace(':fileObjectId', ':fileObjectId') as `/api/${string}`,
         ),
-        () => {
+        ({ params }) => {
           readIntentRequests += 1;
+          readIntentFiles.push(String(params['fileObjectId']));
           return HttpResponse.json({
             data: {
-              read_intent: {
-                read_intent_id: 'seller-chat-intent',
-                access_token: 'seller-chat-token'.padEnd(40, 'x'),
-                access_token_available: true,
-                expires_at: 99,
-                replayed: false,
-              },
+              read_intent_id: `seller-chat-intent-${String(params['fileObjectId'])}`,
+              access_token: `seller-chat-token-${String(params['fileObjectId'])}`.padEnd(40, 'x'),
+              access_token_available: true,
+              expires_at: 99,
+              replayed: false,
             },
             meta: { request_id: 'unexpected-read' },
           });
         },
       ),
+      http.post(apiUrl('/api/seller-portal/file-read-intents/batch'), async () =>
+        HttpResponse.json({
+          data: {
+            intents: [
+              {
+                read_intent_id: 'seller-order-shot-intent',
+                file_object_id: 'seller-order-shot-1',
+                access_token: 'seller-order-shot-token'.padEnd(40, 'x'),
+                access_token_available: true,
+                expires_at: 99,
+                replayed: false,
+              },
+              {
+                read_intent_id: 'seller-main-image-intent',
+                file_object_id: 'seller-main-image-1',
+                access_token: 'seller-main-token'.padEnd(40, 'x'),
+                access_token_available: true,
+                expires_at: 99,
+                replayed: false,
+              },
+            ],
+          },
+          meta: { request_id: 'seller-batch-read' },
+        })),
+      http.get(apiUrl('/api/seller-portal/file-read-intents/seller-order-shot-intent/content'), () =>
+        new Response(Uint8Array.of(3, 4), {
+          headers: {
+            'Content-Type': 'image/png',
+            'Content-Length': '2',
+            'Cache-Control': 'private, max-age=300',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        })),
+      http.get(apiUrl('/api/seller-portal/file-read-intents/seller-main-image-intent/content'), () =>
+        new Response(Uint8Array.of(9, 9), {
+          headers: {
+            'Content-Type': 'image/webp',
+            'Content-Length': '2',
+            'Cache-Control': 'private, max-age=300',
+            'X-Content-Type-Options': 'nosniff',
+          },
+        })),
       http.get(apiUrl('/api/seller-portal/file-read-intents/:id/content'), ({ request }) => {
         contentRequests += 1;
         expect(request.headers.get('X-File-Read-Token')).toContain('seller-chat-token');
@@ -257,7 +337,7 @@ describe('Seller formal-order chat screenshot UI', () => {
           headers: {
             'Content-Type': 'image/png',
             'Content-Length': '2',
-            'Cache-Control': 'private, no-store',
+            'Cache-Control': 'private, max-age=300',
             'X-Content-Type-Options': 'nosniff',
           },
         });
@@ -267,27 +347,40 @@ describe('Seller formal-order chat screenshot UI', () => {
     try {
       const { client } = renderWithMsw(<SellerOrdersPage />, { route: '/seller/orders' });
 
-      expect(await screen.findByText('展开聊天截图')).toBeTruthy();
-      expect(screen.getAllByText('聊天截图')).toHaveLength(2);
-      expect(screen.getByText('已上传')).toBeTruthy();
-      expect(screen.getByText('暂无聊天截图')).toBeTruthy();
-      expect(screen.queryByText('查看聊天截图')).toBeNull();
+      // 订单明细默认折叠：展开后再核对沟通截图控件
+      for (const summary of await screen.findAllByText('订单明细（订单号、金额、汇率等，点开查看）')) {
+        await userEvent.click(summary);
+      }
+      expect(await screen.findByText('展开沟通截图 1')).toBeTruthy();
+      expect(await screen.findByText('展开沟通截图 2')).toBeTruthy();
+      expect(await screen.findByRole('img', { name: '聊天截图商品 主图' })).toBeTruthy();
+      expect(await screen.findByRole('img', { name: '订单截图' })).toBeTruthy();
+      expect(screen.getAllByText('沟通截图（员工上传，一单可多张）')).toHaveLength(2);
+      // 两张截图两个独立入口：各自上传人（可解析/不可解析中性占位）与上传时间。
+      expect(screen.getByText(/上传人：李明/)).toBeTruthy();
+      expect(screen.getByText(/上传人：未知员工/)).toBeTruthy();
+      expect(screen.getAllByText(/上传时间：/)).toHaveLength(2);
+      expect(screen.getByText('暂无沟通截图')).toBeTruthy();
+      expect(screen.queryByAltText('订单沟通截图 1')).toBeNull();
       expect(readIntentRequests).toBe(0);
       expect(contentRequests).toBe(0);
       expect(client.getQueryData(sellerQueryKeys.ordersPage(null, null))).toBeDefined();
       expect(client.getQueryData(['buyer', 'orders', 'all'])).toBeUndefined();
 
-      await userEvent.click(screen.getByRole('button', { name: '展开聊天截图' }));
-      expect(await screen.findByText('查看聊天截图')).toBeTruthy();
-      expect(readIntentRequests).toBe(0);
-      expect(contentRequests).toBe(0);
-
-      await userEvent.click(screen.getByRole('button', { name: '查看聊天截图' }));
-      expect((await screen.findByRole('link', { name: '打开文件' })).getAttribute('href')).toBe(
-        'blob:seller-chat',
-      );
+      await userEvent.click(screen.getByRole('button', { name: '展开沟通截图 1' }));
+      expect(await screen.findByAltText('订单沟通截图 1')).toBeTruthy();
       expect(readIntentRequests).toBe(1);
+      expect(readIntentFiles).toEqual(['chat-file-1']);
       expect(contentRequests).toBe(1);
+
+      await userEvent.click(screen.getByRole('button', { name: '展开沟通截图 2' }));
+      expect(await screen.findByAltText('订单沟通截图 2')).toBeTruthy();
+      expect(readIntentRequests).toBe(2);
+      expect(readIntentFiles).toEqual(['chat-file-1', 'chat-file-2']);
+      expect(contentRequests).toBe(2);
+
+      await userEvent.click(screen.getByRole('button', { name: '查看大图：订单沟通截图 1' }));
+      expect(screen.getByRole('dialog')).toBeTruthy();
       expect(
         JSON.stringify(
           client
@@ -314,7 +407,11 @@ describe('Seller formal-order chat screenshot UI', () => {
           data:
             cursor === null
               ? {
-                  items: [{ ...formalOrder(), product_name: '第一页订单' }],
+                  items: [{
+                    ...formalOrder(),
+                    product_name: '第一页订单',
+                    order_screenshot: null,
+                  }],
                   page: { limit: 100, next_cursor: 'opaque-seller-page-2' },
                 }
               : {
@@ -323,6 +420,7 @@ describe('Seller formal-order chat screenshot UI', () => {
                       ...formalOrder(),
                       formal_order_id: 'order-2',
                       product_name: '第二页订单',
+                      order_screenshot: null,
                     },
                   ],
                   page: { limit: 100, next_cursor: null },
@@ -366,6 +464,8 @@ describe('Seller formal-order chat screenshot UI', () => {
               outstanding_service_fee_cny_fen: '0',
               total_outstanding_cny_fen: '0',
               unallocated_credit_cny_fen: '0',
+              settlement_account_name: null,
+              settlement_account_identifier: null,
             },
           },
           meta: { request_id: 'seller-settlement' },
@@ -375,8 +475,8 @@ describe('Seller formal-order chat screenshot UI', () => {
 
     renderWithMsw(<SellerDashboardPage />, { route: '/seller' });
     expect(await screen.findByText('订单进度暂时不可用，刷新后重试。')).toBeVisible();
-    expect(screen.getAllByText('—')).toHaveLength(2);
-    expect(screen.queryByText('暂无待完成订单')).not.toBeInTheDocument();
+    expect(screen.getAllByText('—')).toHaveLength(1);
+    expect(screen.queryByText('当前没有需要立即处理的事项。')).not.toBeInTheDocument();
   });
 
   it('does not render a failed payable read as an empty financial ledger', async () => {
@@ -389,6 +489,8 @@ describe('Seller formal-order chat screenshot UI', () => {
               outstanding_service_fee_cny_fen: '200',
               total_outstanding_cny_fen: '300',
               unallocated_credit_cny_fen: '0',
+              settlement_account_name: null,
+              settlement_account_identifier: null,
             },
           },
           meta: { request_id: 'seller-settlement' },
@@ -434,8 +536,10 @@ function sellerMe() {
       id: 'seller-organization',
       seller_code: 'seller-1',
       name: '卖家组织',
-      marketplace_code: 'JP',
+      marketplace_code: 'AMAZON_JP',
       status: 'ACTIVE',
+      settlement_account_name: null,
+      settlement_account_identifier: null,
     },
     access: {
       read_scope: 'ASSIGNED_STORES',
@@ -450,14 +554,17 @@ function formalOrder() {
   return {
     formal_order_id: 'order-1',
     status: 'CONFIRMED',
-    legacy_projection: 'AMAZON',
-    marketplace_code: 'JP',
-    canonical_marketplace_code: 'AMAZON_JP',
+    marketplace_code: 'AMAZON_JP',
     amazon_order_number: '111-1111111-1111111',
     platform_order_identifier: '111-1111111-1111111',
     store: { id: 'store-1', display_name: '店铺一' },
     asin: 'B012345678',
     platform_product_identifier: 'B012345678',
+    main_image: null,
+    order_screenshot: {
+      file_object_id: 'seller-order-shot-1',
+      file_version: 3,
+    },
     product_name: '聊天截图商品',
     product_version: { id: 'product-version-1', version_no: 1 },
     review_type: 'IMAGE',
@@ -470,7 +577,7 @@ function formalOrder() {
       payment_currency_code: 'JPY',
       base_rate_version_id: 'base-rate-1',
       base_rate_business_date: '2026-08-01',
-      base_rate_confirmed_at: 1,
+      base_rate_created_at: 1,
       base_rate_value: '5000000',
       base_rate_scale: '100000000',
       policy_version_id: 'policy-1',
@@ -478,7 +585,7 @@ function formalOrder() {
       policy_seller_organization_id: 'seller-organization',
       policy_version_no: 1,
       policy_effective_from: 1,
-      policy_confirmed_at: 1,
+      policy_created_at: 1,
       markup_rate_value: '0',
       markup_rate_scale: '100000000',
       final_rate_value: '5000000',
@@ -492,7 +599,7 @@ function formalOrder() {
       review_type: 'IMAGE',
       service_fee_cny_fen: '1',
       effective_from: 1,
-      confirmed_at: 1,
+      created_at: 1,
       marketplace_code: 'AMAZON_JP',
       currency_code: 'CNY',
       currency_exponent: 2,
@@ -503,7 +610,26 @@ function formalOrder() {
       seller_principal: 'PENDING',
       seller_service_fee: 'PENDING',
     },
-    chat_screenshot: { status: 'AVAILABLE', file_version: 2 },
+    communication_screenshots: [
+      {
+        file_object_id: 'chat-file-1',
+        file_version: 2,
+        purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
+        visibility: 'SELLER_VISIBLE',
+        uploaded_at: 1_746_800_000_000,
+        uploaded_by_staff_id: 'staff-1',
+        uploaded_by_staff_name: '李明',
+      },
+      {
+        file_object_id: 'chat-file-2',
+        file_version: 1,
+        purpose: 'ORDER_COMMUNICATION_SCREENSHOT',
+        visibility: 'SELLER_VISIBLE',
+        uploaded_at: 1_746_810_000_000,
+        uploaded_by_staff_id: null,
+        uploaded_by_staff_name: null,
+      },
+    ],
     confirmed_at: 1,
     confirmed_business_date: '2026-08-01',
   };

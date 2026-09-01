@@ -12,7 +12,6 @@ import { Select } from '../ui/primitives';
 export const SELLER_REVIEW_ROLES = ['OWNER', 'OPERATIONS', 'FINANCE', 'VIEWER'] as const;
 export const STAFF_REVIEW_ROLES = [
   'owner',
-  'acquisition',
   'pre_sales',
   'seller_ops',
   'buyer_refund',
@@ -34,10 +33,13 @@ export function currentSellerReviewRole(): SellerReviewRole {
 export function currentStaffReviewRole(): StaffReviewRole {
   return staffRole;
 }
+/** 仅限测试：直接切换评审角色（UI 路径走 ReviewRuntimeProvider.chooseStaffRole）。 */
+export function chooseStaffRoleForTests(role: StaffReviewRole): void {
+  staffRole = role;
+}
 
 const staffRoleDisplay = {
   owner: '总管理员',
-  acquisition: '获客',
   pre_sales: '售前',
   seller_ops: '卖家对接',
   buyer_refund: '买家返款',
@@ -89,9 +91,7 @@ export function reviewStaffSession(): StaffSession {
       ? ['SELLER_MANAGE', 'PRODUCT_VIEW', 'WORK_QUEUE_VIEW']
       : staffRole === 'pre_sales'
         ? ['PRODUCT_VIEW', 'WORK_QUEUE_VIEW']
-        : staffRole === 'buyer_refund'
-          ? ['WORK_QUEUE_VIEW', 'BUYER_REFUND_PROCESS']
-          : ['ACQUISITION_MANAGE'];
+        : ['WORK_QUEUE_VIEW', 'BUYER_REFUND_PROCESS'];
   return {
     staff_id: `review-staff-${staffRole}`,
     display_name: `Demo ${staffRoleDisplay[staffRole]}`,

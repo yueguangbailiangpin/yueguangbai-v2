@@ -6,7 +6,7 @@
 
 ## 本地验收
 
-1. 运行 `npm run check:drive-archive`。
+1. 运行 `npm run preflight:drive-archive`。
 2. 确认真实 scheduler runner dry-run 输出 Drive/R2 调用和 archive/Manifest/reconciliation/rehydration 业务事实写入均为 0。允许记录 `scheduled_job_states` / `scheduled_job_runs` 运行事实，不得把它们描述为归档业务写入为 0。
 3. 使用 mock adapter 验收六个月边界、四类白名单、断点续传、并发租约、Drive 回读校验、R2 删除失败和受控读取。
 4. 检查 `file_drive_archive_manifests` 不可更新/删除，`npm run db:verify` 与 migration guards 通过。
@@ -14,9 +14,16 @@
 ## 分阶段启用
 
 1. **到期事实**：保持全部环境开关关闭，只产生经业务流程确认的订单关闭事实。
-2. **影子复制**：开启全局归档与 copy；D1 `copy_enabled=1`，保持 proxy/read 与 delete 关闭。R2 仍是读取源。
-3. **代理读取**：M10/最终老板外部接入清单完成后开启环境和 D1 proxy read；用匿名文件逐个验证 Buyer、Seller、Staff Audience 与 404 隐藏边界。
-4. **删除 R2**：只有影子复制和代理读取验收通过后，才同时批准环境与 D1 delete。数据库约束要求 copy 和 proxy 已启用。
+2. **影子复制**：开启 `ARCHIVE_SELECTOR_ENABLED` 与
+   `ARCHIVE_DRIVE_UPLOAD_ENABLED`；保持 `ARCHIVE_HOT_DELETE_ENABLED` 与
+   `ARCHIVE_RESTORE_WORKER_ENABLED` 关闭，D1 `copy_enabled=1`，proxy/read
+   与 delete 关闭。R2 仍是读取源。
+3. **代理读取**：M10/最终老板外部接入清单完成后，再按独立批准启用受控
+   读取路径；不得把已废弃的 `DRIVE_ARCHIVE_*` 变量当作别名。用匿名文件
+   逐个验证 Buyer、Seller、Staff Audience 与 404 隐藏边界。
+4. **删除 R2**：只有影子复制和代理读取验收通过后，才同时批准
+   `ARCHIVE_HOT_DELETE_ENABLED` 与 D1 delete。数据库约束要求 copy 和 proxy
+   已启用；`ARCHIVE_RESTORE_WORKER_ENABLED` 仍需单独的恢复批准。
 
 任何阶段失败先关闭后续阶段开关。不要删除 Drive 中已验证对象。
 

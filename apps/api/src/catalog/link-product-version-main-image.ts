@@ -12,10 +12,6 @@ import {
   completeIdempotencyStatement,
   markIdempotencyFailed,
 } from '../foundation/idempotency';
-import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
 import type { FileAuthorizationService } from '../files/authorization';
 import {
   createExplicitAudienceFileLinkStatements,
@@ -165,20 +161,6 @@ export async function linkProductVersionMainImage(
       authorization_mode: 'EXPLICIT_AUDIENCES',
       replayed: false,
     };
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `product-version-main-image:${productVersionId}`,
-      eventType: 'PRODUCT_VERSION_MAIN_IMAGE_LINKED',
-      aggregateType: 'PRODUCT',
-      aggregateId: source.product_id,
-      payload: {
-        product_id: source.product_id,
-        product_version_id: productVersionId,
-        product_version_no: Number(source.version_no),
-        file_entity_link_id: prepared.result.linkId,
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       ...prepared.statements,
@@ -211,7 +193,6 @@ export async function linkProductVersionMainImage(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,

@@ -24,7 +24,7 @@ const viewports = [
 const reservationDemand = {
   demand_id: 'demand-visual',
   demand_version: 4,
-  marketplace_code: 'JP',
+  marketplace_code: 'AMAZON_JP',
   product_name: '月白保湿护理套装',
   reference_order_amount_jpy: '3980',
   buyer_self_pay_bps: 1250,
@@ -76,13 +76,13 @@ const evidence = {
   reservation: {
     reservation_id: reservation.reservation_id,
     demand_id: reservationDemand.demand_id,
-    marketplace_code: 'JP',
+    marketplace_code: 'AMAZON_JP',
     product_name: reservationDemand.product_name,
     store_display_name: reservationDemand.store_display_name,
     review_type: 'IMAGE',
     order_deadline: reservationDemand.order_deadline,
   },
-  marketplace: 'JP',
+  marketplace: 'AMAZON_JP',
   amazon_order_number_display: '123-1234567-1234567',
   amazon_order_date: '2026-08-06',
   final_paid_jpy: 4100,
@@ -104,7 +104,7 @@ const evidence = {
 
 const formalOrder = {
   formal_order_id: 'formal-visual',
-  marketplace: 'JP',
+  marketplace: 'AMAZON_JP',
   amazon_order_number: evidence.amazon_order_number_display,
   amazon_order_date: '2026-08-06',
   product_name: reservationDemand.product_name,
@@ -133,7 +133,7 @@ const formalOrder = {
 
 const reviewOrder = {
   formal_order_id: formalOrder.formal_order_id,
-  marketplace: 'JP',
+  marketplace: 'AMAZON_JP',
   amazon_order_number: evidence.amazon_order_number_display,
   amazon_order_date: '2026-08-06',
   product_name: reservationDemand.product_name,
@@ -181,7 +181,7 @@ const refund = {
   status: 'PARTIALLY_PAID',
   order: {
     formal_order_id: formalOrder.formal_order_id,
-    marketplace: 'JP',
+    marketplace: 'AMAZON_JP',
     amazon_order_number: evidence.amazon_order_number_display,
     product_name: reservationDemand.product_name,
     review_type: 'IMAGE',
@@ -266,8 +266,11 @@ async function installBuyerFixture(page: Page, refundStatus: 'PARTIALLY_PAID' | 
     if (path === '/api/buyer-portal/me') {
       await json(route, success({ buyer: {
         display_name: '月白买家',
-        marketplace_code: 'JP',
+        marketplace_code: 'AMAZON_JP',
         identity_review_status: 'CLEAR',
+        customer_number: '20260824B3612',
+        refund_account_name: null,
+        refund_account_identifier: null,
       } }));
       return;
     }
@@ -296,8 +299,14 @@ async function installBuyerFixture(page: Page, refundStatus: 'PARTIALLY_PAID' | 
     if (path.endsWith('/order-instruction')) {
       await json(route, success({ order_instruction: {
         status: 'ACTIVE',
+        instruction_version: 3,
+        current_version_no: 2,
+        evidence_status: 'CHANGES_REQUESTED',
+        can_submit_evidence: true,
+        can_read_images: true,
         product_name: reservationDemand.product_name,
         store_display_name: reservationDemand.store_display_name,
+        search_keywords: ['月光白', '商品关键词'],
         color_spec_mode: 'MAIN_IMAGE_VARIANT',
         staff_public_note: '请核对主图与商品规格。',
         buyer_visible_notes: '下单后请按页面要求保存订单截图。',
@@ -316,7 +325,6 @@ async function installBuyerFixture(page: Page, refundStatus: 'PARTIALLY_PAID' | 
           height: 800,
           read_intent_path: `/api/buyer-portal/reservations/${reservation.reservation_id}/order-instruction/images/main/read-intent`,
         },
-        keyword_images: [],
       } }));
       return;
     }
@@ -457,21 +465,25 @@ test('Buyer remaining pages keep Chinese facts and truthful refund wording', asy
   await expect(page.locator('main')).not.toContainText(/客户编号|会话到期|内部说明|预约排名|预计下单日期/u);
 });
 
-test('Buyer refund journey marks complete only for PAID detail', async ({ page }) => {
+test('Buyer refund journey highlights 返款中 until PAID settles every step', async ({ page }) => {
   await installBuyerFixture(page);
   await page.goto('/buyer/refunds');
   await expect(page.getByRole('region', { name: '业务流程' }).locator('[aria-current="step"]')).toHaveCount(0);
 
+  // 未结清（部分返款）：P6 六步旅程把当前步高亮在“返款中”。
   await page.goto(`/buyer/refunds/${refund.refund_obligation_id}`);
   await expect(page.getByText('部分返款', { exact: true })).toBeVisible();
-  await expect(page.getByRole('region', { name: '业务流程' }).locator('[aria-current="step"]')).toHaveCount(0);
+  await expect(
+    page.getByRole('region', { name: '业务流程' }).getByRole('listitem').filter({ hasText: '返款中' }),
+  ).toHaveAttribute('aria-current', 'step');
 
+  // 已结清（PAID）：全部点亮、无当前步，并提示流程结束。
   await page.unrouteAll();
   await installBuyerFixture(page, 'PAID');
   await page.goto(`/buyer/refunds/${refund.refund_obligation_id}`);
   await expect(page.getByText('已返款', { exact: true })).toBeVisible();
-  await expect(page.getByRole('region', { name: '业务流程' }).getByRole('listitem').filter({ hasText: '完成' }))
-    .toHaveAttribute('aria-current', 'step');
+  await expect(page.getByRole('region', { name: '业务流程' }).locator('[aria-current="step"]')).toHaveCount(0);
+  await expect(page.getByText('返款已完成，本次测评流程结束。')).toBeVisible();
 });
 
 test('Buyer remaining representatives reflow, focus, and reduce motion', async ({ page }) => {

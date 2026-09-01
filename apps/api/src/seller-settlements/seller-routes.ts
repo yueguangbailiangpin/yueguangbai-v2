@@ -3,6 +3,7 @@ import {
   apiSuccess,
   type ApiErrorCode,
 } from '@ygb/contracts';
+import { canReadSellerSettlementFinancials } from '@ygb/domain';
 import type { Context, Hono } from 'hono';
 import { requestIdFromContext } from '../http-auth/errors';
 import { customerSessionMiddleware } from '../middleware/customer-auth';
@@ -88,13 +89,14 @@ async function payable(context: Context<any>): Promise<Response> {
 function requireSellerFinancialReadRole(
   actor: Awaited<ReturnType<typeof resolveSellerPortalActor>>,
 ): void {
-  if (actor.role !== 'OWNER' && actor.role !== 'FINANCE') {
+  if (!canReadSellerSettlementFinancials(actor.role)) {
     throw new SellerSettlementError('NOT_FOUND', 404);
   }
 }
 
 async function payments(context: Context<any>): Promise<Response> {
   const actor = await resolveSellerPortalActor(context);
+  requireSellerFinancialReadRole(actor);
   const pagination = parseSellerPortalPagination(new URL(context.req.url));
   return success(context, await listSellerPayments(
     context.env.DB,
@@ -105,6 +107,7 @@ async function payments(context: Context<any>): Promise<Response> {
 
 async function payment(context: Context<any>): Promise<Response> {
   const actor = await resolveSellerPortalActor(context);
+  requireSellerFinancialReadRole(actor);
   return success(context, {
     payment: await getSellerPayment(
       context.env.DB,

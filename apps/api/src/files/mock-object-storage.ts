@@ -3,6 +3,7 @@ import type {
   ObjectStorageHead,
   ObjectStoragePutInput,
   ObjectStoragePutResult,
+  ObjectStorageStream,
 } from '@ygb/contracts';
 import { sha256Hex } from '@ygb/domain';
 
@@ -42,6 +43,47 @@ export class MockObjectStorage implements ObjectStorageAdapter {
     return result;
   }
 
+  async putObjectStream(input: {
+    objectKey: string;
+    contentType: ObjectStoragePutInput['contentType'] | 'application/zip';
+    metadata: Readonly<Record<string, string>>;
+    body: ReadableStream<Uint8Array>;
+  }): Promise<Omit<ObjectStoragePutResult, 'checksumSha256'> & { checksumSha256: string }> {
+    this.consumeFailure('put', input.objectKey);
+    const chunks: Uint8Array[] = [];
+    const reader = input.body.getReader();
+    let byteSize = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value.byteLength === 0) continue;
+      chunks.push(value);
+      byteSize += value.byteLength;
+    }
+    const bytes = new Uint8Array(new ArrayBuffer(byteSize));
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const checksumSha256 = await sha256Hex(bytes);
+    const head: ObjectStorageHead = Object.freeze({
+      objectKey: input.objectKey,
+      etag: `mock-${checksumSha256.slice(0, 32)}`,
+      byteSize,
+      contentType: input.contentType as ObjectStoragePutInput['contentType'],
+      checksumSha256,
+      metadata: Object.freeze({ ...input.metadata }),
+    });
+    this.objects.set(input.objectKey, { bytes, head });
+    return {
+      etag: head.etag,
+      byteSize,
+      contentType: input.contentType as ObjectStoragePutResult['contentType'],
+      checksumSha256,
+    };
+  }
+
   async headObject(objectKey: string): Promise<ObjectStorageHead | null> {
     this.consumeFailure('head', objectKey);
     return this.objects.get(objectKey)?.head ?? null;
@@ -62,6 +104,17 @@ export class MockObjectStorage implements ObjectStorageAdapter {
   async readObject(objectKey: string): Promise<Uint8Array<ArrayBuffer>> {
     this.consumeFailure('read', objectKey);
     return copyBytes(this.requireObject(objectKey).bytes);
+  }
+
+  async openObjectStream(
+    objectKey: string,
+  ): Promise<ObjectStorageStream | null> {
+    this.consumeFailure('read', objectKey);
+    const stored = this.objects.get(objectKey);
+    if (!stored) return null;
+    const body = new Response(stored.bytes).body;
+    if (body === null) return null;
+    return { head: stored.head, body };
   }
 
   async deleteObject(objectKey: string): Promise<void> {

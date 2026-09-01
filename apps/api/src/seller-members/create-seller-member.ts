@@ -15,10 +15,6 @@ import {
   markIdempotencyFailed,
 } from '../foundation/idempotency';
 import {
-  createOutboxStatements,
-  prepareOutboxEvent,
-} from '../foundation/outbox';
-import {
   assertWechatAvailable,
   createIdentityClaimStatements,
 } from '../customers/master-data-shared';
@@ -41,10 +37,6 @@ interface OrganizationSource {
   version: number;
 }
 
-interface StoreRow {
-  id: string;
-}
-
 export interface CreateSellerMemberResult {
   seller_member_id: string;
   identity_subject_id: string;
@@ -53,7 +45,6 @@ export interface CreateSellerMemberResult {
   member_number: number;
   username_fallback: string;
   role: SellerMemberRole;
-  store_ids: readonly string[];
   status: 'DISABLED';
   replayed: boolean;
 }
@@ -65,7 +56,6 @@ export async function createSellerOrganizationMember(
     displayName: string;
     wechatId: string;
     role: SellerMemberRole;
-    storeIds: readonly string[];
   },
   command: {
     actor: SellerMemberStaffActor;
@@ -90,24 +80,20 @@ export async function createSellerOrganizationMember(
     }
   })();
   const role = parseSellerMemberRole(input.role);
-  const storeIds = uniqueSortedStoreIds(input.storeIds);
-
-  if (role === 'OWNER' && storeIds.length > 0) {
-    throw new SellerMemberError('VALIDATION_ERROR', 400);
-  }
 
   const now = command.now ?? Date.now();
   if (!Number.isSafeInteger(now) || now < 0) {
     throw new SellerMemberError('VALIDATION_ERROR', 400);
   }
 
+  // D-056 §4.4: members see the whole organization; creation no longer
+  // binds per-store scopes.
   const requestHash = await hashCanonicalJson({
     action: 'CREATE_SELLER_ORGANIZATION_MEMBER',
     seller_organization_id: organizationId,
     display_name: displayName,
     normalized_wechat: wechat.normalized,
     role,
-    store_ids: storeIds,
   });
   const targetHash = await hashCanonicalJson({
     seller_organization_id: organizationId,
@@ -145,11 +131,6 @@ export async function createSellerOrganizationMember(
       database,
       wechat.normalized,
     );
-    await assertStoreScopeAvailable(
-      database,
-      organizationId,
-      storeIds,
-    );
 
     const memberNumber = Number(
       organization.next_member_number,
@@ -168,27 +149,10 @@ export async function createSellerOrganizationMember(
       member_number: memberNumber,
       username_fallback: usernameFallback,
       role,
-      store_ids: storeIds,
       status: 'DISABLED',
       replayed: false,
     };
 
-    const outbox = await prepareOutboxEvent({
-      id: crypto.randomUUID(),
-      dedupKey: `seller-member-created:${memberId}`,
-      eventType: 'SELLER_MEMBER_CREATED',
-      aggregateType: 'SELLER_MEMBER',
-      aggregateId: memberId,
-      payload: {
-        seller_member_id: memberId,
-        seller_organization_id: organizationId,
-        member_number: memberNumber,
-        role,
-        store_ids: storeIds,
-        status: 'DISABLED',
-      },
-      createdAt: now,
-    });
 
     const statements: SqlStatement[] = [
       database.prepare(`
@@ -249,53 +213,6 @@ export async function createSellerOrganizationMember(
         now,
         now,
       ),
-      ...storeIds.flatMap((storeId) => [
-        database.prepare(`
-          INSERT INTO seller_member_store_scopes (
-            member_id,
-            store_id,
-            organization_id,
-            status,
-            assigned_by_staff_id,
-            assigned_at,
-            revoked_at,
-            created_at,
-            updated_at
-          ) VALUES (
-            ?, ?, ?, 'ACTIVE', ?, ?, NULL, ?, ?
-          )
-        `).bind(
-          memberId,
-          storeId,
-          organizationId,
-          command.actor.staffId,
-          now,
-          now,
-          now,
-        ),
-        database.prepare(`
-          INSERT INTO seller_member_store_scope_events (
-            id,
-            member_id,
-            store_id,
-            organization_id,
-            event_type,
-            actor_staff_id,
-            idempotency_key,
-            created_at
-          ) VALUES (
-            ?, ?, ?, ?, 'STORE_SCOPE_ASSIGNED', ?, ?, ?
-          )
-        `).bind(
-          crypto.randomUUID(),
-          memberId,
-          storeId,
-          organizationId,
-          command.actor.staffId,
-          acquired.claim.idempotencyKey,
-          now,
-        ),
-      ]),
       insertSellerMemberEventStatement(database, {
         memberId,
         organizationId,
@@ -307,7 +224,6 @@ export async function createSellerOrganizationMember(
           member_number: memberNumber,
           username_fallback: usernameFallback,
           role,
-          store_ids: storeIds,
           status: 'DISABLED',
         },
         requestId: command.requestId ?? null,
@@ -330,7 +246,6 @@ export async function createSellerOrganizationMember(
         nextState: response,
         createdAt: now,
       }),
-      ...createOutboxStatements(database, outbox),
       completeIdempotencyStatement(
         database,
         acquired.claim,
@@ -396,47 +311,6 @@ async function requireOrganization(
   return row;
 }
 
-async function assertStoreScopeAvailable(
-  database: SqlDatabase,
-  organizationId: string,
-  storeIds: readonly string[],
-): Promise<void> {
-  if (storeIds.length === 0) return;
-
-  const placeholders = storeIds.map(() => '?').join(',');
-  const result = await database.prepare(`
-    SELECT id
-    FROM seller_stores
-    WHERE organization_id=?
-      AND status='ACTIVE'
-      AND id IN (${placeholders})
-    ORDER BY id
-  `).bind(
-    organizationId,
-    ...storeIds,
-  ).all<StoreRow>();
-
-  if (result.results.length !== storeIds.length) {
-    throw new SellerMemberError('VALIDATION_ERROR', 409);
-  }
-}
-
-function uniqueSortedStoreIds(
-  values: readonly string[],
-): string[] {
-  if (!Array.isArray(values) || values.length > 100) {
-    throw new SellerMemberError('VALIDATION_ERROR', 400);
-  }
-  const cleaned = values.map((value) =>
-    cleanSellerMemberIdentifier(value),
-  );
-  if (new Set(cleaned).size !== cleaned.length) {
-    throw new SellerMemberError('VALIDATION_ERROR', 400);
-  }
-  return cleaned.sort((left, right) =>
-    left.localeCompare(right, 'en-US'));
-}
-
 function assertMemberCreatedStatement(
   database: SqlDatabase,
   claim: {
@@ -470,13 +344,6 @@ function assertMemberCreatedStatement(
           AND primary_owner=0
           AND status='DISABLED'
       )
-      AND (
-        SELECT COUNT(*)
-        FROM seller_member_store_scopes
-        WHERE member_id=?
-          AND organization_id=?
-          AND status='ACTIVE'
-      )=?
       AND EXISTS (
         SELECT 1
         FROM command_idempotency_records
@@ -497,9 +364,6 @@ function assertMemberCreatedStatement(
     response.member_number,
     response.username_fallback,
     response.role,
-    response.seller_member_id,
-    response.seller_organization_id,
-    response.store_ids.length,
     claim.actorType,
     claim.actorId,
     claim.idempotencyKey,

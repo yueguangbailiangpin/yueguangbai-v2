@@ -171,7 +171,7 @@ async function prepareCanonicalApprovalFixture(
         id,buyer_customer_id,duty_code,staff_id,status,source,
         assigned_by_actor_type,assigned_by_actor_id,reason,version,
         created_at,updated_at,revoked_at
-      ) VALUES (?,?,'BUYER_PRE_SALES_OWNER',?,'ACTIVE','OWNER_FALLBACK',
+      ) VALUES (?,?,'BUYER_PRE_SALES_OWNER',?,'ACTIVE','AUTO_INITIAL',
         'SYSTEM',NULL,'canonical confirmation test fixture',1,?,?,NULL)
     `).bind(
       assignmentId,

@@ -852,11 +852,13 @@ function reviewOwnerActor(): StaffReviewActor {
 function buyerRefundPortalContext(buyerCustomerId: string) {
   return {
     buyerCustomerId,
-    marketplaceCode: 'JP' as const,
+    marketplaceCode: 'AMAZON_JP' as const,
     accessStatus: 'ACTIVE' as const,
     identityReviewStatus: 'CLEAR' as const,
     customerNumber: null,
     displayName: '返款买家',
+    refundAccountName: null,
+    refundAccountIdentifier: null,
     sessionExpiresAt: NOW + 86_400_000,
   };
 }
@@ -917,14 +919,6 @@ async function seedFormalOrderPrerequisites(
       ('staff-review-after-sales', '售后', 'ACTIVE', 1, 1, 1000, 1000, NULL),
       ('staff-review-buyer-support', '买家客服', 'ACTIVE', 1, 1, 1000, 1000, NULL);
 
-    INSERT INTO staff_departments (
-      id, code, name, status, version, created_at, updated_at, disabled_at
-    ) VALUES ('department-refund','refund','Refund','ACTIVE',1,1000,1000,NULL);
-    INSERT INTO staff_teams (
-      id, department_id, code, name, status, version,
-      created_at, updated_at, disabled_at
-    ) VALUES ('team-refund','department-refund','refund','Refund','ACTIVE',1,
-      1000,1000,NULL);
     INSERT INTO staff_role_assignments (
       staff_id, role_code, status, assigned_by_staff_id, assigned_at,
       revoked_at, created_at, updated_at
@@ -943,13 +937,6 @@ async function seedFormalOrderPrerequisites(
        'ACTIVE','staff-review-owner',1000,NULL,'TEST_PRIMARY',1000,1000,'PRIMARY'),
       ('scope-refund-support-jp','staff-review-buyer-support','buyer_refund','AMAZON_JP',
        'ACTIVE','staff-review-owner',1000,NULL,'TEST_SUPPORT',1000,1000,'SUPPORT');
-    INSERT INTO staff_team_memberships (
-      staff_id, team_id, status, joined_at, ended_at, created_at, updated_at
-    ) VALUES
-      ('staff-review-pre-sales','team-refund','ACTIVE',1000,NULL,1000,1000),
-      ('staff-review-owner','team-refund','ACTIVE',1000,NULL,1000,1000),
-      ('staff-review-after-sales','team-refund','ACTIVE',1000,NULL,1000,1000),
-      ('staff-review-buyer-support','team-refund','ACTIVE',1000,NULL,1000,1000);
 
     INSERT INTO seller_organizations (
       id, marketplace_code, seller_code,
@@ -958,7 +945,7 @@ async function seedFormalOrderPrerequisites(
       version, created_at, updated_at,
       activated_at, disabled_at, next_member_number
     ) VALUES (
-      'seller-org-review', 'JP', 'ido-mango-9301',
+      'seller-org-review', 'AMAZON_JP', 'ido-mango-9301',
       'seller-channel-ido-mango', 'seller-channel-ido-mango',
       9301, '返款流程测试卖家', 'ACTIVE',
       1, 1000, 1000, 1000, NULL, 2
@@ -982,34 +969,44 @@ async function seedFormalOrderPrerequisites(
       1000, 1000, 1000, NULL
     );
 
-    INSERT INTO buyer_channels (
-      id, code, name, status, next_sequence, version,
-      created_at, updated_at, disabled_at
-    ) VALUES (
-      'buyer-channel-review', 'R', '返款流程测试渠道',
-      'ACTIVE', 1, 1, 1000, 1000, NULL
-    );
-
     INSERT INTO buyer_customers (
       id, identity_subject_id, marketplace_code,
       buyer_channel_id, buyer_customer_no,
-      buyer_sequence, first_valid_order_business_date,
+      buyer_sequence,
       display_name, access_status,
       identity_review_status, version,
       created_at, updated_at, activated_at, disabled_at
     ) VALUES (
-      'buyer-review-1', 'buyer-review-subject-1', 'JP',
-      'buyer-channel-review', NULL, NULL, NULL,
+      'buyer-review-1', 'buyer-review-subject-1', 'AMAZON_JP',
+      'buyer-channel-wechat-b', '20260801B0001', 1,
       '返款买家', 'ACTIVE', 'CLEAR', 1,
       1000, 1000, 1000, NULL
     );
+    INSERT INTO buyer_staff_assignments (
+      id, buyer_customer_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason, version,
+      created_at, updated_at, revoked_at
+    )
+    SELECT 'buyer-pre-binding-'||id, id, 'BUYER_PRE_SALES_OWNER',
+      'staff-review-pre-sales', 'ACTIVE', 'AUTO_INITIAL',
+      'STAFF', 'staff-review-owner', NULL, 1, 1000, 1000, NULL
+    FROM buyer_customers;
+    INSERT INTO buyer_staff_assignments (
+      id, buyer_customer_id, duty_code, staff_id, status, source,
+      assigned_by_actor_type, assigned_by_actor_id, reason, version,
+      created_at, updated_at, revoked_at
+    )
+    SELECT 'buyer-refund-binding-'||id, id, 'BUYER_REFUND_OWNER',
+      'staff-review-after-sales', 'ACTIVE', 'AUTO_INITIAL',
+      'STAFF', 'staff-review-owner', NULL, 1, 1000, 1000, NULL
+    FROM buyer_customers;
 
     INSERT INTO seller_stores (
       id, organization_id, marketplace_code,
       display_name, normalized_name, status,
       version, created_at, updated_at, disabled_at
     ) VALUES (
-      'store-review', 'seller-org-review', 'JP',
+      'store-review', 'seller-org-review', 'AMAZON_JP',
       '返款流程测试店铺', '返款流程测试店铺', 'ACTIVE',
       1, 1000, 1000, NULL
     );
@@ -1020,7 +1017,7 @@ async function seedFormalOrderPrerequisites(
       current_version_no, version,
       created_at, updated_at, disabled_at
     ) VALUES (
-      'product-review', 'seller-org-review', 'store-review', 'JP',
+      'product-review', 'seller-org-review', 'store-review', 'AMAZON_JP',
       'B0REFUND01', 'B0REFUND01', 'ACTIVE',
       1, 1, 1000, 1000, NULL
     );
@@ -1051,7 +1048,7 @@ async function seedFormalOrderPrerequisites(
       reviewed_at, published_at, withdrawn_at, closed_at,
       held_reservation_count, approved_reservation_count
     ) VALUES (
-      'demand-review', 'seller-org-review', 'store-review', 'JP',
+      'demand-review', 'seller-org-review', 'store-review', 'AMAZON_JP',
       'product-review', 1, 'seller-review-owner', 'IMAGE',
       10, NULL, NULL, 2000, 5000, 20000,
       'PUBLISHED', NULL, NULL, 'staff-review-pre-sales', NULL,
@@ -1075,7 +1072,7 @@ async function seedFormalOrderPrerequisites(
       buyer_self_pay_accepted_demand_version
     ) VALUES (
       'reservation-review', 'demand-review', 'buyer-review-1',
-      'seller-org-review', 'store-review', 'product-review', 1, 'JP',
+      'seller-org-review', 'store-review', 'product-review', 1, 'AMAZON_JP',
       'APPROVED', '{}', 5000, 20000, 2, 4000, 6000,
       'staff-review-pre-sales', NULL, 6000, NULL, NULL, 0,
       0, 1980, 0, 1980, 4000, 2
@@ -1102,7 +1099,7 @@ async function seedFormalOrderPrerequisites(
       withdrawn_at, consumed_at, created_at
     ) VALUES (
       'evidence-review-submission', 'reservation-review',
-      'buyer-review-1', 'JP',
+      'buyer-review-1', 'AMAZON_JP',
       'PENDING_VERIFICATION', 1, 1, NULL, NULL,
       7000, 7000, NULL, NULL, NULL, NULL, 7000
     );
@@ -1118,17 +1115,16 @@ async function seedFormalOrderPrerequisites(
       reference_order_amount_jpy_snapshot,
       buyer_self_pay_bps_snapshot, buyer_self_pay_jpy,
       buyer_refundable_principal_jpy, price_mismatch,
-      price_difference_jpy, submitted_before_deadline,
-      evidence_file_object_id, created_at
+      price_difference_jpy, submitted_before_deadline, created_at
     ) VALUES (
       'evidence-review-version-1', 'evidence-review-submission',
-      'reservation-review', 'buyer-review-1', 'JP', 1,
+      'reservation-review', 'buyer-review-1', 'AMAZON_JP', 1,
       '123-1234567-1234567', '123-1234567-1234567',
       '2026-08-01',
       8880, 'buyer-review-1', NULL,
       '${instruction.instructionId}', '${instruction.instructionVersionId}',
       ${instruction.deadlineAt}, 1980, 0, 0, 8880, 1, 6900, 1,
-      '${instruction.evidenceFileObjectId}', 7000
+      7000
     );
 
     UPDATE order_evidence_submissions
@@ -1137,54 +1133,34 @@ async function seedFormalOrderPrerequisites(
         verified_at=8000, updated_at=8000
     WHERE id='evidence-review-submission';
 
-    INSERT INTO buyer_daily_exchange_rates (
-      id, business_date, version_no, status, cny_per_jpy_e8,
-      submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at,
-      rejected_by_staff_id, rejected_at, rejection_reason
+    INSERT INTO buyer_daily_currency_rate_versions (
+      id, business_date, source_currency_code, quote_currency_code,
+      version_no, rate_value, rate_scale, rounding_rule,
+      effective_from, created_by_staff_id, created_at
     ) VALUES (
-      'buyer-review-rate-v1', '${BUSINESS_DATE}', 1,
-      'SUBMITTED', 5500000,
-      'staff-review-owner', 1000, 1,
-      NULL, NULL, NULL, NULL, NULL
+      'buyer-review-rate-v1', '${BUSINESS_DATE}', 'JPY', 'CNY',
+      1, 5500000, 100000000, 'HALF_UP',
+      2000, 'staff-review-owner', 2000
     );
-    UPDATE buyer_daily_exchange_rates
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-review-owner', confirmed_at=2000
-    WHERE id='buyer-review-rate-v1';
 
     INSERT INTO seller_principal_rate_policy_versions (
       id, scope_type, seller_organization_id, source_currency_code,
-      quote_currency_code, version_no, status, markup_rate_value, rate_scale,
-      effective_from, submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at, rejected_by_staff_id, rejected_at,
-      rejection_reason
+      quote_currency_code, version_no, markup_rate_value, rate_scale,
+      effective_from, created_by_staff_id, created_at
     ) VALUES (
       'principal-refund-policy-v1', 'SELLER_ORGANIZATION', 'seller-org-review',
-      'JPY', 'CNY', 1, 'SUBMITTED', 500000, 100000000, 3000,
-      'staff-review-owner', 1000, 1, NULL, NULL, NULL, NULL, NULL
+      'JPY', 'CNY', 1, 500000, 100000000,
+      2000, 'staff-review-owner', 2000
     );
-    UPDATE seller_principal_rate_policy_versions
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-review-owner', confirmed_at=2000
-    WHERE id='principal-refund-policy-v1';
 
-    INSERT INTO seller_service_fee_versions (
-      id, organization_id, review_type, version_no,
-      status, fee_cny_fen, effective_from,
-      submitted_by_staff_id, submitted_at, decision_version,
-      confirmed_by_staff_id, confirmed_at,
-      rejected_by_staff_id, rejected_at, rejection_reason
+    INSERT INTO seller_service_fee_rule_versions (
+      id, seller_organization_id, marketplace_code, review_type, version_no,
+      fee_amount_minor, fee_currency_code, fee_currency_exponent,
+      effective_from, created_by_staff_id, created_at
     ) VALUES (
-      'service-review-fee-v1', 'seller-org-review', 'IMAGE', 1,
-      'SUBMITTED', 2500, 3000,
-      'staff-review-owner', 1000, 1,
-      NULL, NULL, NULL, NULL, NULL
+      'service-review-fee-v1', 'seller-org-review', 'AMAZON_JP', 'IMAGE', 1,
+      2500, 'CNY', 2, 2000, 'staff-review-owner', 2000
     );
-    UPDATE seller_service_fee_versions
-    SET status='CONFIRMED', decision_version=2,
-        confirmed_by_staff_id='staff-review-owner', confirmed_at=2000
-    WHERE id='service-review-fee-v1';
   `);
 
   await bindPhase3GEvidenceFixture(db, {

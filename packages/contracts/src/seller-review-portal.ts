@@ -48,7 +48,7 @@ export interface SellerReviewPortalDto {
   review_case_id: string;
   formal_order: SellerReviewOrderSummaryDto;
   store: SellerReviewStoreSummaryDto;
-  marketplace_code: 'JP';
+  marketplace_code: 'AMAZON_JP';
   asin: string;
   product_name: string;
   review_type: PricingReviewType;
