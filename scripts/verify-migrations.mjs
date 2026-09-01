@@ -13,14 +13,14 @@ const root = path.resolve(import.meta.dirname, '..');
 const migrationsDirectory = path.join(root, 'migrations');
 const workDirectory = mkdtempSync(path.join(tmpdir(), 'ygb-v2-migrations-'));
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 41;
-const expectedLastMigration = '0041_owner_alias_yueguangbai_ygbceping.sql';
+const expectedLatestSchema = 42;
+const expectedLastMigration = '0042_marketplace_runtime_expansion.sql';
 const expectedSchemaInventory = {
   table: 155,
   index: 488,
   trigger: 305,
   view: 10,
-  sha256: '9955fdc22c9f35849b937a577d98dcf8960cddac9fe34ce7e48886befa789ff8',
+  sha256: 'c75ec40e6d9bf1c14558f8e67f5fe012509111cd4f02db317a34d72056557890',
 };
 
 // Capability tables that must NOT exist in the clean baseline (stage 2
@@ -797,7 +797,7 @@ try {
     migrationFiles.at(-1) !== expectedLastMigration ||
     migrationNumbers.some((number, index) => number !== index + 1)
   ) {
-    throw new Error('Migration 必须是唯一连续的 0001-0041');
+    throw new Error('Migration 必须是唯一连续的 0001-0042');
   }
 
   for (const [file, source] of migrationSources) {
@@ -1043,18 +1043,22 @@ try {
       'AMAZON_JP:ACTIVE:AVAILABLE',
       'AMAZON_US:ACTIVE:AVAILABLE',
       'COUPANG_KR:DISABLED:UNAVAILABLE',
+      'RAKUTEN_JP:ACTIVE:AVAILABLE',
+      'TEMU_JP:ACTIVE:AVAILABLE',
+      'TIKTOK_JP:ACTIVE:AVAILABLE',
+      'YAHOO_JP:ACTIVE:AVAILABLE',
     ];
     if (
-      marketplaceRegistry.length !== 3 ||
+      marketplaceRegistry.length !== 7 ||
       marketplaceRegistry.map((row) => `${row.code}:${row.state}`).join(',') !==
         registryExpectation.join(',')
     ) {
       throw new Error(
-        'Marketplace registry 必须只含 AMAZON_JP/AMAZON_US/COUPANG_KR 且 COUPANG_KR fail-closed',
+        'Marketplace registry 必须含七平台（五开+COUPANG_KR fail-closed）',
       );
     }
     if (
-      database.prepare('SELECT COUNT(*) AS count FROM marketplace_registry').get().count !== 3
+      database.prepare('SELECT COUNT(*) AS count FROM marketplace_registry').get().count !== 7
     ) {
       throw new Error('marketplace seed count');
     }
@@ -1374,7 +1378,7 @@ try {
       JSON.stringify(
         {
           status: 'PASS',
-          baseline: 'clean-baseline-0001-0041',
+          baseline: 'clean-baseline-0001-0042',
           migrations: migrationFiles,
           table_count: tables.size,
           index_count: schemaCounts.index,

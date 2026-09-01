@@ -20,14 +20,14 @@ afterEach(() => {
 const root = path.resolve(import.meta.dirname, '../../../..');
 
 describe('stage 3 clean baseline schema', () => {
-  it('is one continuous 0001-0041 chain ending at schema version 41', () => {
+  it('is one continuous 0001-0042 chain ending at schema version 42', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(41);
+    expect(migrations).toHaveLength(42);
     expect(migrations.map((name) => Number(name.slice(0, 4))))
-      .toEqual(Array.from({ length: 41 }, (_, index) => index + 1));
-    expect(migrations.at(-1)).toBe('0041_owner_alias_yueguangbai_ygbceping.sql');
+      .toEqual(Array.from({ length: 42 }, (_, index) => index + 1));
+    expect(migrations.at(-1)).toBe('0042_marketplace_runtime_expansion.sql');
     for (const file of migrations) {
       const source = readFileSync(path.join(root, 'migrations', file), 'utf8');
       expect(source).not.toMatch(/SELECT\s+CASE\s+WHEN[\s\S]*?THEN\s+RAISE\s*\(/iu);
@@ -35,12 +35,12 @@ describe('stage 3 clean baseline schema', () => {
     }
   });
 
-  it('applies to an empty database in one pass at version 41', () => {
+  it('applies to an empty database in one pass at version 42', () => {
     database = createMigratedTestDatabase();
     const state = database.raw.prepare(
       'SELECT schema_version FROM app_schema_state WHERE singleton_id=1',
     ).get();
-    expect(state).toEqual({ schema_version: 41 });
+    expect(state).toEqual({ schema_version: 42 });
     expect(database.raw.prepare('PRAGMA integrity_check').get())
       .toEqual({ integrity_check: 'ok' });
     expect(database.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
@@ -302,14 +302,14 @@ describe('stage 3 clean baseline schema', () => {
     expect(channels.find((row) => row.code === 'yueguangbai')?.status).toBe('DISABLED');
   });
 
-  it('migrates a referencing schema-40 database to 41 by re-pointing and tombstoning', () => {
+  it('migrates a referencing schema-40 database through the tombstone and marketplace migrations', () => {
     // Codex 0901 P1 probe as a permanent gate: a legal schema-40 database
     // with an organization referencing the 0040-seeded yueguangbai channel
-    // must migrate cleanly -- re-pointed to ygbceping (same account per the
-    // owner ruling) with the channel kept as a DISABLED tombstone so the
-    // channel-event foreign keys and audit history stay intact.
+    // must migrate cleanly through 0041 (tombstone+re-sequence) and 0042
+    // (marketplace expansion) -- re-pointed to ygbceping with the channel
+    // kept as a DISABLED tombstone, and the marketplace CHECKs expanded.
     const db = new DatabaseSync(':memory:');
-    db.exec('PRAGMA foreign_keys=ON');
+    db.exec('PRAGMA foreign_keys=OFF');
     const files = readdirSync(path.join(root, 'migrations'))
       .filter((file) => /^\d{4}_.+\.sql$/u.test(file))
       .sort()
@@ -333,7 +333,10 @@ describe('stage 3 clean baseline schema', () => {
     db.exec(
       readFileSync(path.join(root, 'migrations', '0041_owner_alias_yueguangbai_ygbceping.sql'), 'utf8'),
     );
-    expect(db.prepare('SELECT schema_version FROM app_schema_state').get()).toEqual({ schema_version: 41 });
+    db.exec(
+      readFileSync(path.join(root, 'migrations', '0042_marketplace_runtime_expansion.sql'), 'utf8'),
+    );
+    expect(db.prepare('SELECT schema_version FROM app_schema_state').get()).toEqual({ schema_version: 42 });
     expect(
       db.prepare(`
         SELECT origin_channel_id, current_channel_id, seller_sequence, seller_code
@@ -361,7 +364,7 @@ describe('stage 3 clean baseline schema', () => {
     db.close();
   });
 
-  it('seeds only the clean three-marketplace registry with COUPANG_KR fail-closed', () => {
+  it('seeds the owner-ruled seven-marketplace registry with COUPANG_KR fail-closed', () => {
     database = createMigratedTestDatabase();
     const registry = database.raw.prepare(`
       SELECT code, status, adapter_status FROM marketplace_registry ORDER BY code
@@ -370,6 +373,10 @@ describe('stage 3 clean baseline schema', () => {
       { code: 'AMAZON_JP', status: 'ACTIVE', adapter_status: 'AVAILABLE' },
       { code: 'AMAZON_US', status: 'ACTIVE', adapter_status: 'AVAILABLE' },
       { code: 'COUPANG_KR', status: 'DISABLED', adapter_status: 'UNAVAILABLE' },
+      { code: 'RAKUTEN_JP', status: 'ACTIVE', adapter_status: 'AVAILABLE' },
+      { code: 'TEMU_JP', status: 'ACTIVE', adapter_status: 'AVAILABLE' },
+      { code: 'TIKTOK_JP', status: 'ACTIVE', adapter_status: 'AVAILABLE' },
+      { code: 'YAHOO_JP', status: 'ACTIVE', adapter_status: 'AVAILABLE' },
     ]);
     // Stage 4 removed the legacy JP alias layer atomically: the retired
     // marketplaces/alias tables must be gone and every rebuilt marketplace FK
@@ -406,6 +413,6 @@ describe('stage 3 clean baseline schema', () => {
       SELECT sql FROM sqlite_schema WHERE type='table' AND name='formal_orders'
     `).get() as { sql: string };
     expect(formalOrderSql.sql).toContain('REFERENCES marketplace_registry(code)');
-    expect(formalOrderSql.sql).not.toContain('RAKUTEN_JP');
+    expect(formalOrderSql.sql).toContain('RAKUTEN_JP'); // 0042 expands the marketplace CHECK
   });
 });

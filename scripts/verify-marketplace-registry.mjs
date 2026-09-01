@@ -12,8 +12,8 @@ const migrationDirectory = path.join(root, 'migrations');
 const migrations = readdirSync(migrationDirectory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
-if (migrations.length !== 41 || migrations.at(-1) !== '0041_owner_alias_yueguangbai_ygbceping.sql') {
-  throw new Error('expected the clean baseline 0001-0041');
+if (migrations.length !== 42 || migrations.at(-1) !== '0042_marketplace_runtime_expansion.sql') {
+  throw new Error('expected the clean baseline 0001-0042');
 }
 for (const file of migrations) {
   const source = readFileSync(path.join(migrationDirectory, file), 'utf8');
@@ -37,7 +37,7 @@ try {
   }
 
   if (database.prepare('SELECT schema_version FROM app_schema_state WHERE singleton_id=1')
-    .get().schema_version !== 41) throw new Error('schema version');
+    .get().schema_version !== 42) throw new Error('schema version');
 
   const registry = database.prepare(`
     SELECT code, status || ':' || adapter_status AS state
@@ -47,7 +47,11 @@ try {
     { code: 'AMAZON_JP', state: 'ACTIVE:AVAILABLE' },
     { code: 'AMAZON_US', state: 'ACTIVE:AVAILABLE' },
     { code: 'COUPANG_KR', state: 'DISABLED:UNAVAILABLE' },
-  ])) throw new Error('three-marketplace registry with COUPANG_KR fail-closed');
+    { code: 'RAKUTEN_JP', state: 'ACTIVE:AVAILABLE' },
+    { code: 'TEMU_JP', state: 'ACTIVE:AVAILABLE' },
+    { code: 'TIKTOK_JP', state: 'ACTIVE:AVAILABLE' },
+    { code: 'YAHOO_JP', state: 'ACTIVE:AVAILABLE' },
+  ])) throw new Error('seven-marketplace registry (five active + COUPANG_KR fail-closed)');
 
   // The legacy alias layer and the stage-6.6-retired runtime-config table are
   // atomically gone; the registry itself is the single marketplace config source.
@@ -71,6 +75,10 @@ try {
     { code: 'AMAZON_JP', business_timezone: 'Asia/Tokyo', reporting_timezone: 'Asia/Shanghai', seller_portal_status: 'ACTIVE', buyer_portal_status: 'ACTIVE' },
     { code: 'AMAZON_US', business_timezone: 'America/Los_Angeles', reporting_timezone: 'Asia/Shanghai', seller_portal_status: 'PREPARED', buyer_portal_status: 'ACTIVE' },
     { code: 'COUPANG_KR', business_timezone: 'Asia/Seoul', reporting_timezone: 'Asia/Shanghai', seller_portal_status: 'PREPARED', buyer_portal_status: 'PREPARED' },
+    { code: 'RAKUTEN_JP', business_timezone: 'Asia/Tokyo', reporting_timezone: 'Asia/Shanghai', seller_portal_status: 'ACTIVE', buyer_portal_status: 'ACTIVE' },
+    { code: 'TEMU_JP', business_timezone: 'Asia/Tokyo', reporting_timezone: 'Asia/Shanghai', seller_portal_status: 'ACTIVE', buyer_portal_status: 'ACTIVE' },
+    { code: 'TIKTOK_JP', business_timezone: 'Asia/Tokyo', reporting_timezone: 'Asia/Shanghai', seller_portal_status: 'ACTIVE', buyer_portal_status: 'ACTIVE' },
+    { code: 'YAHOO_JP', business_timezone: 'Asia/Tokyo', reporting_timezone: 'Asia/Shanghai', seller_portal_status: 'ACTIVE', buyer_portal_status: 'ACTIVE' },
   ])) throw new Error('registry config convergence');
   const formalColumns = database.prepare('PRAGMA table_info(formal_orders)')
     .all().map((column) => column.name);
@@ -89,7 +97,7 @@ try {
 
 // Runtime contract surfaces: exactly three codes, integer money, no float APIs.
 const contracts = readFileSync(path.join(root, 'packages/contracts/src/customer.ts'), 'utf8');
-if (!/export const MARKETPLACE_CODES = \[\n  'AMAZON_JP',\n  'AMAZON_US',\n  'COUPANG_KR',\n\] as const;/u.test(contracts)) {
+if (!/export const MARKETPLACE_CODES = \[\n  'AMAZON_JP',\n  'AMAZON_US',\n  'COUPANG_KR',\n  'RAKUTEN_JP',\n  'YAHOO_JP',\n  'TEMU_JP',\n  'TIKTOK_JP',\n\] as const;/u.test(contracts)) {
   throw new Error('MARKETPLACE_CODES must publish exactly the three canonical codes');
 }
 if (contracts.includes('LEGACY_MARKETPLACE_CODES')) throw new Error('legacy alias types survived');

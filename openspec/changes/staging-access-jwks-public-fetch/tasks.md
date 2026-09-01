@@ -11,7 +11,7 @@
 
 - [x] 2.1 Run focused preflight tests, strict OpenSpec validation, type/build checks and `git diff --check`.
 - [x] 2.2 Run the full repository check and secret scan.
-- [ ] 2.3 Publish a Draft PR and obtain an independent fixed-SHA P0/P1 review.
-- [ ] 2.4 Convert Ready, ordinarily merge and prove merge tree identity.
-- [ ] 2.5 Validate the Git-external staging config, deploy only the merged SHA to the existing staging Worker and prove Owner bootstrap/session.
+- [x] 2.3 PR #120 更新为全量流+固定 SHA 审查记录（Codex 四轮只读审查，终批 1457d251；机器本地日志 /tmp/codex_*.md）。
+- [x] 2.4 合并完成（merge commit 5c72627e）；树一致性证明：merge-tree 结果树=HEAD 树=858db6f9（与 release:check candidate 树三方吻合），零冲突。
+- [x] 2.5 完成（2026-09-01）：preflight 校验过（errors 空、operator 字段全备）；merged SHA 5c72627e 已部署（51 资源）；staging D1 经 Owner 授权重置（备份 1.8MB 存档）后全新 41 迁移至 schema 41；Access 隔离门验证（302→cloudflareaccess，aud 吻合）；Owner bootstrap 证明（STAGING_FIRST_OWNER_BOOTSTRAPPED，owner 角色，production_touched=false）。证据：evidence.md。
 - [ ] 2.6 Resume the canonical 67-item T9 register; production remains `NO_GO`.
