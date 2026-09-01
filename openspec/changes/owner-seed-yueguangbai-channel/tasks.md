@@ -15,5 +15,5 @@
 
 ## 3. 验收
 
-- [x] 3.1 全量 npm test：267/267 文件、1904/1904 用例、退出码 0（schema 40，/tmp/npmtest_schema40.log）。
-- [ ] 3.2 干净提交后 release:check。
+- [x] 3.1 全量 npm test：267/267 文件、1906/1906 用例（含 P1 修复新增 2 用例）、退出码 0（/tmp/npmtest_fix2.log）。
+- [x] 3.2 release:check @c1993bd2：PASS / COMPLETE / UNVERIFIED / NO_GO / probe 0（/tmp/release_check_final.log）；Codex push 前总审+复审通过（/tmp/codex_push_review_0901.md、_r2.md）。
