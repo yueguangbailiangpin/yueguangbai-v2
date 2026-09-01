@@ -23,7 +23,12 @@ export function formatBuyerCustomerNumber(input: {
   }
   validateSequence(input.sequence);
 
-  return `${compactDate}${channelCode}${input.sequence}`;
+  // T9-DEFECT-001 fix: pad to 4 digits so the first buyer on a fresh
+  // database (sequence=1) produces a 13-char number that satisfies the
+  // CHECK(length BETWEEN 13 AND 20) constraint. Without padding, "B1"
+  // yields a 10-char number and the INSERT fails with a CHECK violation
+  // that surfaces as a 503.
+  return `${compactDate}${channelCode}${String(input.sequence).padStart(4, '0')}`;
 }
 
 export function formatSellerCustomerCode(input: {

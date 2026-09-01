@@ -14,6 +14,31 @@ describe('customer numbering', () => {
     })).toBe('20260801B3209');
   });
 
+  it('pads the first buyer sequence to 4 digits (T9-DEFECT-001 regression gate)', () => {
+    // On a fresh database the first buyer gets sequence=1; without padding
+    // the number '20260901B1' is only 10 chars and violates the
+    // CHECK(length BETWEEN 13 AND 20) constraint on buyer_customers.
+    const first = formatBuyerCustomerNumber({
+      businessDate: '2026-09-01',
+      channelCode: 'B',
+      sequence: 1,
+    });
+    expect(first).toBe('20260901B0001');
+    expect(first.length).toBeGreaterThanOrEqual(13);
+
+    // Sequence 9999 stays at 4 digits; 10000 grows naturally.
+    expect(formatBuyerCustomerNumber({
+      businessDate: '2026-09-01',
+      channelCode: 'B',
+      sequence: 9999,
+    })).toBe('20260901B9999');
+    expect(formatBuyerCustomerNumber({
+      businessDate: '2026-09-01',
+      channelCode: 'B',
+      sequence: 10000,
+    })).toBe('20260901B10000');
+  });
+
   it('formats seller codes from independent channel prefixes', () => {
     expect(formatSellerCustomerCode({
       prefix: 'IDO-MANGO',
