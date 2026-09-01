@@ -6,12 +6,12 @@ Owner 2026-09-01 裁决扩展运行时市场；本能力定义 canonical 集合�
 
 ### Requirement: Canonical marketplace set includes Rakuten, Yahoo and enabled US Amazon
 
-运行时 canonical 市场 MUST 包含 AMAZON_JP、AMAZON_US（启用）、RAKUTEN_JP、YAHOO_JP，并保留 COUPANG_KR 禁用预留；来源平台代码（JP_AMAZON/JP_RAKUTEN 等）到 canonical 的映射 MUST 只存在于导入 adapter 层。
+运行时 canonical 市场 MUST 包含 AMAZON_JP、AMAZON_US（启用）、RAKUTEN_JP、YAHOO_JP、TEMU_JP、TIKTOK_JP，并保留 COUPANG_KR 禁用预留；来源平台代码（JP_AMAZON/JP_RAKUTEN 等）到 canonical 的映射 MUST 只存在于导入 adapter 层。
 
 #### Scenario: Registry seeds the expanded set fail-closed
 
 - **WHEN** 迁移全量应用于空库并读取市场注册表
-- **THEN** 四个 canonical 市场为启用且不可变写入，COUPANG_KR 保持禁用 fail-closed
+- **THEN** 六个 canonical 市场为启用且不可变写入，COUPANG_KR 保持禁用 fail-closed
 
 ### Requirement: Per-marketplace product identifier contract
 

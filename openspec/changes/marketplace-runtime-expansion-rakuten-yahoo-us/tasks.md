@@ -5,13 +5,13 @@
 
 ## 2. 合同与迁移
 
-- [ ] 2.1 contracts canonical + marketplace-runtime 定义扩展。
-- [ ] 2.2 0039 迁移：市场注册表种子、CHECK/触发器 allowlist、schema 39 锚点全套。
+- [ ] 2.1 contracts canonical + marketplace-runtime 定义扩展（五平台：+RAKUTEN_JP/YAHOO_JP/TEMU_JP/TIKTOK_JP，AMAZON_US 启用）。
+- [ ] 2.2 迁移（预计 0041）：市场注册表种子、CHECK/触发器 allowlist、全对象 CHECK allowlist 盘点、锚点全套。
 - [ ] 2.3 Decision Register D-056 修订记录。
 
 ## 3. 导入器与前端
 
-- [ ] 3.1 seller-partner adapter v2 三平台写入路径与标识校验（含 JAN EAN-13 校验、乐天认可集隔离）。
+- [ ] 3.1 seller-partner adapter v2 五平台写入路径与标识校验（含 JAN EAN-13 校验、乐天认可集隔离、TEMU 编号校验）。
 - [ ] 3.2 前端市场筛选扩展与文案。
 
 ## 4. 验收
