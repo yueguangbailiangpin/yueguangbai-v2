@@ -203,7 +203,7 @@ export async function createSellerOrganization(
         )
       `).bind(
         organizationId,
-        'AMAZON_JP',
+        input.marketplaceCode,
         sellerCode,
         channel.id,
         channel.id,
@@ -325,7 +325,7 @@ export async function createSellerOrganization(
       database,
       () => prepareInitialSellerAssignment(database, {
         sellerOrganizationId: organizationId,
-        marketplaceCode: 'AMAZON_JP',
+        marketplaceCode: input.marketplaceCode,
         actorType: 'STAFF',
         actorId: command.actor.staffId,
         requestId: command.requestId ?? null,

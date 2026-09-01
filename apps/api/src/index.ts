@@ -61,6 +61,7 @@ import {
   registerStaffServiceChannelRoutes,
 } from './company-service-channels/routes';
 import { registerCreateBuyerCustomerRoutes } from './customers/create-buyer-route';
+import { registerCreateSellerOrganizationRoutes } from './customers/create-seller-org-route';
 import { registerStaffSearchRoutes } from './staff-search/routes';
 import { registerProductionRecoveryAttestationRoutes } from './production-readiness/recovery-attestation-routes';
 import { registerFormalOrderPolicyGuards } from './formal-order-policy-routes';
@@ -93,6 +94,7 @@ registerOperatingIntegrityRoutes(app);
 registerStaffOrderDetailRoutes(app);
 registerStaffServiceChannelRoutes(app);
 registerCreateBuyerCustomerRoutes(app);
+registerCreateSellerOrganizationRoutes(app);
 registerStaffSearchRoutes(app);
 registerProductionRecoveryAttestationRoutes(app);
 registerOperationalAlertAttestationRoutes(app);
