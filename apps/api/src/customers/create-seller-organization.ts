@@ -106,6 +106,9 @@ export async function createSellerOrganization(
     normalized_wechat: ownerWechat.normalized,
   });
 
+  // T9-DEFECT-005 fix: convert IdempotencyError to CustomerMasterDataError
+  // so the route's withErrors passes the 409 through instead of wrapping
+  // it into a 503 dependency-unavailable.
   const acquired =
     await acquireIdempotency<CreateSellerOrganizationResult>(
       database,
@@ -119,7 +122,12 @@ export async function createSellerOrganization(
         requestHash,
       },
       { now },
-    );
+    ).catch((error: unknown) => {
+      if (error instanceof Error && error.message.includes('IDEMPOTENCY_CONFLICT')) {
+        throw new CustomerMasterDataError('IDEMPOTENCY_CONFLICT', 409);
+      }
+      throw error;
+    });
 
   if (acquired.kind === 'REPLAY') {
     return {
