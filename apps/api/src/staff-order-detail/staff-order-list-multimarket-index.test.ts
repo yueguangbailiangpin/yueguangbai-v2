@@ -491,7 +491,7 @@ describe('future multi-market Staff order-list index preparation', () => {
       const schema = corpus.database.raw
         .prepare('SELECT schema_version FROM app_schema_state WHERE singleton_id=1')
         .get() as { schema_version: number };
-      expect(Number(schema.schema_version)).toBe(37);
+      expect(Number(schema.schema_version)).toBe(39);
       const actor = sellerOpsActor();
       const expected = [...corpus.targetOrderIds].reverse();
       const seen: string[] = [];

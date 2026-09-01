@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-09-01
+goal: 按 Owner 2026-09-01 B+D 裁决清理剩余零消费者对象：test-only 邀请线索表、角色权限默认表（含两守卫触发器）与生效权限视图、权限目录声明表；schema 推进到 39。

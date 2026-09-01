@@ -9,19 +9,17 @@ describe('customer portal onboarding migrations 0049-0050',()=>{
     database=createMigratedTestDatabase();
     const state=await database.prepare(`SELECT schema_version FROM app_schema_state WHERE singleton_id=1`)
       .first<{schema_version:number}>();
-    expect(Number(state?.schema_version)).toBe(37);
+    expect(Number(state?.schema_version)).toBe(39);
   });
 
-  it('creates seller invitation persistence and buyer lead attribution mapping',async()=>{
+  it('creates seller invitation persistence',async()=>{
     database=createMigratedTestDatabase();
     const objects=await database.prepare(`SELECT type,name FROM sqlite_schema
       WHERE name IN (
         'customer_seller_invitations',
-        'customer_seller_invitation_events',
-        'customer_buyer_invitation_lead_links'
+        'customer_seller_invitation_events'
       ) ORDER BY name`).all<{type:string;name:string}>();
     expect(objects.results.map((row)=>row.name)).toEqual([
-      'customer_buyer_invitation_lead_links',
       'customer_seller_invitation_events',
       'customer_seller_invitations',
     ]);

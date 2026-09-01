@@ -13,19 +13,27 @@ const root = path.resolve(import.meta.dirname, '..');
 const migrationsDirectory = path.join(root, 'migrations');
 const workDirectory = mkdtempSync(path.join(tmpdir(), 'ygb-v2-migrations-'));
 const databasePath = path.join(workDirectory, 'verification.sqlite');
-const expectedLatestSchema = 37;
-const expectedLastMigration = '0037_stage75_multimarket_staff_order_list_index.sql';
+const expectedLatestSchema = 39;
+const expectedLastMigration = '0039_owner_cleanup_bd_zero_consumer_objects.sql';
 const expectedSchemaInventory = {
-  table: 161,
-  index: 494,
-  trigger: 313,
-  view: 12,
-  sha256: 'afe36d4befdbe44d236de9069a67c914d8f01592103a5e3c969167bcd87b01e2',
+  table: 155,
+  index: 488,
+  trigger: 305,
+  view: 10,
+  sha256: '9955fdc22c9f35849b937a577d98dcf8960cddac9fe34ce7e48886befa789ff8',
 };
 
 // Capability tables that must NOT exist in the clean baseline (stage 2
 // deletions + owner-confirmed platform identity/parallel-order retirement).
 const forbiddenTables = [
+  // Owner cleanup 2026-09-01 (schema 38): zero-consumer registration island,
+  // always-empty cursor assertion table.
+  'buyer_registration_attempts',
+  'buyer_registration_conflict_events',
+  'buyer_registration_conflicts',
+  'staff_assignment_cursor_assertions',
+  'customer_buyer_invitation_lead_links',
+  'scheduled_operations_permission_catalog',
   'buyer_daily_exchange_rate_events',
   'buyer_daily_exchange_rates',
   'seller_service_fee_events',
@@ -195,9 +203,6 @@ const requiredTables = [
   'buyer_refund_payment_entries',
   'buyer_refund_payment_entry_files',
   'buyer_refund_reminders',
-  'buyer_registration_attempts',
-  'buyer_registration_conflict_events',
-  'buyer_registration_conflicts',
   'buyer_registration_rate_limits',
   'buyer_registration_session_issuances',
   'buyer_staff_assignments',
@@ -207,7 +212,6 @@ const requiredTables = [
   'customer_account_personas',
   'customer_auth_security_events',
   'customer_buyer_invitation_events',
-  'customer_buyer_invitation_lead_links',
   'customer_buyer_invitations',
   'customer_identity_claim_events',
   'customer_identity_manual_bindings',
@@ -289,7 +293,6 @@ const requiredTables = [
   'scheduled_job_states',
   'scheduled_manual_commands',
   'scheduled_operational_signals',
-  'scheduled_operations_permission_catalog',
   'seller_channels',
   'seller_customer_group_marketplaces',
   'seller_customer_groups',
@@ -320,7 +323,6 @@ const requiredTables = [
   'seller_store_events',
   'seller_store_marketplaces',
   'seller_stores',
-  'staff_assignment_cursor_assertions',
   'staff_assignment_events',
   'staff_assignment_role_permission_defaults',
   'staff_authorization_events',
@@ -393,12 +395,6 @@ const requiredTriggers = [
   'trg_buyer_refund_reminders_no_update',
   'trg_buyer_refund_reminders_source_guard',
   'trg_buyer_refund_reversal_limit_guard',
-  'trg_buyer_registration_attempts_no_delete',
-  'trg_buyer_registration_attempts_no_update',
-  'trg_buyer_registration_conflict_events_no_delete',
-  'trg_buyer_registration_conflict_events_no_update',
-  'trg_buyer_registration_conflicts_no_delete',
-  'trg_buyer_registration_conflicts_no_update',
   'trg_buyer_registration_sessions_no_delete',
   'trg_buyer_registration_sessions_no_update',
   'trg_buyer_staff_assignments_no_delete',
@@ -608,12 +604,10 @@ const requiredTriggers = [
   'trg_seller_store_events_no_delete',
   'trg_seller_store_events_no_update',
   'trg_seller_store_marketplace_default',
-  'trg_staff_assignment_cursor_assertion_cleanup',
-  'trg_staff_assignment_cursor_assertion_guard',
-  'trg_staff_assignment_events_no_delete',
-  'trg_staff_assignment_events_no_update',
   'trg_staff_assignment_role_permission_defaults_no_delete',
   'trg_staff_assignment_role_permission_defaults_no_update',
+  'trg_staff_assignment_events_no_delete',
+  'trg_staff_assignment_events_no_update',
   'trg_staff_authorization_events_no_delete',
   'trg_staff_authorization_events_no_update',
   'trg_staff_permission_override_deny_only_insert',
@@ -803,7 +797,7 @@ try {
     migrationFiles.at(-1) !== expectedLastMigration ||
     migrationNumbers.some((number, index) => number !== index + 1)
   ) {
-    throw new Error('Migration 必须是唯一连续的 0001-0037');
+    throw new Error('Migration 必须是唯一连续的 0001-0039');
   }
 
   for (const [file, source] of migrationSources) {
@@ -1338,7 +1332,7 @@ try {
       JSON.stringify(
         {
           status: 'PASS',
-          baseline: 'clean-baseline-0001-0037',
+          baseline: 'clean-baseline-0001-0039',
           migrations: migrationFiles,
           table_count: tables.size,
           index_count: schemaCounts.index,
