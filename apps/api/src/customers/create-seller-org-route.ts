@@ -130,6 +130,7 @@ function message(code: string): string {
     case 'FORBIDDEN': return '当前岗位不能创建卖家组织';
     case 'NOT_FOUND': return '客服通道不存在或已停用';
     case 'CONFLICT': return '微信号已被其他卖家占用';
+    case 'WECHAT_ID_CONFLICT': return '该微信号已被其他客户占用';
     case 'VALIDATION_ERROR': return '提交信息不正确';
     case 'IDEMPOTENCY_CONFLICT': return '幂等键已用于不同请求';
     case 'REQUEST_IN_PROGRESS': return '请求正在处理中';

@@ -246,6 +246,7 @@ POST /api/staff/reviews/:id/visibility
 POST /api/staff/seller-allocations/:allocationId/reallocate
 POST /api/staff/seller-allocations/:allocationId/reverse
 POST /api/staff/seller-organizations
+POST /api/staff/seller-organizations/:id/activate
 POST /api/staff/seller-payments/:paymentId/allocations
 POST /api/staff/seller-payments/:paymentId/proof/read-intent
 POST /api/staff/seller-payments/:paymentId/reverse
