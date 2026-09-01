@@ -115,6 +115,26 @@ environment gate. One earlier candidate attempt had five existing 5-second
 test timeouts; an immediate standalone candidate `npm test` rerun passed
 `1897/1897`, followed by the release-check PASS above.
 
+## Final HEAD release:check (LOCAL, 2026-08-31)
+
+```text
+RELEASE_BROWSER_PORT=4709 npm run release:check
+```
+
+Direct result: exit `0` on the clean worktree at the final commit
+`0d0cd948653480e6434b744e3f9c544ae5646272` (tree
+`210a88d4ab9619f339d9cd72f8610111b88cdb8c`). The final verifier verdict is
+`PASS` with `local_release_evidence: COMPLETE`, `external_evidence:
+UNVERIFIED`, `production_go: NO_GO`, and Moonwhite production readiness probe
+calls `0`. Inside the gate, the full vitest suite passed `266/266` files and
+`1897/1897` tests, and the candidate browser gate reported `256 passed`,
+`1 skipped` (the same intentionally unset Buyer screenshot environment gate).
+The two Cloudflare release preflight sub-gates exited `0` with local
+`BLOCKED_NEEDS_OPERATOR_INPUT` status and zero external calls, matching the
+documented LOCAL-only boundary. The full command output was retained
+machine-locally at `/tmp/release_check_0d0cd948_20260831.log` and is not
+repository evidence.
+
 ## Final evidence
 
 The implementation worktree checks are complete: focused browser exit `0`, full
@@ -122,6 +142,6 @@ browser exit `0` with `256 passed` and the one intentional unset-environment
 skip, Buyer non-skip exit `0`, Stage 7F visual exit `0` with 21/21 PNGs
 manually reviewed, `npm run check` exit `0`, current/all OpenSpec strict exit
 `0`, Web source/static and CSS guards exit `0`, and `git diff --check` exit `0`.
-The final clean committed tree receives a final direct `npm run release:check`
-before handoff. All evidence remains LOCAL; production acceptance is not
-claimed.
+The final direct `npm run release:check` on the clean committed tree at
+`0d0cd948` has since completed with exit `0` (see the section above). All
+evidence remains LOCAL; production acceptance is not claimed.
