@@ -7,7 +7,7 @@ Owner 2026-09-01 在客服分布复盘时补充终裁：**月光白（yueguangba
 - 迁移 0041（schema 41，数据级）：组织改指+序号归并+seller_code 重写+next_sequence 抬高+通道 DISABLED 墓碑；断言六 ACTIVE、墓碑在、零残留引用、next_sequence 越过归并最大值。
 - 源码两份 CHANNEL_ALIASES：yueguangbai/yuegungbai → 'ygbceping'。
 - 契约测试（channel-alias-contract）三处断言按新口径重写；seller-partner 隔离测试注释更新（F4 显式月光白→解析为 ygbceping→仍与文件夹默认月光白AI 冲突而隔离；F2 下与默认一致可导入）。
-- verify-migrations 通道种子期望回六通道；baseline 测试改为六通道+断言 yueguangbai 不存在；全锚点 40→41；四份生产文档/G3/CURRENT_SYSTEM_STATE/CONVENTIONS 尾部声明 0041。
+- verify-migrations 通道种子期望=7 行（六 ACTIVE+yueguangbai DISABLED 墓碑）+墓碑状态断言；baseline 测试改为六 ACTIVE+墓碑断言并新增撞号归并迁移门禁；全锚点 40→41；四份生产文档/G3/CURRENT_SYSTEM_STATE/CONVENTIONS 尾部声明 0041（墓碑口径）。
 - `owner-seed-yueguangbai-channel` 变更标注"被同日补充终裁部分取代"（种子已撤销；其 Reachability 边界结论在新别名表下自然成立：F2 显式月光白与默认一致直接可导，F4 两卖家仍需例外或改派——留待导入器实现时按当时口径处理）。
 
 ## Impact

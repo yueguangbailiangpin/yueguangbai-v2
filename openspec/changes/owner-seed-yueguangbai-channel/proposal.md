@@ -20,4 +20,4 @@ Owner 2026-09-01 别名终裁把 `yueguangbai` 拆为独立 canonical（与 `yue
 
 ## Superseded in part（同日补充终裁）
 
-Owner 2026-09-01 复盘客服分布后补充裁决：**月光白（yueguangbai）与 ygbceping 是同一账号**。本变更的通道种子随之被 `owner-alias-yueguangbai-ygbceping` 的 0041 前向撤销（注册表净效果回到六通道）；本变更保留的历史价值=别名拆分测试、Reachability 边界论证与守卫断言。另更正：本变更早前"当前数据零卖家指派 yueguangbai"的说法有误，当时实有 3 组（含 F2 的 ricky4819），归并后全部并入 ygbceping。
+Owner 2026-09-01 复盘客服分布后补充裁决：**月光白（yueguangbai）与 ygbceping 是同一账号**。本变更的通道种子随之被 `owner-alias-yueguangbai-ygbceping` 的 0041 以墓碑方式收口（ACTIVE 状态撤销、保留 DISABLED 墓碑行，注册表净效果=六 ACTIVE+一墓碑）；本变更保留的历史价值=别名拆分测试、Reachability 边界论证与守卫断言。另更正：本变更早前"当前数据零卖家指派 yueguangbai"的说法有误，当时实有 3 组（含 F2 的 ricky4819），归并后全部并入 ygbceping。
