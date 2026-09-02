@@ -35,3 +35,4 @@ export * from './time/business-clock';
 export * from './time/business-days';
 export * from './time/date-only';
 export * from './staff-assignment';
+export * from './identity/platform-identifier';

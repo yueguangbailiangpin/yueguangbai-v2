@@ -21,8 +21,8 @@
 
 - `production-readiness-backup-validation`、`pre-wave13-baseline-conformance-audit`、`production-cloudflare-web-r2-release-configuration`、`feishu-workbench-production-adapter-activation`、`staff-mcp-production-transport-oauth` 和 `final-production-go-local-preparation` 均已归档并合入当前基线；它们不是 active 或“未提交”工作。
 - `pre-wave13-baseline-conformance-audit` 的归档任务记录了本地治理收口，也明确保留真实 Provider、生产网络、数据与最终签字阻断；归档不等于线上完成。
-- M10 历史提交 `8c4fdaa382fd1e2c56d76aa23bb6b960c4f6f72c` 只作历史谱系证据。当前仓库 Migration 为连续 `0001`–`0042`，尾部为 `0042_marketplace_runtime_expansion.sql`，不能据此推断线上 ledger 已到 0075。
-- 备份与恢复 CLI 已删除 schema 34 默认回退，遗漏、无效或非正整数 `--expected-schema` 会在读取数据库或备份文件前失败关闭。当前本地操作目标是 Schema 42 / `0001`–`0042`，仍要求上线前授权只读核对真实 ledger。
+- M10 历史提交 `8c4fdaa382fd1e2c56d76aa23bb6b960c4f6f72c` 只作历史谱系证据。当前仓库 Migration 为连续 `0001`–`0043`，尾部为 `0043_relax_platform_identifier_constraints.sql`，不能据此推断线上 ledger 已到 0075。
+- 备份与恢复 CLI 已删除 schema 34 默认回退，遗漏、无效或非正整数 `--expected-schema` 会在读取数据库或备份文件前失败关闭。当前本地操作目标是 Schema 43 / `0001`–`0043`，仍要求上线前授权只读核对真实 ledger。
 - Seller 页面不提供自愿“退出登录”入口；Buyer 退出保留。Seller 的 401、Persona/身份不匹配、会话失效仍触发共享 Customer transport 与两类 Customer cache 安全清理。
 
 ## 3. 本地发布聚合门禁
@@ -41,7 +41,7 @@
 ## 4. 依赖、Migration、权限与产品安全边界
 
 - `react-router` 精确锁定 8.3.0，`react-router-dom` 不存在；每个候选仍须重新运行依赖审计，不能继承历史“0 vulnerabilities”文字。
-- Migration verifier 只证明仓库 `0001`–`0042` 连续（尾部为 `0042_marketplace_runtime_expansion.sql`）、fresh/顺序/错序/重复/部分失败关闭；真实 D1 ledger、备份和恢复必须另获授权。
+- Migration verifier 只证明仓库 `0001`–`0043` 连续（尾部为 `0043_relax_platform_identifier_constraints.sql`）、fresh/顺序/错序/重复/部分失败关闭；真实 D1 ledger、备份和恢复必须另获授权。
 - Personal DENY、四角色唯一性、Team/Customer/Seller/Store/文件 Audience 和财务字段投影保持失败关闭；本任务未读取真实员工、客户或财务数据。
 - 金额使用整数最小单位/BigInt，事实时间使用 UTC 毫秒，业务显示使用 `Asia/Shanghai`；本地中文 UI 与 Chromium 合同不能替代真实移动网络矩阵。
 

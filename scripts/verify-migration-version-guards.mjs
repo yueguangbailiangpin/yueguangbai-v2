@@ -4,8 +4,8 @@ import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..'),
   directory = path.join(root, 'migrations');
-const expectedLatestSchema = 42,
-  expectedLastMigration = '0042_marketplace_runtime_expansion.sql';
+const expectedLatestSchema = 43,
+  expectedLastMigration = '0043_relax_platform_identifier_constraints.sql';
 const migrationFiles = readdirSync(directory)
   .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/u.test(name))
   .sort();
@@ -16,7 +16,7 @@ if (
   migrationFiles.at(-1) !== expectedLastMigration ||
   numbers.some((number, index) => number !== expected[index])
 )
-  throw new Error('expected one continuous migration for every version 0001-0042');
+  throw new Error('expected one continuous migration for every version 0001-0043');
 const sql = migrationFiles.map((name) => readFileSync(path.join(directory, name), 'utf8'));
 function open() {
   const db = new DatabaseSync(':memory:');
@@ -171,10 +171,10 @@ console.log(
   JSON.stringify(
     {
       status: 'PASS',
-      baseline: 'clean-baseline-0001-0042',
+      baseline: 'clean-baseline-0001-0043',
       migration_count: migrationFiles.length,
       fresh_schema: expectedLatestSchema,
-      sequential_upgrade: '0001 -> 0042',
+      sequential_upgrade: '0001 -> 0043',
       sequential_steps: migrationFiles.length,
       wrong_order_cases: wrong.length,
       wrong_order_commits_rejected: wrong.length,

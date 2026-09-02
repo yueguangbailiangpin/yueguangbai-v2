@@ -2,6 +2,7 @@ import type { SqlDatabase, SqlStatement } from '@ygb/contracts';
 import {
   canonicalJson,
   normalizeAsin,
+  normalizePlatformIdentifier,
   normalizeWechatId,
   sha256Hex,
 } from '@ygb/domain';
@@ -705,7 +706,10 @@ async function normalizeSourceRecord(
     const wechat = normalizeWechatId(sellerWechatRaw);
     base.sellerWechatDisplay = wechat.display;
     base.sellerWechatNormalized = wechat.normalized;
-    base.asinNormalized = normalizeAsin(input.asin);
+    const identifierNormalizer = input.marketplaceCode === 'AMAZON_JP' || input.marketplaceCode === 'AMAZON_US' || !input.marketplaceCode
+      ? normalizeAsin
+      : (raw: string) => normalizePlatformIdentifier(input.marketplaceCode!, raw);
+    base.asinNormalized = identifierNormalizer(input.asin);
   } catch {
     base.exceptionCode = 'INVALID_SELLER_OR_ASIN';
     return base;

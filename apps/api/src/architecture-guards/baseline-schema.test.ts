@@ -20,14 +20,14 @@ afterEach(() => {
 const root = path.resolve(import.meta.dirname, '../../../..');
 
 describe('stage 3 clean baseline schema', () => {
-  it('is one continuous 0001-0042 chain ending at schema version 42', () => {
+  it('is one continuous 0001-0043 chain ending at schema version 43', () => {
     const migrations = readdirSync(path.join(root, 'migrations'))
       .filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/u.test(name))
       .sort();
-    expect(migrations).toHaveLength(42);
+    expect(migrations).toHaveLength(43);
     expect(migrations.map((name) => Number(name.slice(0, 4))))
-      .toEqual(Array.from({ length: 42 }, (_, index) => index + 1));
-    expect(migrations.at(-1)).toBe('0042_marketplace_runtime_expansion.sql');
+      .toEqual(Array.from({ length: 43 }, (_, index) => index + 1));
+    expect(migrations.at(-1)).toBe('0043_relax_platform_identifier_constraints.sql');
     for (const file of migrations) {
       const source = readFileSync(path.join(root, 'migrations', file), 'utf8');
       expect(source).not.toMatch(/SELECT\s+CASE\s+WHEN[\s\S]*?THEN\s+RAISE\s*\(/iu);
@@ -35,12 +35,12 @@ describe('stage 3 clean baseline schema', () => {
     }
   });
 
-  it('applies to an empty database in one pass at version 42', () => {
+  it('applies to an empty database in one pass at version 43', () => {
     database = createMigratedTestDatabase();
     const state = database.raw.prepare(
       'SELECT schema_version FROM app_schema_state WHERE singleton_id=1',
     ).get();
-    expect(state).toEqual({ schema_version: 42 });
+    expect(state).toEqual({ schema_version: 43 });
     expect(database.raw.prepare('PRAGMA integrity_check').get())
       .toEqual({ integrity_check: 'ok' });
     expect(database.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
@@ -336,7 +336,10 @@ describe('stage 3 clean baseline schema', () => {
     db.exec(
       readFileSync(path.join(root, 'migrations', '0042_marketplace_runtime_expansion.sql'), 'utf8'),
     );
-    expect(db.prepare('SELECT schema_version FROM app_schema_state').get()).toEqual({ schema_version: 42 });
+    db.exec(
+      readFileSync(path.join(root, 'migrations', '0043_relax_platform_identifier_constraints.sql'), 'utf8'),
+    );
+    expect(db.prepare('SELECT schema_version FROM app_schema_state').get()).toEqual({ schema_version: 43 });
     expect(
       db.prepare(`
         SELECT origin_channel_id, current_channel_id, seller_sequence, seller_code

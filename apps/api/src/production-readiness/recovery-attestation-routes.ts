@@ -7,7 +7,7 @@ import { customerAuthOriginGuard } from '../middleware/origin-guard';
 import type { AssignmentStaffAuthorization } from '../staff-assignment';
 import { parseExactGitCommitSha } from '@ygb/domain';
 
-const TARGET_SCHEMA = 42;
+const TARGET_SCHEMA = 43;
 class RecoveryAttestationError extends Error {
   constructor(
     public code: 'VALIDATION_ERROR' | 'FORBIDDEN' | 'CONFLICT' | 'DEPENDENCY_UNAVAILABLE',
