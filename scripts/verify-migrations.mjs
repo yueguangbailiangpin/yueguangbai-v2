@@ -20,7 +20,7 @@ const expectedSchemaInventory = {
   index: 488,
   trigger: 305,
   view: 10,
-  sha256: 'e4e9c7b25f97b722528200bcf49bd9442b0099badf8a356b5f853ec57d4b476f',
+  sha256: '25a496089cb23ee53091090c3fc01aa0fcafce02d19c45ea0193b836334c6ac6',
 };
 
 // Capability tables that must NOT exist in the clean baseline (stage 2

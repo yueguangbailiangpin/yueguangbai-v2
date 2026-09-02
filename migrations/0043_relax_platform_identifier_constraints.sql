@@ -11,7 +11,7 @@ CREATE TABLE standard_products__0043_new (
   marketplace_code TEXT NOT NULL,
   asin_display TEXT NOT NULL CHECK (length(asin_display) BETWEEN 1 AND 50),
   asin_normalized TEXT NOT NULL CHECK (
-    length(asin_normalized) BETWEEN 1 AND 50 AND asin_normalized NOT GLOB '*[^A-Z0-9-]*'
+    length(asin_normalized) BETWEEN 1 AND 50 AND asin_normalized NOT GLOB '*[^A-Z0-9_-]*'
   ),
   canonical_name TEXT NOT NULL CHECK (length(canonical_name) BETWEEN 1 AND 200),
   canonical_url TEXT,

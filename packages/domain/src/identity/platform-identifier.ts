@@ -33,11 +33,16 @@ export function normalizePlatformIdentifier(
       }
       return normalized;
 
-    case 'RAKUTEN_JP':
-      if (!/^[A-Z0-9][A-Z0-9-]{0,49}$/u.test(normalized)) {
+    case 'RAKUTEN_JP': {
+      // Rakuten product numbers are seller-defined SKUs (R-1, KT_STICKER,
+      // ALBUM-A4-POCK_A). Normalize underscores and internal spaces to
+      // hyphens; reject non-ASCII or empty results.
+      const sku = normalized.replace(/[ _]/g, '-');
+      if (!/^[A-Z0-9][A-Z0-9-]{0,49}$/u.test(sku) || /[一-鿿]/.test(sku)) {
         throw new PlatformIdentifierError('invalid_rakuten_product_number');
       }
-      return normalized;
+      return sku;
+    }
 
     case 'TEMU_JP':
       if (!/^[A-Z]{2}\d{6}$/u.test(normalized)) {
