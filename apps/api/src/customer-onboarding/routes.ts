@@ -141,7 +141,7 @@ async function buyerMatches(
     JOIN buyer_customers buyer ON buyer.identity_subject_id=claim.identity_subject_id
     LEFT JOIN buyer_marketplace_assignments assignment ON assignment.buyer_customer_id=buyer.id
     LEFT JOIN customer_login_accounts account ON account.identity_subject_id=buyer.identity_subject_id AND account.status='ACTIVE'
-    WHERE claim.normalized_wechat=? AND claim.status='ACTIVE' AND buyer.access_status='ACTIVE'
+    WHERE claim.normalized_wechat=? AND claim.status='ACTIVE'
     ORDER BY buyer.activated_at,buyer.id`,
     )
     .bind(wechat)
@@ -208,7 +208,7 @@ async function sellerMatches(
     FROM wechat_identity_claims claim
     JOIN seller_organization_members member ON member.identity_subject_id=claim.identity_subject_id
     JOIN seller_organizations organization ON organization.id=member.organization_id
-    WHERE claim.normalized_wechat=? AND claim.status='ACTIVE' AND member.status='ACTIVE' AND organization.status='ACTIVE'
+    WHERE claim.normalized_wechat=? AND claim.status='ACTIVE'
     ORDER BY member.primary_owner DESC,organization.activated_at,organization.id`,
     )
     .bind(wechat)
