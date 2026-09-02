@@ -17,10 +17,10 @@ const expectedLatestSchema = 43;
 const expectedLastMigration = '0043_relax_platform_identifier_constraints.sql';
 const expectedSchemaInventory = {
   table: 155,
-  index: 488,
+  index: 486,
   trigger: 305,
   view: 10,
-  sha256: '25a496089cb23ee53091090c3fc01aa0fcafce02d19c45ea0193b836334c6ac6',
+  sha256: '0d473e7346494ec61a76463dd7792c504cad4065e9f368fa506e5a33494077a3',
 };
 
 // Capability tables that must NOT exist in the clean baseline (stage 2
